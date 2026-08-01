@@ -1,0 +1,113 @@
+package com.personal.baton.watch.domain.monitoring;
+
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+public record TargetUrl(String value) {
+
+    public static final int MAX_LENGTH = 2_048;
+
+    private static final Pattern HOST_LABEL = Pattern.compile("[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?");
+    private static final Pattern NUMERIC_ADDRESS_COMPONENT = Pattern.compile("(?:0[xX][0-9A-Fa-f]+|[0-9]+)");
+
+    public TargetUrl {
+        Objects.requireNonNull(value, "value");
+        validateRawCharacters(value);
+        validateUri(parse(value));
+    }
+
+    public URI uri() {
+        return parse(value);
+    }
+
+    public String protocol() {
+        return uri().getScheme().toLowerCase(Locale.ROOT);
+    }
+
+    @Override
+    public String toString() {
+        return "[target-url]";
+    }
+
+    private static void validateRawCharacters(String value) {
+        if (value.isEmpty() || value.length() > MAX_LENGTH) {
+            throw invalid();
+        }
+        for (int index = 0; index < value.length(); ) {
+            int codePoint = value.codePointAt(index);
+            if (codePoint == '\\' || Character.getType(codePoint) == Character.CONTROL) {
+                throw invalid();
+            }
+            index += Character.charCount(codePoint);
+        }
+    }
+
+    private static URI parse(String value) {
+        try {
+            return new URI(value);
+        } catch (URISyntaxException exception) {
+            throw invalid();
+        }
+    }
+
+    private static void validateUri(URI uri) {
+        if (!uri.isAbsolute() || uri.isOpaque()) {
+            throw invalid();
+        }
+
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("http") && !scheme.equals("https")) {
+            throw invalid();
+        }
+        if (uri.getRawAuthority() == null || uri.getRawUserInfo() != null || uri.getRawFragment() != null) {
+            throw invalid();
+        }
+
+        String host = uri.getHost();
+        if (host == null || host.isBlank() || isIpLiteral(host) || !isUnambiguousHostname(host)) {
+            throw invalid();
+        }
+
+        int port = uri.getPort();
+        int defaultPort = scheme.equals("http") ? 80 : 443;
+        if (port != -1 && port != defaultPort) {
+            throw invalid();
+        }
+        String expectedAuthority = port == -1 ? host : host + ":" + port;
+        if (!uri.getRawAuthority().equalsIgnoreCase(expectedAuthority)) {
+            throw invalid();
+        }
+    }
+
+    private static boolean isIpLiteral(String host) {
+        if (host.indexOf(':') >= 0 || host.startsWith("[") || host.endsWith("]")) {
+            return true;
+        }
+        String[] components = host.split("\\.", -1);
+        for (String component : components) {
+            if (!NUMERIC_ADDRESS_COMPONENT.matcher(component).matches()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isUnambiguousHostname(String host) {
+        if (host.length() > 253 || host.startsWith(".") || host.endsWith(".")) {
+            return false;
+        }
+        for (String label : host.split("\\.", -1)) {
+            if (!HOST_LABEL.matcher(label).matches()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static IllegalArgumentException invalid() {
+        return new IllegalArgumentException("target URL violates the static target policy");
+    }
+}
