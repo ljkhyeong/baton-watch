@@ -483,8 +483,11 @@ public final class JdbcMonitoringPersistenceAdapter implements MonitorPersistenc
                     attempt_id,
                     previous_health,
                     current_health,
-                    changed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    changed_at,
+                    delivery_status,
+                    delivery_attempt,
+                    next_attempt_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?)
                 """,
                 UUID.randomUUID(),
                 resourceReference,
@@ -492,6 +495,7 @@ public final class JdbcMonitoringPersistenceAdapter implements MonitorPersistenc
                 attemptId,
                 previousHealth.name(),
                 currentHealth.name(),
+                databaseTime(changedAt),
                 databaseTime(changedAt));
     }
 

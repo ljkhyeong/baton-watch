@@ -13,7 +13,7 @@ spring:
         size: 1
       shutdown:
         await-termination: true
-        await-termination-period: 10s
+        await-termination-period: 65s
 
 watch:
   api-token: ${WATCH_API_TOKEN}
@@ -38,3 +38,39 @@ watch:
     dns-queue-capacity: 8
     request-threads: 1
     request-queue-capacity: 1
+  event-delivery:
+    enabled: ${WATCH_EVENT_DELIVERY_ENABLED:false}
+    endpoint: ${WATCH_EVENT_DELIVERY_ENDPOINT:}
+    bearer-token: ${WATCH_EVENT_DELIVERY_TOKEN:}
+    poll-interval: 1s
+    maintenance-interval: 1m
+    lease-duration: 60s
+    initial-retry-delay: 5s
+    max-retry-delay: 15m
+    retention: 30d
+    batch-size: 10
+    maintenance-batch-size: 100
+    http:
+      connect-timeout: 2s
+      response-timeout: 3s
+      total-timeout: 5s
+      max-response-bytes: 8192
+      max-header-count: 100
+      max-header-line-length: 8192
+      dns-threads: 2
+      dns-queue-capacity: 8
+      request-threads: 1
+      request-queue-capacity: 1
+
+management:
+  server:
+    port: 8081
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

@@ -5,22 +5,28 @@ of BATON RoleResource URL snapshots.
 
 ## Current implementation
 
-The monitoring MVP implements:
+The implemented service currently provides:
 
 - GET /api/v1/system/status
 - authenticated PUT and GET /api/v1/resource-monitors/{resourceReference}
 - revision-safe ACTIVE/INACTIVE monitor synchronization
 - PostgreSQL schedules, leases, immutable attempts/results, current health, and
-  durable health-change events
+  durable health-change events with delivery leases and retry state
 - a background checker with DNS pinning, SSRF and redirect defenses, bounded
   time/headers/bytes, stale projection handling, and bounded retention
+- at-least-once delivery to one configured BATON HTTPS callback, with a fixed
+  payload, event-ID idempotency, DNS pinning, no redirects, capped exponential
+  retries, and delivered-event retention
+- low-cardinality check/scheduler counters plus event-delivery backlog,
+  oldest-age, finalization, and bounded-outcome metrics
 - a hexagonal six-module Gradle layout
 - focused domain, application, HTTP, outbound-policy, and PostgreSQL integration
   tests
 
-Health-change event delivery is not implemented. Events remain in the database
-until a transport contract is adopted. WATCH has no frontend or broker and is
-not evidence of a production deployment.
+Delivery is disabled until an operator supplies the callback and its separate
+service token. Pending events remain durable while delivery is disabled or the
+callback is unavailable. WATCH has no frontend or broker, and repository
+artifacts are not evidence of a production deployment or external alerts.
 
 ## Technology and modules
 
@@ -43,7 +49,8 @@ The repository includes a Gradle wrapper pinned to 9.2.1.
 ~~~
 
 For the recommended local container run, copy the environment template and
-replace both placeholder secrets before starting:
+replace the database and monitor-API placeholder secrets before starting.
+Replace the separate delivery token as well when enabling its callback:
 
 ~~~bash
 cp .env.example .env
@@ -51,8 +58,10 @@ docker compose up --build
 curl http://localhost:8080/api/v1/system/status
 ~~~
 
-Compose starts WATCH and a private PostgreSQL 18.4 service. The database port is
-not published. To synchronize a monitor:
+Compose starts WATCH and a private PostgreSQL 18.4 service. The database port
+and WATCH management port 8081 are not published; the latter serves Actuator
+health and Prometheus metrics inside the runtime network. To synchronize a
+monitor:
 
 ~~~bash
 curl -X PUT http://localhost:8080/api/v1/resource-monitors/role-resource-123 \
@@ -65,11 +74,28 @@ BATON must call synchronization only after its own transaction commits. A later
 revision may use `INACTIVE` with no `targetUrl` to stop future checks while
 retaining bounded history.
 
+To activate health-change delivery, set these values in `.env` before starting
+Compose:
+
+~~~dotenv
+WATCH_EVENT_DELIVERY_ENABLED=true
+WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.example.com/api/v1/internal/resource-health-events
+WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
+~~~
+
+The endpoint must be an absolute public-global HTTPS URL on port 443, without
+user-info, query, fragment, or an IP-literal host. BATON must authenticate the
+bearer token and durably deduplicate the `Idempotency-Key`/`eventId` before
+acknowledging with 2xx. See the delivery contract for the exact payload and
+retry behavior.
+
 ## Maintained documents
 
 - [Product baseline](docs/PRD/0001_product-baseline/spec.md)
 - [API contract](docs/PRD/0002_api-contract/spec.md)
 - [Monitoring MVP](docs/PRD/0003_monitoring-mvp/spec.md)
+- [Health-change event delivery](docs/PRD/0004_health-change-event-delivery/spec.md)
 - [Microservice boundary ADR](docs/ADR/0001_microservice-boundary/adr.md)
 - [MVP storage and execution ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
+- [Direct HTTPS event delivery ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
 - [Active handoff](HANDOFF.md)

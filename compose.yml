@@ -26,11 +26,15 @@ services:
       SPRING_DATASOURCE_USERNAME: "${WATCH_DB_USER:-baton_watch}"
       SPRING_DATASOURCE_PASSWORD: "${WATCH_DB_PASSWORD:?WATCH_DB_PASSWORD is required}"
       WATCH_API_TOKEN: "${WATCH_API_TOKEN:?WATCH_API_TOKEN is required}"
+      WATCH_EVENT_DELIVERY_ENABLED: "${WATCH_EVENT_DELIVERY_ENABLED:-false}"
+      WATCH_EVENT_DELIVERY_ENDPOINT: "${WATCH_EVENT_DELIVERY_ENDPOINT:-}"
+      WATCH_EVENT_DELIVERY_TOKEN: "${WATCH_EVENT_DELIVERY_TOKEN:-}"
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "${WATCH_HOST_PORT:-8080}:8080"
+    stop_grace_period: 70s
     init: true
     read_only: true
     tmpfs:

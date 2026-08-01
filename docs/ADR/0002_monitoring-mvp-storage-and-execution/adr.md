@@ -10,8 +10,9 @@ PRD-0003 requires durable schedules, leases, immutable attempt/result history,
 a current-health projection, and atomic health-change events. The worker must
 not hold a database transaction while it performs hostile or slow network I/O.
 
-The repository currently has persistence and external adapter modules but has
-not selected a database, migration tool, storage API, or HTTP client.
+At the time of this decision, the repository had persistence and external
+adapter modules but had not selected a database, migration tool, storage API,
+or HTTP client.
 
 ## Decision
 
@@ -23,7 +24,9 @@ adapter owns four tables:
   projection;
 - `watch_attempt` for the immutable claim snapshot;
 - `watch_result` for immutable completed result metadata;
-- `watch_health_change_event` for the durable, currently undelivered outbox.
+- `watch_health_change_event` for the durable outbox and, as extended by
+  ADR-0003, its pending/delivered state, delivery attempts, due time, expiring
+  lease, bounded outcome, acknowledgement time, and retention eligibility.
 
 Claim uses a short transaction with `SELECT ... FOR UPDATE SKIP LOCKED`, followed
 by lease-token updates and attempt inserts. The application performs checks
@@ -62,7 +65,7 @@ testable. The JVM resolver itself cannot be forcibly cancelled, so a bounded
 resolver executor and infrastructure egress policy remain necessary defense in
 depth.
 
-The durable event table provides an atomic record of state changes but no event
-delivery. A later adopted contract must select transport, retry, and retention
-before adding a dispatcher or broker.
-
+The durable event table provides the atomic record consumed by the direct HTTPS
+dispatcher adopted in PRD-0004 and ADR-0003. Delivery uses separate short claim
+and finalize transactions around network I/O, capped exponential retry, and
+retention that deletes only acknowledged events. No broker is adopted.

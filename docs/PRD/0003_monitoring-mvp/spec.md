@@ -4,7 +4,7 @@ Status: accepted
 
 Date: 2026-08-01
 
-Implementation: complete; health-change event delivery remains out of scope
+Implementation: complete; event delivery is implemented separately by PRD-0004
 
 ## Goal
 
@@ -100,13 +100,15 @@ retry after 30 seconds. All other failures are conclusive target outcomes.
 Every claim and completed result is immutable. Finalization updates current
 health and inserts a durable health-change event atomically only when derived
 health changes. The stale sweep follows the same rule. Event transport is not
-part of the MVP; BATON reads the current projection over HTTP.
+part of this MVP; PRD-0004 separately adopts and implements the direct BATON
+HTTPS callback. BATON can still read the current projection over HTTP.
 
 ## Retention and observability
 
 - Attempts and results are retained for 30 days by default.
-- Cleanup deletes bounded batches and never removes the current projection or
-  health-change events.
+- MVP attempt/result cleanup deletes bounded batches and never removes the
+  current projection. PRD-0004 separately permits bounded retention cleanup of
+  delivered health-change events only.
 - Logs may include attempt correlation and bounded outcome/status values, but
   never raw URLs, hosts, queries, resource references, resolved addresses,
   response bodies, or exception messages.

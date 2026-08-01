@@ -9,12 +9,15 @@ description: Repository workflow for broad BATON WATCH Java and Spring changes s
 
 - Read HANDOFF.md, AGENTS.md, README.md, the affected PRD, and relevant ADR.
 - Separate current behavior from planned behavior. The PRD-0003 monitoring MVP
-  is implemented; durable event delivery and production deployment are not.
+  and PRD-0004 direct event delivery are implemented; production deployment is
+  not.
 - Keep packages under com.personal.baton.watch and dependencies flowing bootstrap -> adapters -> application -> domain.
 
 ## Preserve ownership
 
-- Let WATCH own asynchronous RoleResource URL schedules, attempts/results, derived UNKNOWN/HEALTHY/DEGRADED/BROKEN status, and durable health-change events once implemented.
+- Let WATCH own asynchronous RoleResource URL schedules, attempts/results,
+  derived UNKNOWN/HEALTHY/DEGRADED/BROKEN status, durable health-change events,
+  and their at-least-once delivery to the adopted BATON callback.
 - Let BATON remain authoritative for RoleResource data and authorization.
 - Never block a BATON transaction or projection on WATCH. Synchronize only after BATON commits.
 - Never store response bodies, credentials, cookies, or authorization headers.
@@ -25,6 +28,9 @@ description: Repository workflow for broad BATON WATCH Java and Spring changes s
 2. Claim work in a short transaction, perform network I/O without a transaction, then finalize attempt/result and any state-change event in another short transaction.
 3. Inject Clock and use UTC instants for schedules, leases, attempts, and events.
 4. Apply scheme, destination, DNS-rebinding, redirect, TLS, timeout, byte, and concurrency defenses before enabling any checker.
-5. Add focused policy, use-case, adapter, and wiring tests; run the narrowest task before ./gradlew test.
+5. For event delivery, keep the fixed HTTPS callback, exact payload and
+   idempotency header, separate bearer token, public-global DNS pinning, no
+   redirects, durable retry lease, capped backoff, and delivered-only retention.
+6. Add focused policy, use-case, adapter, and wiring tests; run the narrowest task before ./gradlew test.
 
 Use baton-watch-api-contract, baton-watch-persistence, baton-watch-observability, or baton-watch-ops when one of those concerns is primary.

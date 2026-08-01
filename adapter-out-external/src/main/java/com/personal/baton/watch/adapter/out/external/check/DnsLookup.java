@@ -4,7 +4,7 @@ import java.net.InetAddress;
 import java.time.Duration;
 import java.util.List;
 
-interface DnsLookup {
+public interface DnsLookup {
 
     List<InetAddress> resolve(String hostname, Duration timeout) throws DnsLookupException;
 }

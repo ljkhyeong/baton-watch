@@ -11,9 +11,10 @@ schedules/attempt/result history, derive UNKNOWN, HEALTHY, DEGRADED, or BROKEN,
 and record durable health-change events. WATCH must not authorize BATON
 resources, store response bodies, or block BATON transactions or projections.
 
-The monitoring MVP is implemented. Durable health-change events are recorded,
-but event delivery remains planned. Do not document delivery or deployment as
-live. Do not add a frontend or message broker without an adopted requirement.
+The monitoring MVP and direct HTTPS health-change event delivery are
+implemented. Delivery is at least once to one configured BATON callback; BATON
+must deduplicate by event ID. Do not document production deployment, external
+alerts, a frontend, or a message broker as live.
 
 ## Preserve architecture
 
@@ -30,15 +31,25 @@ Keep controllers thin. Inject Clock into time-sensitive application or domain co
 
 ## Check safety
 
-Before any outbound request, enforce scheme and port policy, resolve and reject non-public destinations, pin the approved address, revalidate every redirect, and bound redirects, time, and bytes. Treat DNS rebinding and alternate IP forms as hostile. Never store bodies or use raw URLs as metric labels.
+Before any outbound request, enforce scheme and port policy, resolve and reject
+non-public destinations, pin the approved address, and bound time, headers,
+bytes, concurrency, and queues. Revalidate every target-check redirect; never
+follow an event-delivery redirect. Treat DNS rebinding and alternate IP forms
+as hostile. Never store bodies or use raw URLs, hosts, resource references,
+event IDs, or exception messages as metric labels.
 
-Claim work in a short transaction, perform network I/O outside a transaction, then finalize the attempt/result and durable state-change event in another short transaction.
+Claim check or delivery work in a short transaction, perform network I/O
+outside a transaction, then finalize in another short transaction. Keep event
+payloads immutable, leases expiring, retry delays capped, finalization
+idempotent, and retention limited to delivered events.
 
 ## Commit messages
 
 Keep Conventional Commit type prefixes such as `feat:`, `fix:`, `docs:`,
 `test:`, `refactor:`, and `chore:` for categorization. Write commit subjects and
-bodies in Korean.
+bodies in Korean. After successful verification, commit completed changes and
+push the current branch unless the user says otherwise. Never force-push
+without explicit approval.
 
 ## Verify
 

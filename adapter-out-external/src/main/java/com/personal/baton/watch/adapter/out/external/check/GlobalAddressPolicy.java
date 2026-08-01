@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Rejects an entire DNS answer when any address is not public global unicast. */
-final class GlobalAddressPolicy {
+public final class GlobalAddressPolicy {
 
     private static final List<Cidr> REJECTED_IPV4 = List.of(
             cidr("0.0.0.0", 8),
@@ -40,7 +40,7 @@ final class GlobalAddressPolicy {
             cidr("2620:4f:8000::", 48),
             cidr("3fff::", 20));
 
-    List<InetAddress> approve(List<InetAddress> answer) throws AddressPolicyException {
+    public List<InetAddress> approve(List<InetAddress> answer) throws AddressPolicyException {
         if (answer == null || answer.isEmpty()) {
             throw new AddressPolicyException();
         }

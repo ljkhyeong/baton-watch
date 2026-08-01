@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication(scanBasePackages = "com.personal.baton.watch")
 @EnableScheduling
-@EnableConfigurationProperties(WatchProperties.class)
+@EnableConfigurationProperties({WatchProperties.class, EventDeliveryProperties.class})
 public class BatonWatchApplication {
 
     public static void main(String[] args) {

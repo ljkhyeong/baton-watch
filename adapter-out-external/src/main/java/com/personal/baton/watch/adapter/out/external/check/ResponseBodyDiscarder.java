@@ -7,11 +7,11 @@ import java.util.function.LongConsumer;
 import org.apache.hc.core5.http.HttpEntity;
 
 /** Consumes only bounded bytes and never retains response body content. */
-final class ResponseBodyDiscarder {
+public final class ResponseBodyDiscarder {
 
     private static final int BUFFER_SIZE = 8 * 1024;
 
-    long discard(HttpEntity entity, long limit, LongConsumer progress)
+    public long discard(HttpEntity entity, long limit, LongConsumer progress)
             throws IOException, ResponseTooLargeException {
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(progress, "progress");
@@ -49,7 +49,7 @@ final class ResponseBodyDiscarder {
         }
     }
 
-    static final class ResponseTooLargeException extends IOException {
+    public static final class ResponseTooLargeException extends IOException {
 
         private final long consumedWithinLimit;
 
@@ -58,7 +58,7 @@ final class ResponseBodyDiscarder {
             this.consumedWithinLimit = consumedWithinLimit;
         }
 
-        long consumedWithinLimit() {
+        public long consumedWithinLimit() {
             return consumedWithinLimit;
         }
     }

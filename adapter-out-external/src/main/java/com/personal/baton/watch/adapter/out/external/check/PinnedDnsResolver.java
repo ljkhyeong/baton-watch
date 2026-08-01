@@ -8,13 +8,13 @@ import java.util.Objects;
 import org.apache.hc.client5.http.DnsResolver;
 
 /** A resolver scoped to one approved request target; it never performs DNS. */
-final class PinnedDnsResolver implements DnsResolver {
+public final class PinnedDnsResolver implements DnsResolver {
 
     private final String expectedHostname;
     private final String comparisonHostname;
     private final InetAddress[] approvedAddresses;
 
-    PinnedDnsResolver(String expectedHostname, List<InetAddress> approvedAddresses) {
+    public PinnedDnsResolver(String expectedHostname, List<InetAddress> approvedAddresses) {
         this.expectedHostname = Objects.requireNonNull(expectedHostname, "expectedHostname");
         this.comparisonHostname = comparisonKey(expectedHostname);
         if (approvedAddresses == null || approvedAddresses.isEmpty()) {

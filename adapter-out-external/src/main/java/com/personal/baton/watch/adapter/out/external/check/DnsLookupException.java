@@ -1,8 +1,8 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
-final class DnsLookupException extends Exception {
+public final class DnsLookupException extends Exception {
 
-    enum Reason {
+    public enum Reason {
         NOT_FOUND,
         TIMED_OUT,
         CAPACITY_EXHAUSTED,
@@ -12,12 +12,12 @@ final class DnsLookupException extends Exception {
 
     private final Reason reason;
 
-    DnsLookupException(Reason reason) {
+    public DnsLookupException(Reason reason) {
         super("DNS lookup failed");
         this.reason = reason;
     }
 
-    Reason reason() {
+    public Reason reason() {
         return reason;
     }
 }

@@ -70,7 +70,9 @@ unexpected safe server failure returns HTTP 500. Errors use
 fields. They never include a target URL, resolved address, credential, response
 body, raw exception, or BATON authorization decision.
 
-No attempt-history, manual-check, webhook, or event-delivery route is adopted.
+No attempt-history, manual-check, inbound webhook, or event-delivery route is
+adopted. PRD-0004 direct delivery is an outbound WATCH callback and does not
+change these inbound routes.
 A later query route must define cursor pagination before implementation.
 
 All application routes remain under `/api/v1`, use named transport DTOs, and
