@@ -5,9 +5,13 @@ import com.personal.baton.watch.application.system.service.GetSystemStatusServic
 import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication(scanBasePackages = "com.personal.baton.watch")
+@EnableScheduling
+@EnableConfigurationProperties(WatchProperties.class)
 public class BatonWatchApplication {
 
     public static void main(String[] args) {
@@ -24,4 +28,3 @@ public class BatonWatchApplication {
         return new GetSystemStatusService(clock);
     }
 }
-

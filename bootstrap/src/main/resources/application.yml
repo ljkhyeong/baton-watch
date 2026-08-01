@@ -1,12 +1,40 @@
 spring:
   application:
     name: baton-watch
-  lifecycle:
-    timeout-per-shutdown-phase: 20s
-  main:
-    banner-mode: "off"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
+    username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  flyway:
+    enabled: true
+  task:
+    scheduling:
+      pool:
+        size: 1
+      shutdown:
+        await-termination: true
+        await-termination-period: 10s
 
-server:
-  port: ${SERVER_PORT:8080}
-  shutdown: graceful
-
+watch:
+  api-token: ${WATCH_API_TOKEN}
+  poll-interval: 1s
+  maintenance-interval: 1m
+  lease-duration: 30s
+  check-interval: 60s
+  internal-failure-retry-interval: 30s
+  stale-after: 10m
+  retention: 30d
+  check-batch-size: 1
+  maintenance-batch-size: 100
+  http:
+    connect-timeout: 2s
+    response-timeout: 3s
+    total-timeout: 5s
+    max-response-bytes: 65536
+    max-redirects: 3
+    max-header-count: 100
+    max-header-line-length: 8192
+    dns-threads: 2
+    dns-queue-capacity: 8
+    request-threads: 1
+    request-queue-capacity: 1
