@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH Persistence"
+  short_description: "Evolve WATCH persistence safely"
+  default_prompt: "Use $baton-watch-persistence to change WATCH schedules, attempts, results, or durable event storage safely."

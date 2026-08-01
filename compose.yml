@@ -1,0 +1,15 @@
+services:
+  watch:
+    build:
+      context: .
+    environment:
+      JAVA_TOOL_OPTIONS: "${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}"
+    ports:
+      - "${WATCH_HOST_PORT:-8080}:8080"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+

@@ -1,0 +1,19 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+dependencies {
+    implementation project(':application')
+    implementation project(':adapter-in-web')
+    implementation project(':adapter-out-persistence')
+    implementation project(':adapter-out-external')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+}
+
+jar {
+    enabled = false
+}
+
+bootJar {
+    archiveFileName = 'baton-watch.jar'
+}

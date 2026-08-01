@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH Observability"
+  short_description: "Instrument WATCH without sensitive labels"
+  default_prompt: "Use $baton-watch-observability to add safe WATCH metrics, logs, traces, dashboards, or alerts."

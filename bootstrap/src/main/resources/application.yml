@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: baton-watch
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  main:
+    banner-mode: "off"
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+

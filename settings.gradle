@@ -1,0 +1,16 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'baton-watch'
+
+include 'domain'
+include 'application'
+include 'adapter-in-web'
+include 'adapter-out-persistence'
+include 'adapter-out-external'
+include 'bootstrap'
+

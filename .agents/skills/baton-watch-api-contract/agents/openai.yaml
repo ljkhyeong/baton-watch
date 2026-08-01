@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH API Contract"
+  short_description: "Maintain WATCH HTTP API contracts"
+  default_prompt: "Use $baton-watch-api-contract to add or change a BATON WATCH API endpoint and its focused contract tests."

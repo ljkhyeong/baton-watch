@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH Operations"
+  short_description: "Operate WATCH checks and deployments"
+  default_prompt: "Use $baton-watch-ops to change WATCH runtime, scheduling, containers, or deployment behavior safely."

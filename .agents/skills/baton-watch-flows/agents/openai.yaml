@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH Flows"
+  short_description: "Implement WATCH service flows safely"
+  default_prompt: "Use $baton-watch-flows to implement a BATON WATCH service change with the correct module boundaries and verification."

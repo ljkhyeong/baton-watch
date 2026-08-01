@@ -1,0 +1,4 @@
+interface:
+  display_name: "BATON WATCH Documentation"
+  short_description: "Keep WATCH documentation honest"
+  default_prompt: "Use $baton-watch-documentation-flows to update BATON WATCH documentation with clear current and planned states."
