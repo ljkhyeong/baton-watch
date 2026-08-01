@@ -9,7 +9,8 @@ description: HTTP contract workflow for BATON WATCH. Use when adding or changing
 
 - Read docs/PRD/0002_api-contract/spec.md, the affected controller/DTO, and its HTTP test.
 - Read PRD-0001 and ADR-0001 when the endpoint changes product behavior or service ownership.
-- Treat GET /api/v1/system/status as the only implemented route until code, tests, and PRD-0002 adopt another.
+- Treat GET /api/v1/system/status and authenticated PUT/GET
+  /api/v1/resource-monitors/{resourceReference} as the implemented routes.
 - Keep routes under /api/v1 and return named transport DTOs. Delegate to an inbound application port.
 - Keep transport validation in the web adapter and authorization, state, and transaction rules in application or domain code.
 
@@ -22,4 +23,3 @@ description: HTTP contract workflow for BATON WATCH. Use when adding or changing
 5. Run ./gradlew :adapter-in-web:test, then widen when application or runtime wiring changed.
 
 Do not invent future schedule, result, webhook, or event routes merely to complete the planned model.
-

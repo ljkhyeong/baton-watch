@@ -15,10 +15,11 @@ description: Observability workflow for BATON WATCH logs, metrics, traces, dashb
 
 ## Cover operational failure
 
-- Measure due backlog age, claim count, in-flight checks, outcome counts, duration, timeouts, rejected destinations, lease recovery, finalization failures, and event-delivery lag once those paths exist.
+- Add metrics for due backlog age, claim count, in-flight checks, outcome counts,
+  duration, timeouts, rejected destinations, lease recovery, and finalization
+  failures. Add event-delivery lag only after delivery exists.
 - Distinguish DNS, connect, TLS, redirect-policy, HTTP-class, timeout, size-limit, and internal failures with a bounded taxonomy.
 - Alert on sustained user-impacting conditions, not one transient target failure.
 - Keep dashboard queries and alerts synchronized with exported metric names.
 
 Add tests for tag sets, redaction, and counter emission at critical failure boundaries. Verify the metrics endpoint and alert configuration when introduced. Do not document a monitoring stack as deployed merely because configuration files exist.
-

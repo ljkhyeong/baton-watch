@@ -17,10 +17,11 @@ description: Documentation workflow for BATON WATCH README.md, HANDOFF.md, AGENT
 ## Preserve honesty
 
 - Compare implementation-shaped claims with code, tests, configuration, and routes.
-- State that only the project skeleton and GET /api/v1/system/status are implemented until that changes.
-- Label URL schedules/checks, attempt/result history, derived health, and durable events as planned.
+- State that the PRD-0003 monitoring MVP is implemented, including schedules,
+  checks, bounded history, derived health, and durable event recording.
+- Label health-change event delivery and production deployment as unimplemented.
 - Never claim WATCH owns BATON authorization, stores response bodies, blocks BATON transactions, uses a broker, has a frontend, or is deployed.
-- Keep future thresholds, retention, authentication, event transport, and infrastructure undecided until adopted.
+- Keep event transport and production infrastructure undecided until adopted;
+  PRD-0003 owns the current thresholds, retention, and authentication contract.
 
 Update the canonical document first, then synchronize only affected summaries. Check relative links, search for stale current/planned wording, and use git diff --check. Run application tests only when code or executable configuration also changed.
-

@@ -6,9 +6,14 @@ Read HANDOFF.md, README.md, the affected PRD, and relevant ADR before editing. T
 
 ## Preserve ownership
 
-WATCH may asynchronously check BATON RoleResource URLs, retain schedules/attempt/result history, derive UNKNOWN, HEALTHY, DEGRADED, or BROKEN, and publish durable health-change events. WATCH must not authorize BATON resources, store response bodies, or block BATON transactions or projections.
+WATCH may asynchronously check BATON RoleResource URLs, retain
+schedules/attempt/result history, derive UNKNOWN, HEALTHY, DEGRADED, or BROKEN,
+and record durable health-change events. WATCH must not authorize BATON
+resources, store response bodies, or block BATON transactions or projections.
 
-URL checking is planned, not implemented. Do not document planned behavior as live. Do not add a frontend or message broker without an adopted requirement.
+The monitoring MVP is implemented. Durable health-change events are recorded,
+but event delivery remains planned. Do not document delivery or deployment as
+live. Do not add a frontend or message broker without an adopted requirement.
 
 ## Preserve architecture
 
@@ -23,7 +28,7 @@ Keep dependencies flowing bootstrap -> adapters -> application -> domain under c
 
 Keep controllers thin. Inject Clock into time-sensitive application or domain code.
 
-## Future check safety
+## Check safety
 
 Before any outbound request, enforce scheme and port policy, resolve and reject non-public destinations, pin the approved address, revalidate every redirect, and bound redirects, time, and bytes. Treat DNS rebinding and alternate IP forms as hostile. Never store bodies or use raw URLs as metric labels.
 
@@ -32,4 +37,3 @@ Claim work in a short transaction, perform network I/O outside a transaction, th
 ## Verify
 
 Run the narrowest affected task, then ./gradlew test for cross-module changes. Use fixed clocks for time behavior. Run docker compose config when Compose changes. Never claim a deployment or URL-check capability from repository artifacts alone.
-

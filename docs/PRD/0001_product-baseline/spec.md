@@ -10,16 +10,19 @@ BATON WATCH is a separate service boundary for observing whether URLs attached t
 
 ## Current capability
 
-The current implementation is a project skeleton with GET /api/v1/system/status only. It does not schedule, perform, persist, or publish URL checks.
+The monitoring MVP from PRD-0003 is implemented. WATCH accepts revisioned active
+or inactive URL snapshots, schedules and performs bounded asynchronous checks,
+persists attempt/result metadata, derives current health, and records durable
+health-change events. Event delivery is not implemented.
 
-## Planned ownership
+## Ownership
 
-WATCH is planned to own:
+WATCH owns:
 
 - asynchronous URL-check schedules for resource references supplied by BATON;
 - immutable attempt and result history with bounded retention;
 - derived resource health: UNKNOWN, HEALTHY, DEGRADED, or BROKEN;
-- durable events emitted only when the derived health changes.
+- durable events recorded only when the derived health changes.
 
 PRD-0003 adopts the first schedule, retry, health, retention, authentication,
 and HTTP-check contracts for the monitoring MVP. Event transport remains
@@ -36,7 +39,7 @@ WATCH must never:
 
 BATON remains authoritative for resources and authorization. A missing or stale WATCH result must not deny BATON access by itself.
 
-## Planned execution boundary
+## Execution boundary
 
 A worker must claim eligible work in a short transaction, release the transaction, perform the network request, then finalize the attempt/result and any durable health-change event in another short transaction. Claims require leases or equivalent recovery so crashed workers do not strand work. All time-dependent decisions use an injected Clock and UTC instants.
 
@@ -55,4 +58,7 @@ This policy must account for DNS rebinding and changes between validation and co
 
 ## Health semantics
 
-UNKNOWN means no conclusive current assessment. HEALTHY, DEGRADED, and BROKEN are derived states, not direct HTTP status aliases. Their thresholds and treatment of redirects, TLS, DNS, timeouts, and transient failures remain planned until a follow-up product decision is adopted.
+UNKNOWN means no conclusive current assessment. HEALTHY, DEGRADED, and BROKEN
+are derived states, not direct HTTP status aliases. PRD-0003 defines the MVP
+thresholds and the treatment of redirects, TLS, DNS, timeouts, and internal
+failures.

@@ -8,7 +8,8 @@ description: Repository workflow for broad BATON WATCH Java and Spring changes s
 ## Establish context
 
 - Read HANDOFF.md, AGENTS.md, README.md, the affected PRD, and relevant ADR.
-- Separate current behavior from planned behavior. The baseline implements only GET /api/v1/system/status; URL checking is planned.
+- Separate current behavior from planned behavior. The PRD-0003 monitoring MVP
+  is implemented; durable event delivery and production deployment are not.
 - Keep packages under com.personal.baton.watch and dependencies flowing bootstrap -> adapters -> application -> domain.
 
 ## Preserve ownership
@@ -27,4 +28,3 @@ description: Repository workflow for broad BATON WATCH Java and Spring changes s
 5. Add focused policy, use-case, adapter, and wiring tests; run the narrowest task before ./gradlew test.
 
 Use baton-watch-api-contract, baton-watch-persistence, baton-watch-observability, or baton-watch-ops when one of those concerns is primary.
-

@@ -1,6 +1,6 @@
 ---
 name: baton-watch-persistence
-description: Persistence and transaction workflow for future BATON WATCH schedules, leases, attempts, results, derived health, and durable health-change events. Use for schema migrations, mappings, repositories, retention, concurrency, idempotency, transaction boundaries, or storage-related tests.
+description: Persistence and transaction workflow for BATON WATCH schedules, leases, attempts, results, derived health, and durable health-change events. Use for schema migrations, mappings, repositories, retention, concurrency, idempotency, transaction boundaries, or storage-related tests.
 ---
 
 # BATON WATCH Persistence
@@ -27,4 +27,3 @@ Use a new migration for each adopted schema change; never rewrite an applied mig
 - Test claim races, lease recovery, duplicate finalization, state-change deduplication, retention chunks, and before/at/after time boundaries.
 - Use the real adopted database for migration and concurrency integration tests.
 - Run the narrowest persistence test, then ./gradlew test for cross-module changes.
-

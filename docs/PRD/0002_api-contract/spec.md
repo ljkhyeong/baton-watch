@@ -22,8 +22,7 @@ exposes no resource data.
 
 ## Adopted monitoring routes
 
-The following routes are adopted by PRD-0003 but are not implemented at the
-time of this contract change:
+The following routes are implemented under PRD-0003:
 
 - `PUT /api/v1/resource-monitors/{resourceReference}` synchronizes a snapshot
   and returns HTTP 200 with the current projection;

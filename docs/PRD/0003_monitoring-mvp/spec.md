@@ -4,6 +4,8 @@ Status: accepted
 
 Date: 2026-08-01
 
+Implementation: complete; health-change event delivery remains out of scope
+
 ## Goal
 
 The MVP closes one operational loop: BATON can synchronize a URL snapshot for
@@ -125,4 +127,3 @@ part of the MVP; BATON reads the current projection over HTTP.
 8. Repeating finalization or losing a lease does not duplicate results or
    overwrite a newer projection.
 9. The authenticated query route exposes only the documented projection.
-
