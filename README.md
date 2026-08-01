@@ -47,5 +47,7 @@ Compose starts only BATON WATCH. There is no frontend, database, or broker in th
 
 - [Product baseline](docs/PRD/0001_product-baseline/spec.md)
 - [API contract](docs/PRD/0002_api-contract/spec.md)
+- [Monitoring MVP](docs/PRD/0003_monitoring-mvp/spec.md)
 - [Microservice boundary ADR](docs/ADR/0001_microservice-boundary/adr.md)
+- [MVP storage and execution ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
 - [Active handoff](HANDOFF.md)

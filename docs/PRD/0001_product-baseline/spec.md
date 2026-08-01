@@ -21,7 +21,9 @@ WATCH is planned to own:
 - derived resource health: UNKNOWN, HEALTHY, DEGRADED, or BROKEN;
 - durable events emitted only when the derived health changes.
 
-Exact schedules, retry thresholds, derivation windows, retention periods, authentication, and event transport are undecided and require an adopted follow-up contract.
+PRD-0003 adopts the first schedule, retry, health, retention, authentication,
+and HTTP-check contracts for the monitoring MVP. Event transport remains
+undecided and requires an adopted follow-up contract.
 
 ## Explicit non-ownership
 

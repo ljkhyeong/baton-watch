@@ -1,0 +1,128 @@
+# PRD-0003: URL Monitoring MVP
+
+Status: accepted
+
+Date: 2026-08-01
+
+## Goal
+
+The MVP closes one operational loop: BATON can synchronize a URL snapshot for
+a RoleResource after BATON commits, WATCH checks it asynchronously, and BATON
+can read the latest derived health without waiting for the target network.
+
+This contract does not make WATCH authoritative for RoleResource content or
+authorization.
+
+## Monitor synchronization
+
+- A monitor is identified by an opaque `resourceReference` supplied by BATON.
+- Every synchronization includes a non-negative, monotonically increasing
+  `sourceRevision` owned by BATON.
+- A higher revision replaces the current snapshot. A lower revision is rejected
+  as stale. Repeating an equal revision with an equal payload is idempotent;
+  reusing it for a different payload is a conflict.
+- `ACTIVE` requires a target URL. A new monitor, or a monitor whose target
+  changed, starts as `UNKNOWN` and is due immediately.
+- `INACTIVE` has no target URL, stops future checks, invalidates any lease, and
+  retains bounded history. A higher-revision `ACTIVE` synchronization enables
+  it again.
+- The current projection never exposes the target URL, response body, resolved
+  address, or internal exception text.
+
+Monitor routes use a static bearer token supplied through runtime
+configuration. The system status route remains unauthenticated. Token rotation,
+per-workspace authorization, and end-user access are outside this MVP.
+
+## Scheduling and execution
+
+- The normal check interval is a runtime-wide duration, initially 60 seconds.
+- New and changed active monitors are due immediately.
+- A worker claims at most a configured batch of due monitors in a short
+  transaction using a 30-second lease.
+- Claim creates an immutable attempt snapshot containing the source revision and
+  target at that moment, then commits before DNS or HTTP work begins.
+- Finalization occurs in another short transaction and is idempotent by attempt
+  identifier.
+- An expired lease is eligible for another worker. A stale worker cannot update
+  current health after a newer claim or source revision replaced its lease.
+- MVP execution is intentionally single-check-per-process. Database locking and
+  leases still allow multiple processes to claim disjoint work.
+- A monitor without a conclusive result for 10 minutes becomes `UNKNOWN` in a
+  bounded background sweep.
+
+## Target and request policy
+
+- Only absolute `http` and `https` URLs are accepted.
+- Only their default ports, 80 and 443, are allowed.
+- URL user-info, fragments, IP-literal hosts, ambiguous authorities, control
+  characters, and backslashes are rejected. Query strings may be checked but
+  must not be logged or exposed by the API.
+- Before each connection, WATCH resolves the DNS hostname, rejects the complete
+  answer if any address is non-global, and pins the connection to the approved
+  resolution while retaining the original host for HTTP and TLS verification.
+- Redirects are handled explicitly. Every target is revalidated, HTTPS-to-HTTP
+  downgrade is rejected, redirect loops are rejected, and the chain is limited
+  to three redirects.
+- Automatic retries, cookies, authentication caching, proxy discovery, and
+  response decompression are disabled.
+- Connection time, response time, total check time, response headers, and
+  consumed response bytes are bounded. Response bodies are discarded and never
+  persisted.
+
+The default limits are a 2-second connection timeout, 3-second response
+timeout, 5-second total timeout, and 64 KiB consumed response limit. Limits are
+runtime configuration but may not be disabled. DNS resolution runs in a bounded
+executor because the JVM resolver has no per-call cancellation contract.
+
+## Outcomes and health
+
+The persisted outcome taxonomy is bounded:
+
+- `SUCCESS`: a final HTTP response in the 200-399 range;
+- `HTTP_CLIENT_ERROR`: a final 400-499 response;
+- `HTTP_SERVER_ERROR`: a final 500-599 response;
+- `DESTINATION_REJECTED`, `DNS_FAILURE`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`,
+  `TLS_FAILURE`, `REDIRECT_REJECTED`, `TOO_MANY_REDIRECTS`,
+  `RESPONSE_TOO_LARGE`, `NETWORK_FAILURE`, or `INTERNAL_FAILURE`.
+
+Health is derived from consecutive conclusive outcomes:
+
+- no current conclusive check, or a stale projection: `UNKNOWN`;
+- a successful check: `HEALTHY` and the failure counter resets;
+- one or two consecutive target failures: `DEGRADED`;
+- three or more consecutive target failures: `BROKEN`.
+
+`INTERNAL_FAILURE` does not blame the target or change health; it schedules a
+retry after 30 seconds. All other failures are conclusive target outcomes.
+
+Every claim and completed result is immutable. Finalization updates current
+health and inserts a durable health-change event atomically only when derived
+health changes. The stale sweep follows the same rule. Event transport is not
+part of the MVP; BATON reads the current projection over HTTP.
+
+## Retention and observability
+
+- Attempts and results are retained for 30 days by default.
+- Cleanup deletes bounded batches and never removes the current projection or
+  health-change events.
+- Logs may include attempt correlation and bounded outcome/status values, but
+  never raw URLs, hosts, queries, resource references, resolved addresses,
+  response bodies, or exception messages.
+- Metrics use only bounded outcome, protocol, and health labels.
+
+## Acceptance criteria
+
+1. Synchronizing a valid active monitor returns its `UNKNOWN` projection and
+   makes it due.
+2. Stale revisions and equal-revision conflicts cannot overwrite current state.
+3. A background worker claims without holding a transaction during network I/O.
+4. A successful final response produces immutable attempt/result records and
+   `HEALTHY`.
+5. Three consecutive failures produce `DEGRADED`, then `BROKEN`.
+6. A health change and its durable event commit atomically.
+7. Non-global or ambiguous destinations are rejected before connection,
+   including after redirects.
+8. Repeating finalization or losing a lease does not duplicate results or
+   overwrite a newer projection.
+9. The authenticated query route exposes only the documented projection.
+
