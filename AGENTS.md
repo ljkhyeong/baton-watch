@@ -34,6 +34,12 @@ Before any outbound request, enforce scheme and port policy, resolve and reject 
 
 Claim work in a short transaction, perform network I/O outside a transaction, then finalize the attempt/result and durable state-change event in another short transaction.
 
+## Commit messages
+
+Keep Conventional Commit type prefixes such as `feat:`, `fix:`, `docs:`,
+`test:`, `refactor:`, and `chore:` for categorization. Write commit subjects and
+bodies in Korean.
+
 ## Verify
 
 Run the narrowest affected task, then ./gradlew test for cross-module changes. Use fixed clocks for time behavior. Run docker compose config when Compose changes. Never claim a deployment or URL-check capability from repository artifacts alone.
