@@ -2,11 +2,12 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.adapter.out.external.check.BoundedDnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
-import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.net.URI;
 import java.util.Objects;
+import tools.jackson.databind.ObjectMapper;
 
 /** Production sender for the fixed BATON health-change callback endpoint. */
 public final class ApacheHealthChangeEventSender implements HealthChangeEventSender, AutoCloseable {
@@ -21,7 +22,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
     private final AutoCloseable transport;
 
     public ApacheHealthChangeEventSender(
-            URI endpoint, String bearerToken, EventDeliveryLimits limits) {
+            URI endpoint, String bearerToken, EventDeliveryLimits limits, ObjectMapper objectMapper) {
         this(
                 endpoint,
                 bearerToken,
@@ -29,7 +30,8 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                 DNS_THREADS,
                 DNS_QUEUE_CAPACITY,
                 HTTP_THREADS,
-                HTTP_QUEUE_CAPACITY);
+                HTTP_QUEUE_CAPACITY,
+                objectMapper);
     }
 
     public ApacheHealthChangeEventSender(
@@ -39,10 +41,14 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
             int dnsThreadCount,
             int dnsQueueCapacity,
             int httpThreadCount,
-            int httpQueueCapacity) {
+            int httpQueueCapacity,
+            ObjectMapper objectMapper) {
         Objects.requireNonNull(limits, "limits");
         ValidatedDeliveryEndpoint validatedEndpoint = validateEndpoint(endpoint);
         String validatedToken = validateBearerToken(bearerToken);
+        requirePositiveExecutorBounds(
+                dnsThreadCount, dnsQueueCapacity, httpThreadCount, httpQueueCapacity);
+        HealthChangeEventJsonSerializer serializer = new HealthChangeEventJsonSerializer(objectMapper);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheEventDeliveryTransport apacheTransport =
                 new ApacheEventDeliveryTransport(limits, httpThreadCount, httpQueueCapacity);
@@ -53,7 +59,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                 boundedDnsLookup,
                 new GlobalAddressPolicy(),
                 apacheTransport,
-                new HealthChangeEventJson(),
+                serializer,
                 System::nanoTime);
         this.dnsLookup = boundedDnsLookup;
         this.transport = apacheTransport;
@@ -67,8 +73,8 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
     }
 
     @Override
-    public EventDeliveryObservation send(ClaimedHealthChangeEvent event) {
-        return engine.send(event);
+    public EventDeliveryObservation send(HealthChangeEventPayload payload) {
+        return engine.send(payload);
     }
 
     @Override
@@ -94,6 +100,19 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                     "event delivery bearer token must contain at least 32 safe characters");
         }
         return bearerToken;
+    }
+
+    private static void requirePositiveExecutorBounds(
+            int dnsThreadCount,
+            int dnsQueueCapacity,
+            int httpThreadCount,
+            int httpQueueCapacity) {
+        if (dnsThreadCount <= 0
+                || dnsQueueCapacity <= 0
+                || httpThreadCount <= 0
+                || httpQueueCapacity <= 0) {
+            throw new IllegalArgumentException("event delivery executor bounds must be positive");
+        }
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

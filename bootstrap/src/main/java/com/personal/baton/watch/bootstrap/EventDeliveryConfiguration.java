@@ -20,6 +20,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class EventDeliveryConfiguration {
@@ -33,7 +34,9 @@ class EventDeliveryConfiguration {
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(prefix = "watch.event-delivery", name = "enabled", havingValue = "true")
     ApacheHealthChangeEventSender healthChangeEventSender(
-            EventDeliveryProperties properties, WatchProperties watchProperties) {
+            EventDeliveryProperties properties,
+            WatchProperties watchProperties,
+            ObjectMapper objectMapper) {
         requireSeparateToken(properties.bearerToken(), watchProperties.apiToken());
         EventDeliveryProperties.Http http = properties.http();
         EventDeliveryLimits limits = new EventDeliveryLimits(
@@ -50,7 +53,8 @@ class EventDeliveryConfiguration {
                 http.dnsThreads(),
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
-                http.requestQueueCapacity());
+                http.requestQueueCapacity(),
+                objectMapper);
     }
 
     @Bean

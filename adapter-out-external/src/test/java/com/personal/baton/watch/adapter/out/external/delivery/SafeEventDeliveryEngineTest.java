@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -8,9 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookupException;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
-import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
@@ -19,6 +20,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import tools.jackson.databind.ObjectMapper;
 
 class SafeEventDeliveryEngineTest {
 
@@ -44,6 +47,13 @@ class SafeEventDeliveryEngineTest {
         assertEquals(204, first.httpStatusCode());
         assertEquals(EventDeliveryOutcome.DELIVERED, second.outcome());
         assertEquals(2, dns.calls);
+        assertEquals(2, transport.requests.size());
+        assertArrayEquals(
+                transport.requests.get(0).payload(),
+                transport.requests.get(1).payload());
+        assertEquals(
+                transport.requests.get(0).idempotencyKey(),
+                transport.requests.get(1).idempotencyKey());
         assertEquals("events.example.com", dns.lastHostname);
         assertNotNull(transport.lastRequest);
         assertEquals(List.of(address("8.8.8.8"), address("1.1.1.1")), transport.lastRequest.addresses());
@@ -52,6 +62,9 @@ class SafeEventDeliveryEngineTest {
         String payload = new String(transport.lastRequest.payload(), StandardCharsets.UTF_8);
         assertTrue(payload.contains("\"eventType\":\"RESOURCE_HEALTH_CHANGED\""));
         assertTrue(payload.contains("\"eventId\":\"00000000-0000-0000-0000-000000000001\""));
+        assertEquals(
+                new ObjectMapper().readTree(payload).get("eventId").stringValue(),
+                transport.lastRequest.idempotencyKey());
     }
 
     @Test
@@ -160,8 +173,39 @@ class SafeEventDeliveryEngineTest {
         assertNull(observation.httpStatusCode());
     }
 
+    @Test
+    void serializationFailureStopsBeforeDnsOrTransport() throws Exception {
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("8.8.8.8")));
+        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        SafeEventDeliveryEngine engine = engine(
+                dns,
+                transport,
+                System::nanoTime,
+                payload -> {
+                    throw new IllegalStateException("sensitive serialization detail");
+                });
+
+        EventDeliveryObservation observation = engine.send(event());
+
+        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertEquals(0, dns.calls);
+        assertNull(transport.lastRequest);
+    }
+
     private static SafeEventDeliveryEngine engine(
             DnsLookup dns, DeliveryTransport transport, DeliveryMonotonicClock clock) {
+        return engine(
+                dns,
+                transport,
+                clock,
+                new HealthChangeEventJsonSerializer(new ObjectMapper()));
+    }
+
+    private static SafeEventDeliveryEngine engine(
+            DnsLookup dns,
+            DeliveryTransport transport,
+            DeliveryMonotonicClock clock,
+            HealthChangeEventSerializer serializer) {
         return new SafeEventDeliveryEngine(
                 new ValidatedDeliveryEndpoint(
                         URI.create("https://events.example.com/api/v1/health-events"),
@@ -171,21 +215,19 @@ class SafeEventDeliveryEngineTest {
                 dns,
                 new GlobalAddressPolicy(),
                 transport,
-                new HealthChangeEventJson(),
+                serializer,
                 clock);
     }
 
-    private static ClaimedHealthChangeEvent event() {
-        return new ClaimedHealthChangeEvent(
+    private static HealthChangeEventPayload event() {
+        return new HealthChangeEventPayload(
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 new ResourceReference("role-resource-123"),
                 new SourceRevision(42),
                 Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000003")),
                 Health.DEGRADED,
                 Health.BROKEN,
-                Instant.parse("2026-08-02T01:02:03.456Z"),
-                UUID.fromString("00000000-0000-0000-0000-000000000002"),
-                7);
+                Instant.parse("2026-08-02T01:02:03.456Z"));
     }
 
     private static InetAddress address(String value) throws Exception {
@@ -248,6 +290,7 @@ class SafeEventDeliveryEngineTest {
     private static final class RecordingTransport implements DeliveryTransport {
 
         private final DeliveryHttpResponse response;
+        private final List<ApprovedDeliveryRequest> requests = new ArrayList<>();
         private ApprovedDeliveryRequest lastRequest;
 
         private RecordingTransport(DeliveryHttpResponse response) {
@@ -256,6 +299,7 @@ class SafeEventDeliveryEngineTest {
 
         @Override
         public DeliveryHttpResponse execute(ApprovedDeliveryRequest request, Duration remainingTime) {
+            requests.add(request);
             lastRequest = request;
             return response;
         }

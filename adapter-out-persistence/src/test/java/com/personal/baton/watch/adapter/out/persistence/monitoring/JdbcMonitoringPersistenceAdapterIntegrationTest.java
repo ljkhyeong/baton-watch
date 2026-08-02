@@ -446,14 +446,15 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
 
         ClaimedHealthChangeEvent first = claimOneDelivery(dueAt);
 
-        assertThat(first.eventId()).isEqualTo(eventId);
+        assertThat(first.payload().eventId()).isEqualTo(eventId);
         assertThat(first.deliveryAttempt()).isEqualTo(1);
-        assertThat(first.attemptId()).isPresent();
+        assertThat(first.payload().attemptId()).isPresent();
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
         assertThat(deliveryAdapter.claimPendingEvents(dueAt.plusSeconds(29), dueAt.plusSeconds(59), 1))
                 .isEmpty();
 
         ClaimedHealthChangeEvent recovered = claimOneDelivery(dueAt.plusSeconds(30));
+        assertThat(recovered.payload()).isEqualTo(first.payload());
         assertThat(recovered.deliveryAttempt()).isEqualTo(2);
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
 
@@ -489,7 +490,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         Instant retryAt = completedAt.plusSeconds(30);
 
         EventDeliveryFinalization failed = new EventDeliveryFinalization(
-                first.eventId(),
+                first.payload().eventId(),
                 first.leaseToken(),
                 first.deliveryAttempt(),
                 EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE),
@@ -501,7 +502,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         assertThat(deliveryAdapter.claimPendingEvents(retryAt.minusNanos(1_000), retryAt.plusSeconds(30), 1))
                 .isEmpty();
         ClaimedHealthChangeEvent retried = claimOneDelivery(retryAt);
-        assertThat(retried.eventId()).isEqualTo(eventId);
+        assertThat(retried.payload().eventId()).isEqualTo(eventId);
         assertThat(retried.deliveryAttempt()).isEqualTo(2);
         assertThat(jdbc.queryForMap("""
                         SELECT delivery_status, last_delivery_outcome, last_http_status_code
@@ -533,7 +534,9 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
 
             assertThat(first.get()).hasSize(1);
             assertThat(second.get()).hasSize(1);
-            assertThat(List.of(first.get().getFirst().eventId(), second.get().getFirst().eventId()))
+            assertThat(List.of(
+                            first.get().getFirst().payload().eventId(),
+                            second.get().getFirst().payload().eventId()))
                     .containsExactlyInAnyOrder(firstEvent, secondEvent);
         } finally {
             executor.shutdownNow();
@@ -554,7 +557,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(
                 BASE_TIME, BASE_TIME.plus(LEASE), 2);
 
-        assertThat(claims).extracting(ClaimedHealthChangeEvent::eventId)
+        assertThat(claims).extracting(claim -> claim.payload().eventId())
                 .containsExactly(saturated, following);
         assertThat(claims).extracting(ClaimedHealthChangeEvent::deliveryAttempt)
                 .containsExactly(Integer.MAX_VALUE, 4);
@@ -612,7 +615,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
     private EventDeliveryFinalization deliveredFinalization(
             ClaimedHealthChangeEvent event, Instant completedAt) {
         return new EventDeliveryFinalization(
-                event.eventId(),
+                event.payload().eventId(),
                 event.leaseToken(),
                 event.deliveryAttempt(),
                 EventDeliveryObservation.delivered(204),

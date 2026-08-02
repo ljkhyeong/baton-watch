@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -35,10 +36,12 @@ class RunEventDeliveriesServiceTest {
     @Test
     void claimsThenSendsThenFinalizesWithoutHoldingTheClaimOperation() {
         List<String> calls = new ArrayList<>();
-        RecordingPersistence persistence = new RecordingPersistence(calls, claimed(1));
+        ClaimedHealthChangeEvent claim = claimed(1);
+        RecordingPersistence persistence = new RecordingPersistence(calls, claim);
         RunEventDeliveriesService service = service(
                 persistence,
-                event -> {
+                payload -> {
+                    assertEquals(claim.payload(), payload);
                     calls.add("send");
                     return EventDeliveryObservation.delivered(204);
                 });
@@ -53,6 +56,9 @@ class RunEventDeliveriesServiceTest {
         assertEquals(NOW, persistence.claimedAt);
         assertEquals(NOW.plus(LEASE), persistence.leaseUntil);
         assertEquals(5, persistence.limit);
+        assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
+        assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
+        assertEquals(claim.deliveryAttempt(), persistence.finalization.deliveryAttempt());
         assertNull(persistence.finalization.nextAttemptAt());
     }
 
@@ -106,13 +112,14 @@ class RunEventDeliveriesServiceTest {
 
     private ClaimedHealthChangeEvent claimed(int deliveryAttempt) {
         return new ClaimedHealthChangeEvent(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                new ResourceReference("resource-1"),
-                new SourceRevision(7),
-                Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000002")),
-                Health.UNKNOWN,
-                Health.HEALTHY,
-                NOW.minusSeconds(1),
+                new HealthChangeEventPayload(
+                        UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                        new ResourceReference("resource-1"),
+                        new SourceRevision(7),
+                        Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000002")),
+                        Health.UNKNOWN,
+                        Health.HEALTHY,
+                        NOW.minusSeconds(1)),
                 UUID.fromString("00000000-0000-0000-0000-000000000003"),
                 deliveryAttempt);
     }

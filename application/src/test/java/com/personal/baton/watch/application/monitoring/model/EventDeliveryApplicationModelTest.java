@@ -34,11 +34,14 @@ class EventDeliveryApplicationModelTest {
     }
 
     @Test
-    void claimedEventRequiresARealChangeAndPositiveAttempt() {
-        assertThrows(IllegalArgumentException.class, () -> claimed(Health.HEALTHY, Health.HEALTHY, 1));
-        assertThrows(IllegalArgumentException.class, () -> claimed(Health.UNKNOWN, Health.HEALTHY, 0));
+    void separatesImmutablePayloadInvariantsFromDeliveryClaimInvariants() {
+        assertThrows(IllegalArgumentException.class, () -> payload(Health.HEALTHY, Health.HEALTHY));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ClaimedHealthChangeEvent(
+                        payload(Health.UNKNOWN, Health.HEALTHY), UUID.randomUUID(), 0));
 
-        assertTrue(claimed(Health.UNKNOWN, Health.HEALTHY, 1).attemptId().isEmpty());
+        assertTrue(claimed(Health.UNKNOWN, Health.HEALTHY, 1).payload().attemptId().isEmpty());
     }
 
     @Test
@@ -57,14 +60,19 @@ class EventDeliveryApplicationModelTest {
 
     private ClaimedHealthChangeEvent claimed(Health previous, Health current, int deliveryAttempt) {
         return new ClaimedHealthChangeEvent(
+                payload(previous, current),
+                UUID.randomUUID(),
+                deliveryAttempt);
+    }
+
+    private HealthChangeEventPayload payload(Health previous, Health current) {
+        return new HealthChangeEventPayload(
                 UUID.randomUUID(),
                 new ResourceReference("resource-1"),
                 new SourceRevision(1),
                 Optional.empty(),
                 previous,
                 current,
-                Instant.parse("2026-08-01T00:00:00Z"),
-                UUID.randomUUID(),
-                deliveryAttempt);
+                Instant.parse("2026-08-01T00:00:00Z"));
     }
 }

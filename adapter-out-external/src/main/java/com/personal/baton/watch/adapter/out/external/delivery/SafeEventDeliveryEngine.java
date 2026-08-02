@@ -4,9 +4,9 @@ import com.personal.baton.watch.adapter.out.external.check.AddressPolicyExceptio
 import com.personal.baton.watch.adapter.out.external.check.DnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookupException;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
-import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import java.net.InetAddress;
 import java.time.Duration;
 import java.util.List;
@@ -20,7 +20,7 @@ final class SafeEventDeliveryEngine {
     private final DnsLookup dnsLookup;
     private final GlobalAddressPolicy addressPolicy;
     private final DeliveryTransport transport;
-    private final HealthChangeEventJson serializer;
+    private final HealthChangeEventSerializer serializer;
     private final DeliveryMonotonicClock clock;
 
     SafeEventDeliveryEngine(
@@ -30,7 +30,7 @@ final class SafeEventDeliveryEngine {
             DnsLookup dnsLookup,
             GlobalAddressPolicy addressPolicy,
             DeliveryTransport transport,
-            HealthChangeEventJson serializer,
+            HealthChangeEventSerializer serializer,
             DeliveryMonotonicClock clock) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
@@ -42,13 +42,13 @@ final class SafeEventDeliveryEngine {
         this.clock = Objects.requireNonNull(clock, "clock");
     }
 
-    EventDeliveryObservation send(ClaimedHealthChangeEvent event) {
+    EventDeliveryObservation send(HealthChangeEventPayload payload) {
         long startedAt = clock.nanoTime();
         try {
-            if (event == null) {
+            if (payload == null) {
                 return EventDeliveryObservation.internalFailure();
             }
-            byte[] payload = serializer.serialize(event);
+            byte[] body = serializer.serialize(payload);
             Duration remaining = remaining(startedAt);
             if (remaining.isZero()) {
                 return failure(EventDeliveryOutcome.DNS_FAILURE);
@@ -80,9 +80,9 @@ final class SafeEventDeliveryEngine {
             ApprovedDeliveryRequest request = new ApprovedDeliveryRequest(
                     endpoint,
                     approved,
-                    payload,
+                    body,
                     bearerToken,
-                    event.eventId().toString());
+                    payload.eventId().toString());
             DeliveryHttpResponse response;
             try {
                 response = transport.execute(request, remaining);

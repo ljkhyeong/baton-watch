@@ -75,7 +75,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
                     : completedAt.plus(retryDelay(event.deliveryAttempt()));
             EventDeliveryFinalizationResult result = Objects.requireNonNull(
                     persistence.finalizeDelivery(new EventDeliveryFinalization(
-                            event.eventId(),
+                            event.payload().eventId(),
                             event.leaseToken(),
                             event.deliveryAttempt(),
                             observation,
@@ -105,7 +105,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
 
     private EventDeliveryObservation send(ClaimedHealthChangeEvent event) {
         try {
-            return Objects.requireNonNull(sender.send(event), "delivery observation");
+            return Objects.requireNonNull(sender.send(event.payload()), "delivery observation");
         } catch (RuntimeException ignored) {
             return EventDeliveryObservation.internalFailure();
         }

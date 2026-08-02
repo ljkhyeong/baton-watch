@@ -1,7 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
-import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.util.Objects;
 
@@ -16,10 +16,10 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
     }
 
     @Override
-    public EventDeliveryObservation send(ClaimedHealthChangeEvent event) {
+    public EventDeliveryObservation send(HealthChangeEventPayload payload) {
         EventDeliveryObservation observation;
         try {
-            observation = Objects.requireNonNull(delegate.send(event), "delivery observation");
+            observation = Objects.requireNonNull(delegate.send(payload), "delivery observation");
         } catch (RuntimeException ignored) {
             observation = EventDeliveryObservation.internalFailure();
         }

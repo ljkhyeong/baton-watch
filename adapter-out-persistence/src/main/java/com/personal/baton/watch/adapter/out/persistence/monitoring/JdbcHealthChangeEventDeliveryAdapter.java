@@ -5,6 +5,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklo
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
+import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -131,13 +132,14 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                     databaseTime(leaseUntil),
                     event.eventId());
             return new ClaimedHealthChangeEvent(
-                    event.eventId(),
-                    new ResourceReference(event.resourceReference()),
-                    new SourceRevision(event.sourceRevision()),
-                    Optional.ofNullable(event.attemptId()),
-                    event.previousHealth(),
-                    event.currentHealth(),
-                    event.changedAt(),
+                    new HealthChangeEventPayload(
+                            event.eventId(),
+                            new ResourceReference(event.resourceReference()),
+                            new SourceRevision(event.sourceRevision()),
+                            Optional.ofNullable(event.attemptId()),
+                            event.previousHealth(),
+                            event.currentHealth(),
+                            event.changedAt()),
                     leaseToken,
                     deliveryAttempt);
         }).toList();

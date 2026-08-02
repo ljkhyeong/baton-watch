@@ -30,6 +30,12 @@ failures. The guarantee is at least once, so BATON must make durable event-ID
 deduplication atomic with its event effect. No delivery-order guarantee is
 added.
 
+The application separates the immutable health-change payload from mutable
+delivery claim metadata. The sender port receives only the payload, while the
+lease token and delivery-attempt count remain in the claim/finalization path.
+The external adapter maps that payload to a dedicated callback DTO and uses the
+Boot-managed Jackson mapper to serialize only the adopted JSON fields.
+
 The destination is a fixed absolute HTTPS URL on port 443 with a DNS hostname.
 For every attempt, WATCH resolves the hostname, rejects the complete answer if
 any address is not public-global, and pins the approved resolution while

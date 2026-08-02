@@ -1,4 +1,5 @@
 dependencies {
     implementation project(':application')
     implementation 'org.apache.httpcomponents.client5:httpclient5'
+    implementation 'tools.jackson.core:jackson-databind'
 }

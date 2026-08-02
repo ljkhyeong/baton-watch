@@ -19,7 +19,8 @@
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
-  capped retries, and delivered-only retention.
+  capped retries, and delivered-only retention. The sender boundary accepts
+  only immutable event payload data; lease and retry metadata stay internal.
 - A compatible BATON receiver with separate bearer authentication and an atomic
   immutable `eventId` inbox is implemented in the BATON repository. Its
   deployment and public WATCH-to-BATON integration are not yet verified.
