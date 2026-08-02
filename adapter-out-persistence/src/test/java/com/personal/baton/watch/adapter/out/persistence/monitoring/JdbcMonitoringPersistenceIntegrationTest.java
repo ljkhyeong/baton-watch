@@ -31,6 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,11 +49,12 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers(disabledWithoutDocker = true)
-class JdbcMonitoringPersistenceAdapterIntegrationTest {
+class JdbcMonitoringPersistenceIntegrationTest {
 
     private static final String POSTGRES_IMAGE = "postgres:18.4-alpine";
     private static final Duration LEASE = Duration.ofSeconds(30);
     private static final Duration INTERVAL = Duration.ofSeconds(60);
+    private static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
     private static final Instant BASE_TIME = Instant.parse("2026-08-01T00:00:00Z");
 
     @Container
@@ -61,7 +63,8 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
             .withUsername("baton_watch")
             .withPassword("integration-test");
 
-    private JdbcMonitoringPersistenceAdapter adapter;
+    private JdbcMonitorPersistenceAdapter monitorPersistence;
+    private JdbcCheckWorkPersistenceAdapter checkWorkPersistence;
     private JdbcHealthChangeEventDeliveryAdapter deliveryAdapter;
     private JdbcTemplate jdbc;
     private DataSource testDataSource;
@@ -76,7 +79,10 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         flyway.clean();
         flyway.migrate();
         jdbc = new JdbcTemplate(testDataSource);
-        adapter = new JdbcMonitoringPersistenceAdapter(jdbc, new DataSourceTransactionManager(testDataSource));
+        DataSourceTransactionManager transactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbc, transactionManager);
+        checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbc, transactionManager);
         deliveryAdapter = new JdbcHealthChangeEventDeliveryAdapter(
                 jdbc, new DataSourceTransactionManager(testDataSource));
     }
@@ -171,7 +177,8 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 historicalTarget,
                 "resource:a-legacy");
 
-        List<ClaimedCheck> claims = adapter.claimDueChecks(BASE_TIME, BASE_TIME.plus(LEASE), 2);
+        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(
+                BASE_TIME, BASE_TIME.plus(LEASE), 2);
 
         assertThat(claims)
                 .extracting(claim -> claim.resourceReference().value())
@@ -194,10 +201,12 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         try {
             Future<SynchronizationStatus> first = executor.submit(() -> synchronizeConcurrently(command, ready, start));
             Future<SynchronizationStatus> second = executor.submit(() -> synchronizeConcurrently(command, ready, start));
-            ready.await();
+            assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
+            SynchronizationStatus firstStatus = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            SynchronizationStatus secondStatus = second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            assertThat(List.of(first.get(), second.get()))
+            assertThat(List.of(firstStatus, secondStatus))
                     .containsExactlyInAnyOrder(SynchronizationStatus.APPLIED, SynchronizationStatus.UNCHANGED);
             assertThat(jdbc.queryForObject("""
                     SELECT COUNT(*)
@@ -214,7 +223,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         synchronize("resource:target-change", 1, "https://one.example/path", BASE_TIME);
         ClaimedCheck first = claimOne(BASE_TIME);
         Instant completedAt = BASE_TIME.plusSeconds(1);
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first, CheckObservation.forHttpStatus(204), completedAt, completedAt.plus(INTERVAL)))
                 .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
 
@@ -227,7 +236,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         assertThat(changed.projection().lastOutcome()).isEmpty();
         assertThat(changed.projection().lastCheckedAt()).isEmpty();
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,
                         CheckObservation.forHttpStatus(200),
                         changedAt.plusSeconds(1),
@@ -248,18 +257,20 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         synchronize("resource:lease", 1, "https://lease.example/path", BASE_TIME);
         ClaimedCheck first = claimOne(BASE_TIME);
 
-        assertThat(adapter.claimDueChecks(BASE_TIME.plusSeconds(29), BASE_TIME.plusSeconds(59), 1)).isEmpty();
+        assertThat(checkWorkPersistence.claimDueChecks(
+                        BASE_TIME.plusSeconds(29), BASE_TIME.plusSeconds(59), 1))
+                .isEmpty();
         ClaimedCheck recovered = claimOne(BASE_TIME.plusSeconds(30));
 
         assertThat(recovered.attemptId()).isNotEqualTo(first.attemptId());
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
                         CheckObservation.forHttpStatus(200),
                         BASE_TIME.plusSeconds(31),
                         BASE_TIME.plusSeconds(91)))
                 .status()).isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         recovered,
                         CheckObservation.forHttpStatus(200),
                         BASE_TIME.plusSeconds(32),
@@ -267,6 +278,39 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
         assertThat(count("watch_attempt")).isEqualTo(2);
         assertThat(count("watch_result")).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentCheckClaimersReceiveDisjointMonitors() throws Exception {
+        synchronize("resource:check-concurrent-1", 1, "https://one.example/path", BASE_TIME);
+        synchronize("resource:check-concurrent-2", 1, "https://two.example/path", BASE_TIME);
+        JdbcCheckWorkPersistenceAdapter anotherPersistence = new JdbcCheckWorkPersistenceAdapter(
+                new JdbcTemplate(testDataSource),
+                new DataSourceTransactionManager(testDataSource));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<List<ClaimedCheck>> first = executor.submit(
+                    () -> claimChecksConcurrently(checkWorkPersistence, ready, start));
+            Future<List<ClaimedCheck>> second = executor.submit(
+                    () -> claimChecksConcurrently(anotherPersistence, ready, start));
+            assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            List<ClaimedCheck> firstClaims = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            List<ClaimedCheck> secondClaims = second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(firstClaims).hasSize(1);
+            assertThat(secondClaims).hasSize(1);
+            assertThat(List.of(
+                            firstClaims.getFirst().resourceReference().value(),
+                            secondClaims.getFirst().resourceReference().value()))
+                    .containsExactlyInAnyOrder(
+                            "resource:check-concurrent-1", "resource:check-concurrent-2");
+            assertThat(count("watch_attempt")).isEqualTo(2);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -287,9 +331,12 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 valid.completedAt(),
                 valid.nextCheckAt());
 
-        assertThat(adapter.finalizeCheck(wrongToken).status()).isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
-        assertThat(adapter.finalizeCheck(valid).status()).isEqualTo(CheckFinalizationStatus.APPLIED);
-        assertThat(adapter.finalizeCheck(valid).status()).isEqualTo(CheckFinalizationStatus.ALREADY_FINALIZED);
+        assertThat(checkWorkPersistence.finalizeCheck(wrongToken).status())
+                .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
+        assertThat(checkWorkPersistence.finalizeCheck(valid).status())
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
+        assertThat(checkWorkPersistence.finalizeCheck(valid).status())
+                .isEqualTo(CheckFinalizationStatus.ALREADY_FINALIZED);
 
         assertThat(count("watch_result")).isEqualTo(1);
         assertThat(count("watch_health_change_event")).isEqualTo(1);
@@ -297,6 +344,42 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 "SELECT response_bytes FROM watch_result WHERE attempt_id = ?",
                 Long.class,
                 claimed.attemptId())).isEqualTo(42L);
+    }
+
+    @Test
+    void concurrentFinalizationCreatesOneResultAndOneEvent() throws Exception {
+        synchronize("resource:concurrent-finalize", 1, "https://finalize.example/path", BASE_TIME);
+        ClaimedCheck claimed = claimOne(BASE_TIME);
+        CheckFinalization finalization = finalization(
+                claimed,
+                CheckObservation.forHttpStatus(200),
+                BASE_TIME.plusSeconds(1),
+                BASE_TIME.plusSeconds(61));
+        JdbcCheckWorkPersistenceAdapter anotherPersistence = new JdbcCheckWorkPersistenceAdapter(
+                new JdbcTemplate(testDataSource),
+                new DataSourceTransactionManager(testDataSource));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<CheckFinalizationStatus> first = executor.submit(
+                    () -> finalizeConcurrently(checkWorkPersistence, finalization, ready, start));
+            Future<CheckFinalizationStatus> second = executor.submit(
+                    () -> finalizeConcurrently(anotherPersistence, finalization, ready, start));
+            assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            CheckFinalizationStatus firstStatus = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            CheckFinalizationStatus secondStatus = second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(List.of(firstStatus, secondStatus))
+                    .containsExactlyInAnyOrder(
+                            CheckFinalizationStatus.APPLIED,
+                            CheckFinalizationStatus.ALREADY_FINALIZED);
+            assertThat(count("watch_result")).isEqualTo(1);
+            assertThat(count("watch_health_change_event")).isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     @Test
@@ -321,7 +404,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 CheckObservation.forHttpStatus(200),
                 BASE_TIME.plusSeconds(1),
                 BASE_TIME.plusSeconds(61));
-        assertThatThrownBy(() -> adapter.finalizeCheck(finalization))
+        assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(count("watch_result")).isZero();
@@ -340,17 +423,17 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         synchronize("resource:stale", 1, "https://stale.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne(BASE_TIME);
         Instant completedAt = BASE_TIME.plusSeconds(1);
-        adapter.finalizeCheck(finalization(
+        checkWorkPersistence.finalizeCheck(finalization(
                 claimed,
                 CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT),
                 completedAt,
                 completedAt.plus(INTERVAL)));
 
-        assertThat(adapter.markStaleUnknown(
+        assertThat(monitorPersistence.markStaleUnknown(
                 completedAt.minusNanos(1_000), completedAt.plusSeconds(600), 10)).isZero();
-        assertThat(adapter.markStaleUnknown(
+        assertThat(monitorPersistence.markStaleUnknown(
                 completedAt, completedAt.plusSeconds(600), 10)).isEqualTo(1);
-        assertThat(adapter.markStaleUnknown(
+        assertThat(monitorPersistence.markStaleUnknown(
                 completedAt, completedAt.plusSeconds(601), 10)).isZero();
 
         MonitorProjection projection = projection("resource:stale");
@@ -367,7 +450,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                 claimed("resource:before", BASE_TIME.plusSeconds(1)),
                 claimed("resource:at", BASE_TIME.plusSeconds(2)),
                 claimed("resource:after", BASE_TIME.plusSeconds(3)));
-        adapter.synchronize(
+        monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
                         attempts.getFirst().resourceReference(), new SourceRevision(2)),
                 BASE_TIME.plusSeconds(31));
@@ -377,9 +460,9 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         finalizeAt(attempts.get(3), cutoff.plusSeconds(1));
 
         UUID retainedOutboxAttempt = attempts.get(1).attemptId();
-        assertThat(adapter.purgeAttempts(cutoff, 1)).isEqualTo(1);
-        assertThat(adapter.purgeAttempts(cutoff, 1)).isEqualTo(1);
-        assertThat(adapter.purgeAttempts(cutoff, 1)).isZero();
+        assertThat(checkWorkPersistence.purgeAttempts(cutoff, 1)).isEqualTo(1);
+        assertThat(checkWorkPersistence.purgeAttempts(cutoff, 1)).isEqualTo(1);
+        assertThat(checkWorkPersistence.purgeAttempts(cutoff, 1)).isZero();
 
         assertThat(count("watch_attempt")).isEqualTo(2);
         assertThat(count("watch_result")).isEqualTo(2);
@@ -529,14 +612,18 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
                     () -> claimDeliveriesConcurrently(deliveryAdapter, claimedAt, ready, start));
             Future<List<ClaimedHealthChangeEvent>> second = executor.submit(
                     () -> claimDeliveriesConcurrently(anotherAdapter, claimedAt, ready, start));
-            ready.await();
+            assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
+            List<ClaimedHealthChangeEvent> firstClaims =
+                    first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            List<ClaimedHealthChangeEvent> secondClaims =
+                    second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            assertThat(first.get()).hasSize(1);
-            assertThat(second.get()).hasSize(1);
+            assertThat(firstClaims).hasSize(1);
+            assertThat(secondClaims).hasSize(1);
             assertThat(List.of(
-                            first.get().getFirst().payload().eventId(),
-                            second.get().getFirst().payload().eventId()))
+                            firstClaims.getFirst().payload().eventId(),
+                            secondClaims.getFirst().payload().eventId()))
                     .containsExactlyInAnyOrder(firstEvent, secondEvent);
         } finally {
             executor.shutdownNow();
@@ -545,7 +632,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
 
     @Test
     void saturatedDeliveryAttemptDoesNotBlockLaterPendingEvents() {
-        adapter.synchronize(
+        monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
                         new ResourceReference("resource:saturated-attempt"), new SourceRevision(1)),
                 BASE_TIME);
@@ -565,7 +652,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
 
     @Test
     void deliveredEventRetentionIsBoundedAndNeverDeletesPendingEvents() {
-        adapter.synchronize(
+        monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
                         new ResourceReference("resource:event-retention"), new SourceRevision(1)),
                 BASE_TIME);
@@ -592,7 +679,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", claimedAt);
         ClaimedCheck check = claimOne(claimedAt);
         Instant changedAt = claimedAt.plusSeconds(1);
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         check,
                         CheckObservation.forHttpStatus(200),
                         changedAt,
@@ -631,6 +718,25 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
         ready.countDown();
         start.await();
         return claimingAdapter.claimPendingEvents(claimedAt, claimedAt.plus(LEASE), 1);
+    }
+
+    private List<ClaimedCheck> claimChecksConcurrently(
+            JdbcCheckWorkPersistenceAdapter claimingAdapter,
+            CountDownLatch ready,
+            CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        start.await();
+        return claimingAdapter.claimDueChecks(BASE_TIME, BASE_TIME.plus(LEASE), 1);
+    }
+
+    private CheckFinalizationStatus finalizeConcurrently(
+            JdbcCheckWorkPersistenceAdapter finalizingAdapter,
+            CheckFinalization finalization,
+            CountDownLatch ready,
+            CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        start.await();
+        return finalizingAdapter.finalizeCheck(finalization).status();
     }
 
     private UUID insertDeliveredEvent(String reference, Instant changedAt, Instant deliveredAt) {
@@ -677,7 +783,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
     }
 
     private SynchronizationResult synchronize(String reference, long revision, String target, Instant at) {
-        return adapter.synchronize(
+        return monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.active(
                         new ResourceReference(reference), new SourceRevision(revision), new TargetUrl(target)),
                 at);
@@ -687,11 +793,12 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
             SynchronizeMonitorCommand command, CountDownLatch ready, CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return adapter.synchronize(command, BASE_TIME).status();
+        return monitorPersistence.synchronize(command, BASE_TIME).status();
     }
 
     private ClaimedCheck claimOne(Instant claimedAt) {
-        List<ClaimedCheck> claims = adapter.claimDueChecks(claimedAt, claimedAt.plus(LEASE), 1);
+        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(
+                claimedAt, claimedAt.plus(LEASE), 1);
         assertThat(claims).hasSize(1);
         return claims.getFirst();
     }
@@ -714,7 +821,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
     }
 
     private void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
-        assertThat(adapter.finalizeCheck(finalization(
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
                         CheckObservation.forHttpStatus(200),
                         completedAt,
@@ -723,7 +830,7 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
     }
 
     private MonitorProjection projection(String reference) {
-        return adapter.findProjection(new ResourceReference(reference)).orElseThrow();
+        return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
     }
 
     private int count(String table) {

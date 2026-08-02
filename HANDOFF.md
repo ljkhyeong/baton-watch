@@ -12,6 +12,10 @@
 - PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
   current derived health, and durable health-change events with pending/delivered
   state, retry timing, delivery attempts, and expiring leases.
+- JDBC monitoring persistence is split along the application ports: monitor
+  synchronization/projection/staleness and check claim/finalization/retention
+  have separate adapters, while row mapping and caller-transaction event
+  appending remain package-internal shared collaborators.
 - The worker performs SSRF-safe, DNS-pinned outbound checks outside database
   transactions and handles staleness and bounded attempt retention. Monitor
   synchronization and redirect hops share the same static `TargetUrl` policy;
@@ -40,17 +44,17 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 210 tests
-  passed with no failures or errors; 17 PostgreSQL Testcontainers tests were
-  skipped because the local Docker daemon was unavailable. The Docker-enabled
-  PostgreSQL evidence below remains the latest live-database verification.
+- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 230 tests
+  passed with no skips, failures, or errors, including the Docker-backed
+  PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
 - Outbound checker and callback adapter suite: 157 tests passed without a
   live-internet dependency.
-- PostgreSQL 18.4 Testcontainers suite: 16 tests passed, including V1/V2
-  migration, revision races, check and delivery lease recovery,
-  stale/duplicate finalization, atomic events, retry boundaries, disjoint
-  delivery claims, backlog state, and delivered-only retention.
+- PostgreSQL 18.4 Testcontainers suite: 19 tests passed, including V1/V2
+  migration, revision races, disjoint concurrent check claims, concurrent
+  finalization idempotency, check and delivery lease recovery, atomic events,
+  retry boundaries, disjoint delivery claims, backlog state, and delivered-only
+  retention.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were

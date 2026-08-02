@@ -2,7 +2,8 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
 import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringPersistenceAdapter;
+import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
+import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
@@ -25,9 +26,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 public class MonitoringConfiguration {
 
     @Bean
-    JdbcMonitoringPersistenceAdapter monitoringPersistenceAdapter(
+    JdbcMonitorPersistenceAdapter monitorPersistenceAdapter(
             JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
-        return new JdbcMonitoringPersistenceAdapter(jdbcTemplate, transactionManager);
+        return new JdbcMonitorPersistenceAdapter(jdbcTemplate, transactionManager);
+    }
+
+    @Bean
+    JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
+            JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
+        return new JdbcCheckWorkPersistenceAdapter(jdbcTemplate, transactionManager);
     }
 
     @Bean
