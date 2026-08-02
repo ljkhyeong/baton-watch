@@ -1,4 +1,4 @@
-package com.personal.baton.watch.adapter.out.external.check;
+package com.personal.baton.watch.adapter.out.external.http;
 
 import java.io.IOException;
 import java.io.InputStream;

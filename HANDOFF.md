@@ -16,6 +16,9 @@
   transactions and handles staleness and bounded attempt retention. Monitor
   synchronization and redirect hops share the same static `TargetUrl` policy;
   legacy unsafe encodings can be rehydrated but are rejected before DNS or I/O.
+- Target checks and event delivery share a neutral request-scoped Apache client,
+  bounded deadline executor, pinned resolver, and bounded body discarder while
+  retaining separate GET/redirect and POST/acknowledgement semantics.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
@@ -37,8 +40,10 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 219 tests
-  passed with no failures, errors, or skips.
+- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 210 tests
+  passed with no failures or errors; 17 PostgreSQL Testcontainers tests were
+  skipped because the local Docker daemon was unavailable. The Docker-enabled
+  PostgreSQL evidence below remains the latest live-database verification.
 - Executable boot jar: passed.
 - Outbound checker and callback adapter suite: 157 tests passed without a
   live-internet dependency.

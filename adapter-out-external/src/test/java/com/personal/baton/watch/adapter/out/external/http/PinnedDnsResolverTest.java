@@ -1,4 +1,4 @@
-package com.personal.baton.watch.adapter.out.external.check;
+package com.personal.baton.watch.adapter.out.external.http;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;

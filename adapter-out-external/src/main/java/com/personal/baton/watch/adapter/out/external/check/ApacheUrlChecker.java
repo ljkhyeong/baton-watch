@@ -28,6 +28,8 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
             int httpThreadCount,
             int httpQueueCapacity) {
         Objects.requireNonNull(limits, "limits");
+        requirePositiveExecutorBounds(
+                dnsThreadCount, dnsQueueCapacity, httpThreadCount, httpQueueCapacity);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheHttpHopTransport apacheTransport =
                 new ApacheHttpHopTransport(limits, httpThreadCount, httpQueueCapacity);
@@ -65,6 +67,19 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
             closeable.close();
         } catch (Exception ignored) {
             // Shutdown is best effort and intentionally does not expose exception details.
+        }
+    }
+
+    private static void requirePositiveExecutorBounds(
+            int dnsThreadCount,
+            int dnsQueueCapacity,
+            int httpThreadCount,
+            int httpQueueCapacity) {
+        if (dnsThreadCount <= 0
+                || dnsQueueCapacity <= 0
+                || httpThreadCount <= 0
+                || httpQueueCapacity <= 0) {
+            throw new IllegalArgumentException("URL checker executor bounds must be positive");
         }
     }
 }
