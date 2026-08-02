@@ -24,6 +24,7 @@ public record SynchronizeMonitorCommand(
         if (monitoringState == MonitoringState.INACTIVE && targetUrl.isPresent()) {
             throw new IllegalArgumentException("inactive monitor cannot have a target URL");
         }
+        targetUrl.ifPresent(TargetUrl::requireSafeEncodedCharacters);
     }
 
     public static SynchronizeMonitorCommand active(

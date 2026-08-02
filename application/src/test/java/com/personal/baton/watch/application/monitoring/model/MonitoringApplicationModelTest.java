@@ -27,6 +27,15 @@ class MonitoringApplicationModelTest {
     }
 
     @Test
+    void synchronizationRejectsTargetsThatAreUnsafeForOutboundChecks() {
+        TargetUrl historicalTarget = new TargetUrl("https://example.com/%0d%0aHost:internal");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> SynchronizeMonitorCommand.active(REFERENCE, REVISION, historicalTarget));
+    }
+
+    @Test
     void boundsHttpObservationsToThePersistedTaxonomy() {
         assertEquals(CheckOutcome.SUCCESS, CheckObservation.forHttpStatus(204).outcome());
         assertEquals(CheckOutcome.HTTP_CLIENT_ERROR, CheckObservation.forHttpStatus(404).outcome());

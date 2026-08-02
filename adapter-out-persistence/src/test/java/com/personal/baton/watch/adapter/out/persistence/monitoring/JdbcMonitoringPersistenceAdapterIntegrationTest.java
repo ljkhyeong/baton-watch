@@ -162,6 +162,27 @@ class JdbcMonitoringPersistenceAdapterIntegrationTest {
     }
 
     @Test
+    void claimsHistoricalUnsafeTargetWithoutRollingBackOtherDueWork() {
+        String historicalTarget = "https://legacy.example/%0d%0aHost:internal";
+        synchronize("resource:a-legacy", 1, "https://legacy.example/path", BASE_TIME);
+        synchronize("resource:b-current", 1, "https://current.example/path", BASE_TIME);
+        jdbc.update(
+                "UPDATE watch_monitor SET target_url = ? WHERE resource_reference = ?",
+                historicalTarget,
+                "resource:a-legacy");
+
+        List<ClaimedCheck> claims = adapter.claimDueChecks(BASE_TIME, BASE_TIME.plus(LEASE), 2);
+
+        assertThat(claims)
+                .extracting(claim -> claim.resourceReference().value())
+                .containsExactly("resource:a-legacy", "resource:b-current");
+        assertThat(claims)
+                .extracting(claim -> claim.targetUrl().value())
+                .containsExactly(historicalTarget, "https://current.example/path");
+        assertThat(count("watch_attempt")).isEqualTo(2);
+    }
+
+    @Test
     void concurrentInitialSynchronizationReturnsAppliedThenIdempotentInsteadOfPrimaryKeyFailure() throws Exception {
         SynchronizeMonitorCommand command = SynchronizeMonitorCommand.active(
                 new ResourceReference("resource:concurrent-sync"),

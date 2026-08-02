@@ -19,6 +19,8 @@ import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -59,17 +61,27 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.targetUrl").doesNotExist());
     }
 
-    @Test
-    void rejectsInvalidTargetsWithAStableProblem() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "http://127.0.0.1/internal",
+        "https://example.com/%0d%0aHost:internal",
+        "https://example.com/%5c%5cevil.example"
+    })
+    void rejectsInvalidTargetsWithAStableProblem(String targetUrl) throws Exception {
+        synchronizeMonitor = command -> {
+            throw new AssertionError("invalid target reached the synchronization use case");
+        };
+        rebuildMockMvc();
+
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "sourceRevision": 42,
                                   "monitoringState": "ACTIVE",
-                                  "targetUrl": "http://127.0.0.1/internal"
+                                  "targetUrl": "%s"
                                 }
-                                """))
+                                """.formatted(targetUrl)))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))

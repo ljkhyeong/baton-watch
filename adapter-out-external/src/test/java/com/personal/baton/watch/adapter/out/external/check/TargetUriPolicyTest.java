@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -20,47 +21,21 @@ class TargetUriPolicyTest {
         "http://single-label/path"
     })
     void acceptsOnlyUnambiguousHostnameTargetsOnDefaultPorts(String value) throws Exception {
-        ValidatedUri target = policy.validate(value);
+        ValidatedUri target = policy.prepare(new TargetUrl(value));
 
         assertEquals(new URI(value), target.uri());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-        "/relative",
-        "ftp://example.com/file",
-        "https://example.com:8443/",
-        "https://user:secret@example.com/",
-        "https://example.com/path#fragment",
-        "https://127.0.0.1/",
-        "https://[2001:4860:4860::8888]/",
-        "https://2130706433/",
-        "https://0x7f000001/",
-        "https://127.1/",
-        "https://0x7f.1/",
-        "https://example.com:/",
-        "https://example.com:0443/",
-        "https://example.com./",
-        "https://bad_host.example/",
-        "https://example.com\\@evil.example/",
-        "https://example.com/%0d%0aHost:evil.example",
-        "https://example.com/%5c%5cevil.example",
-        "https://example.com%2e.evil.example/",
-        "https:///missing-host",
-        "https://example.com:443:443/"
-    })
-    void rejectsMalformedAmbiguousAndIpLiteralTargets(String value) {
-        assertThrows(TargetPolicyException.class, () -> policy.validate(value));
-    }
-
     @Test
-    void rejectsRawControlCharacters() {
-        assertThrows(TargetPolicyException.class, () -> policy.validate("https://example.com/a\nb"));
+    void mapsAnInvalidRedirectTargetToAnAdapterPolicyFailure() {
+        assertThrows(
+                TargetPolicyException.class,
+                () -> policy.validate(URI.create("https://example.com/%0d%0aHost:internal")));
     }
 
     @Test
     void resolvesRelativeRedirectWithoutChangingTheOriginalHostname() throws Exception {
-        ValidatedUri current = policy.validate("https://Example.COM/a/one?old=true");
+        ValidatedUri current = policy.prepare(new TargetUrl("https://Example.COM/a/one?old=true"));
 
         URI redirect = policy.resolveRedirect(current, "../two?new=true");
         ValidatedUri validated = policy.validate(redirect);
@@ -71,8 +46,8 @@ class TargetUriPolicyTest {
 
     @Test
     void canonicalLoopKeyNormalizesHostCaseDefaultPortAndEmptyPath() throws Exception {
-        ValidatedUri first = policy.validate("https://EXAMPLE.com:443");
-        ValidatedUri second = policy.validate("https://example.com/");
+        ValidatedUri first = policy.prepare(new TargetUrl("https://EXAMPLE.com:443"));
+        ValidatedUri second = policy.prepare(new TargetUrl("https://example.com/"));
 
         assertEquals(first.loopKey(), second.loopKey());
     }

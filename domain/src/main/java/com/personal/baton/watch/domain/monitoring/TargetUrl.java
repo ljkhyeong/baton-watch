@@ -27,6 +27,19 @@ public record TargetUrl(String value) {
         return uri().getScheme().toLowerCase(Locale.ROOT);
     }
 
+    /** Applies encoded-character restrictions without preventing historical rows from being rehydrated. */
+    public TargetUrl requireSafeEncodedCharacters() {
+        requireSafeReferenceCharacters(value);
+        return this;
+    }
+
+    /** Validates a raw target or redirect reference before URI resolution can normalize it. */
+    public static void requireSafeReferenceCharacters(String value) {
+        Objects.requireNonNull(value, "value");
+        validateRawCharacters(value);
+        validateEncodedCharacters(value);
+    }
+
     @Override
     public String toString() {
         return "[target-url]";
@@ -42,6 +55,23 @@ public record TargetUrl(String value) {
                 throw invalid();
             }
             index += Character.charCount(codePoint);
+        }
+    }
+
+    private static void validateEncodedCharacters(String value) {
+        for (int index = 0; index + 2 < value.length(); index++) {
+            if (value.charAt(index) != '%') {
+                continue;
+            }
+            int high = Character.digit(value.charAt(index + 1), 16);
+            int low = Character.digit(value.charAt(index + 2), 16);
+            if (high < 0 || low < 0) {
+                continue;
+            }
+            int decoded = high * 16 + low;
+            if (decoded <= 0x1f || decoded == 0x7f || decoded == '\\') {
+                throw invalid();
+            }
         }
     }
 

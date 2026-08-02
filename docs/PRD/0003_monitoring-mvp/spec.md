@@ -59,6 +59,10 @@ per-workspace authorization, and end-user access are outside this MVP.
 - URL user-info, fragments, IP-literal hosts, ambiguous authorities, control
   characters, and backslashes are rejected. Query strings may be checked but
   must not be logged or exposed by the API.
+- Synchronization and every redirect use the same static target syntax policy,
+  including rejection of percent-encoded ASCII control octets, DEL, and
+  backslashes. Redirect references are checked before URI resolution and again
+  after resolution as absolute targets.
 - Before each connection, WATCH resolves the DNS hostname, rejects the complete
   answer if any address is non-global, and pins the connection to the approved
   resolution while retaining the original host for HTTP and TLS verification.

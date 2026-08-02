@@ -43,6 +43,14 @@ a request-scoped client DNS resolver. The request URI keeps the original host
 so HTTP Host, SNI, and TLS hostname verification remain correct. The application
 depends only on an outbound checker port.
 
+`TargetUrl` owns the static target syntax policy used when a snapshot is
+accepted and when each redirect is revalidated. Compatibility-deferred
+encoded-character checks remain explicit so historical rows can still be
+rehydrated and converted
+to `DESTINATION_REJECTED`; new synchronization commands must pass the same
+check before persistence. The external adapter adds only raw redirect-reference
+validation, resolution, and loop canonicalization before DNS/address approval.
+
 Spring scheduling lives in bootstrap and invokes application use cases. One
 check runs at a time per process; batch size, lease, interval, timeouts, byte
 limit, staleness, retention, and cleanup batch size are bounded configuration

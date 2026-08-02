@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SafeUrlCheckEngineTest {
 
@@ -83,6 +84,42 @@ class SafeUrlCheckEngineTest {
         assertEquals(0, observation.redirectCount());
         assertEquals(List.of("start.example"), dns.hostnames);
         assertEquals(1, transport.targets.size());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/%0d%0aHost:internal",
+        "/%5c%5cevil.example",
+        "%0d/../safe",
+        "%5c/../safe"
+    })
+    void rejectsEncodedControlOrBackslashRedirectsBeforeASecondConnection(String location) throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        transport.add(HttpHopResponse.redirect(302, location, 0));
+
+        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+                .check(new TargetUrl("https://start.example/"));
+
+        assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
+        assertEquals(0, observation.redirectCount());
+        assertEquals(List.of("start.example"), dns.hostnames);
+        assertEquals(1, transport.targets.size());
+    }
+
+    @Test
+    void rejectsAHistoricalUnsafeTargetBeforeDnsOrConnection() throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+
+        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+                .check(new TargetUrl("https://example.com/%0d%0aHost:internal"));
+
+        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
+        assertEquals(List.of(), dns.hostnames);
+        assertEquals(0, transport.targets.size());
     }
 
     @Test

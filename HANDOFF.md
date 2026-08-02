@@ -13,7 +13,9 @@
   current derived health, and durable health-change events with pending/delivered
   state, retry timing, delivery attempts, and expiring leases.
 - The worker performs SSRF-safe, DNS-pinned outbound checks outside database
-  transactions and handles staleness and bounded attempt retention.
+  transactions and handles staleness and bounded attempt retention. Monitor
+  synchronization and redirect hops share the same static `TargetUrl` policy;
+  legacy unsafe encodings can be rehydrated but are rejected before DNS or I/O.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
@@ -63,7 +65,8 @@
   configuration isolation, and HTTP-status handling. A live receiver or public
   delivery run has not yet been verified.
 - The monitor API authentication boundary has a real embedded-server test under
-  a non-empty servlet context path. It verifies the Bearer challenge, exact 401 problem fields,
+  a non-empty servlet context path. It verifies the Bearer challenge, exact 401
+  problem fields,
   fail-closed `/api/v1/**` handling, statelessness, public status access, and
   authenticated PUT without CSRF.
 

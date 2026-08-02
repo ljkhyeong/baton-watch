@@ -44,7 +44,7 @@ final class SafeUrlCheckEngine {
             }
             ValidatedUri current;
             try {
-                current = targetPolicy.validate(targetUrl.value());
+                current = targetPolicy.prepare(targetUrl);
             } catch (TargetPolicyException exception) {
                 return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, state);
             }
