@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
@@ -21,6 +22,7 @@ import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -44,6 +46,8 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -253,6 +257,66 @@ class JdbcMonitoringPersistenceIntegrationTest {
     }
 
     @Test
+    void synchronizationProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
+        String reference = "resource:sync-event-rollback";
+        String originalTarget = "https://original.example/path";
+        synchronize(reference, 1, originalTarget, BASE_TIME);
+        ClaimedCheck claimed = claimOne(BASE_TIME);
+        Instant completedAt = BASE_TIME.plusSeconds(1);
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        claimed,
+                        CheckObservation.forHttpStatus(200),
+                        completedAt,
+                        completedAt.plus(INTERVAL)))
+                .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
+        MonitorProjection before = projection(reference);
+        Instant updatedAt = jdbc.queryForObject(
+                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant();
+        Instant lastConclusiveAt = jdbc.queryForObject(
+                        "SELECT last_conclusive_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant();
+        jdbc.execute("""
+                CREATE UNIQUE INDEX ux_test_sync_event_failure
+                ON watch_health_change_event (resource_reference)
+                WHERE resource_reference = 'resource:sync-event-rollback'
+                """);
+
+        Throwable failure = catchThrowable(() -> synchronize(
+                reference,
+                2,
+                "https://changed.example/path",
+                completedAt.plusSeconds(1)));
+        assertUniqueConstraintViolation(failure, "ux_test_sync_event_failure");
+
+        assertThat(projection(reference)).isEqualTo(before);
+        assertThat(jdbc.queryForObject(
+                "SELECT target_url FROM watch_monitor WHERE resource_reference = ?",
+                String.class,
+                reference)).isEqualTo(originalTarget);
+        assertThat(jdbc.queryForObject(
+                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant()).isEqualTo(updatedAt);
+        assertThat(jdbc.queryForObject(
+                        "SELECT last_conclusive_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant()).isEqualTo(lastConclusiveAt);
+        assertThat(jdbc.queryForList("""
+                SELECT previous_health || '->' || current_health
+                FROM watch_health_change_event
+                WHERE resource_reference = ?
+                ORDER BY changed_at
+                """, String.class, reference)).containsExactly("UNKNOWN->HEALTHY");
+    }
+
+    @Test
     void expiredLeaseCanBeRecoveredAndTheOlderAttemptBecomesStale() {
         synchronize("resource:lease", 1, "https://lease.example/path", BASE_TIME);
         ClaimedCheck first = claimOne(BASE_TIME);
@@ -310,6 +374,56 @@ class JdbcMonitoringPersistenceIntegrationTest {
             assertThat(count("watch_attempt")).isEqualTo(2);
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void claimDueChecksSkipsLockedLeadingMonitorWithoutWaiting() throws Exception {
+        String lockedReference = "resource:check-locked-leading";
+        String nextReference = "resource:check-after-locked";
+        synchronize(
+                lockedReference,
+                1,
+                "https://locked.example/path",
+                BASE_TIME.minusSeconds(1));
+        synchronize(nextReference, 1, "https://next.example/path", BASE_TIME);
+        DataSourceTransactionManager lockTransactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
+        JdbcCheckWorkPersistenceAdapter competingPersistence =
+                new JdbcCheckWorkPersistenceAdapter(
+                        new JdbcTemplate(testDataSource),
+                        new DataSourceTransactionManager(testDataSource));
+        TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
+                new DefaultTransactionDefinition());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<List<ClaimedCheck>> claimFuture = null;
+        try {
+            assertThat(lockLeadingDueMonitor(lockJdbc, BASE_TIME)).isEqualTo(lockedReference);
+            claimFuture = executor.submit(() -> competingPersistence.claimDueChecks(
+                    BASE_TIME, BASE_TIME.plus(LEASE), 1));
+
+            List<ClaimedCheck> claims = claimFuture.get(
+                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            assertThat(lockTransaction.isCompleted()).isFalse();
+            assertThat(claims)
+                    .extracting(claim -> claim.resourceReference().value())
+                    .containsExactly(nextReference);
+            assertThat(count("watch_attempt")).isEqualTo(1);
+        } finally {
+            try {
+                if (claimFuture != null && !claimFuture.isDone()) {
+                    claimFuture.cancel(true);
+                }
+                if (!lockTransaction.isCompleted()) {
+                    lockTransactionManager.rollback(lockTransaction);
+                }
+            } finally {
+                executor.shutdownNow();
+                assertThat(executor.awaitTermination(
+                        CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            }
         }
     }
 
@@ -440,6 +554,48 @@ class JdbcMonitoringPersistenceIntegrationTest {
         assertThat(projection.health()).isEqualTo(Health.UNKNOWN);
         assertThat(projection.consecutiveFailures()).isEqualTo(1);
         assertThat(count("watch_health_change_event")).isEqualTo(2);
+    }
+
+    @Test
+    void staleProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
+        String reference = "resource:stale-event-rollback";
+        synchronize(reference, 1, "https://stale-rollback.example/path", BASE_TIME);
+        ClaimedCheck claimed = claimOne(BASE_TIME);
+        Instant completedAt = BASE_TIME.plusSeconds(1);
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        claimed,
+                        CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT),
+                        completedAt,
+                        completedAt.plus(INTERVAL)))
+                .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
+        MonitorProjection before = projection(reference);
+        Instant updatedAt = jdbc.queryForObject(
+                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant();
+        jdbc.execute("""
+                CREATE UNIQUE INDEX ux_test_stale_event_failure
+                ON watch_health_change_event (resource_reference)
+                WHERE resource_reference = 'resource:stale-event-rollback'
+                """);
+
+        Throwable failure = catchThrowable(() -> monitorPersistence.markStaleUnknown(
+                completedAt, completedAt.plusSeconds(600), 1));
+        assertUniqueConstraintViolation(failure, "ux_test_stale_event_failure");
+
+        assertThat(projection(reference)).isEqualTo(before);
+        assertThat(jdbc.queryForObject(
+                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
+                        OffsetDateTime.class,
+                        reference)
+                .toInstant()).isEqualTo(updatedAt);
+        assertThat(jdbc.queryForList("""
+                SELECT previous_health || '->' || current_health
+                FROM watch_health_change_event
+                WHERE resource_reference = ?
+                ORDER BY changed_at
+                """, String.class, reference)).containsExactly("UNKNOWN->DEGRADED");
     }
 
     @Test
@@ -737,6 +893,41 @@ class JdbcMonitoringPersistenceIntegrationTest {
         ready.countDown();
         start.await();
         return finalizingAdapter.finalizeCheck(finalization).status();
+    }
+
+    private String lockLeadingDueMonitor(
+            JdbcTemplate lockJdbc, Instant claimedAt) {
+        return lockJdbc.queryForObject("""
+                SELECT resource_reference
+                FROM watch_monitor
+                WHERE monitor_status = 'ACTIVE'
+                  AND next_check_at <= ?
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+                ORDER BY next_check_at, resource_reference
+                LIMIT 1
+                FOR UPDATE
+                """,
+                String.class,
+                databaseTime(claimedAt),
+                databaseTime(claimedAt));
+    }
+
+    private static void assertUniqueConstraintViolation(
+            Throwable failure, String constraintName) {
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(rootCause(failure))
+                .isInstanceOfSatisfying(SQLException.class, sqlFailure -> {
+                    assertThat(sqlFailure.getSQLState()).isEqualTo("23505");
+                    assertThat(sqlFailure.getMessage()).contains(constraintName);
+                });
+    }
+
+    private static Throwable rootCause(Throwable failure) {
+        Throwable root = failure;
+        while (root.getCause() != null) {
+            root = root.getCause();
+        }
+        return root;
     }
 
     private UUID insertDeliveredEvent(String reference, Instant changedAt, Instant deliveredAt) {
