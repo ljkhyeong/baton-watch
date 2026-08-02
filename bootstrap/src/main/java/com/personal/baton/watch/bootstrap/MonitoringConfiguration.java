@@ -1,6 +1,5 @@
 package com.personal.baton.watch.bootstrap;
 
-import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenFilter;
 import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
 import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringPersistenceAdapter;
@@ -94,10 +93,5 @@ public class MonitoringConfiguration {
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
                 http.requestQueueCapacity());
-    }
-
-    @Bean
-    MonitorBearerTokenFilter monitorBearerTokenFilter(WatchProperties properties) {
-        return new MonitorBearerTokenFilter(properties.apiToken());
     }
 }

@@ -6,6 +6,8 @@
   hexagonal Gradle modules.
 - GET /api/v1/system/status and authenticated PUT/GET
   /api/v1/resource-monitors/{resourceReference} are implemented.
+- Spring Security applies stateless service-token authentication to every
+  non-status `/api/v1/**` request with context-path-aware matching.
 - Application time comes from an injected UTC Clock.
 - PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
   current derived health, and durable health-change events with pending/delivered
@@ -60,6 +62,10 @@
   its token separation, child-environment isolation, hostname shape, user curl
   configuration isolation, and HTTP-status handling. A live receiver or public
   delivery run has not yet been verified.
+- The monitor API authentication boundary has a real embedded-server test under
+  a non-empty servlet context path. It verifies the Bearer challenge, exact 401 problem fields,
+  fail-closed `/api/v1/**` handling, statelessness, public status access, and
+  authenticated PUT without CSRF.
 
 ## Next useful slice
 

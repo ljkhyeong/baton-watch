@@ -2,7 +2,7 @@
 
 Status: maintained contract
 
-Updated: 2026-08-01
+Updated: 2026-08-02
 
 ## System status
 
@@ -33,6 +33,15 @@ Both require `Authorization: Bearer <token>`. PUT is idempotent by the tuple of
 `resourceReference` and `sourceRevision`, so it does not accept a separate
 idempotency key. The reference is 1-128 characters from `A-Z`, `a-z`, `0-9`,
 `.`, `_`, `:`, and `-`.
+
+The Bearer authentication scheme is matched case-insensitively as required by
+HTTP authentication semantics. A credential failure returns a
+`WWW-Authenticate` Bearer challenge with the HTTP 401 problem response.
+
+Only the exact system-status GET is public. Every other request under
+`/api/v1/**` crosses the stateless service-authentication boundary before
+routing. The boundary is relative to the servlet context, so deploying WATCH
+under a context path cannot expose a monitoring route.
 
 PUT accepts `application/json`. An active snapshot is:
 

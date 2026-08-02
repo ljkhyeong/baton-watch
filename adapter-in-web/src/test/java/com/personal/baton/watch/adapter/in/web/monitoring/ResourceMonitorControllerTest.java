@@ -6,7 +6,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenFilter;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
@@ -26,7 +25,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class ResourceMonitorControllerTest {
 
-    private static final String TOKEN = "test-token";
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
 
     private SynchronizeMonitorUseCase synchronizeMonitor;
@@ -43,7 +41,6 @@ class ResourceMonitorControllerTest {
     @Test
     void synchronizesAnActiveMonitorWithoutExposingItsTarget() throws Exception {
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
-                        .header("Authorization", "Bearer " + TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -65,7 +62,6 @@ class ResourceMonitorControllerTest {
     @Test
     void rejectsInvalidTargetsWithAStableProblem() throws Exception {
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
-                        .header("Authorization", "Bearer " + TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -86,7 +82,6 @@ class ResourceMonitorControllerTest {
         rebuildMockMvc();
 
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
-                        .header("Authorization", "Bearer " + TOKEN)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"sourceRevision":41,"monitoringState":"INACTIVE"}
@@ -97,8 +92,7 @@ class ResourceMonitorControllerTest {
 
     @Test
     void returnsTheCurrentProjection() throws Exception {
-        mockMvc.perform(get("/api/v1/resource-monitors/resource-1")
-                        .header("Authorization", "Bearer " + TOKEN))
+        mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resourceReference").value("resource-1"))
                 .andExpect(jsonPath("$.lastOutcome").doesNotExist())
@@ -110,8 +104,7 @@ class ResourceMonitorControllerTest {
         getMonitor = reference -> Optional.empty();
         rebuildMockMvc();
 
-        mockMvc.perform(get("/api/v1/resource-monitors/missing-resource")
-                        .header("Authorization", "Bearer " + TOKEN))
+        mockMvc.perform(get("/api/v1/resource-monitors/missing-resource"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MONITOR_NOT_FOUND"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
@@ -121,7 +114,6 @@ class ResourceMonitorControllerTest {
     private void rebuildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(new ResourceMonitorController(synchronizeMonitor, getMonitor))
                 .setControllerAdvice(new MonitorApiExceptionHandler())
-                .addFilters(new MonitorBearerTokenFilter(TOKEN))
                 .build();
     }
 
