@@ -98,4 +98,5 @@ retry behavior.
 - [Microservice boundary ADR](docs/ADR/0001_microservice-boundary/adr.md)
 - [MVP storage and execution ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
 - [Direct HTTPS event delivery ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
+- [Public staging delivery validation runbook](docs/runbooks/public-staging-event-delivery.md)
 - [Active handoff](HANDOFF.md)

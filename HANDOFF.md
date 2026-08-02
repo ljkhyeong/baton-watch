@@ -16,6 +16,9 @@
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
   capped retries, and delivered-only retention.
+- A compatible BATON receiver with separate bearer authentication and an atomic
+  immutable `eventId` inbox is implemented in the BATON repository. Its
+  deployment and public WATCH-to-BATON integration are not yet verified.
 - Delivery is disabled by default. Undelivered events remain durable while it
   is disabled or BATON is unavailable.
 - Scheduler shutdown waits up to 65 seconds so the bounded worst-case delivery
@@ -53,14 +56,19 @@
   volume were removed afterward.
 - All six project-local skills passed quick_validate.py after documentation
   synchronization.
+- The public-staging preflight has an executable nine-case shell test covering
+  its token separation, child-environment isolation, hostname shape, user curl
+  configuration isolation, and HTTP-status handling. A live receiver or public
+  delivery run has not yet been verified.
 
 ## Next useful slice
 
-Implement the matching BATON receiver with atomic `eventId` deduplication, then
-run a controlled end-to-end delivery and replay test using operator-managed
-secrets and public ingress. After that, add dashboards and alerts for backlog,
-oldest-event age, delivery outcomes, scheduler failures, and database health;
-define secret rotation, egress policy, backup/migration, rollout, rollback, and
-reconciliation procedures before production. Do not infer deployment or an
-external alert from repository configuration or the earlier local Compose
-smoke.
+Run the controlled public-staging delivery exercise in the maintained runbook
+using distinct operator-managed tokens and a one-shot acknowledgement-loss
+ingress. Verify first delivery, same-`eventId` replay, one BATON inbox row,
+backlog drain, and log redaction. After that, add dashboards and alerts for
+backlog, oldest-event age, delivery outcomes, scheduler failures, and database
+health; define secret rotation, egress policy, backup/migration, rollout,
+rollback, and reconciliation procedures before production. Do not infer
+deployment or an external alert from repository configuration, the preflight,
+or the earlier local Compose smoke.
