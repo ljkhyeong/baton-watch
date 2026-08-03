@@ -17,14 +17,14 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
 
 class MonitoringConfigurationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withUserConfiguration(MonitoringConfiguration.class)
             .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
-            .withBean(PlatformTransactionManager.class, () -> mock(PlatformTransactionManager.class))
+            .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
             .withBean(Clock.class, Clock::systemUTC)
             .withBean(WatchProperties.class, MonitoringConfigurationTest::watchProperties);
 

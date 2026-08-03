@@ -44,19 +44,19 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 236 tests
+- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 237 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
 - Outbound checker and callback adapter suite: 157 tests passed without a
   live-internet dependency.
-- PostgreSQL 18.4 Testcontainers suite: 25 tests passed, including V1/V2
+- PostgreSQL 18.4 Testcontainers suite: 26 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
-  idempotency, delivery token/attempt stale rejection, batch delivery-claim
-  rollback, check and delivery lease recovery, atomic event rollback across
-  finalization, synchronization, and staleness, retry boundaries, backlog
-  state, and delivered-only retention.
+  idempotency, delivery token/attempt stale rejection, batch check- and
+  delivery-claim rollback, check and delivery lease recovery, atomic event
+  rollback across finalization, synchronization, and staleness, retry
+  boundaries, backlog state, and delivered-only retention.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were

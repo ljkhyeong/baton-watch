@@ -24,22 +24,20 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionOperations;
 
 /** JDBC adapter for check claims, finalization, and bounded attempt retention. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
 
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate transactions;
+    private final TransactionOperations transactions;
     private final HealthDerivationPolicy healthPolicy;
     private final JdbcHealthChangeEventAppender eventAppender;
 
     public JdbcCheckWorkPersistenceAdapter(
-            JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
+            JdbcTemplate jdbc, TransactionOperations transactions) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
-        this.transactions = new TransactionTemplate(
-                Objects.requireNonNull(transactionManager, "transactionManager"));
+        this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.healthPolicy = new HealthDerivationPolicy();
         this.eventAppender = new JdbcHealthChangeEventAppender(jdbc);
     }

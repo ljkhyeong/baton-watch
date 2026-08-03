@@ -85,16 +85,16 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void concurrentCheckClaimersReceiveDisjointMonitors() throws Exception {
         synchronize("resource:check-concurrent-1", 1, "https://one.example/path", BASE_TIME);
         synchronize("resource:check-concurrent-2", 1, "https://two.example/path", BASE_TIME);
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = new JdbcCheckWorkPersistenceAdapter(
-                new JdbcTemplate(testDataSource),
-                new DataSourceTransactionManager(testDataSource));
+        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<List<ClaimedCheck>> first = null;
+        Future<List<ClaimedCheck>> second = null;
         try {
-            Future<List<ClaimedCheck>> first = executor.submit(
+            first = executor.submit(
                     () -> claimChecksConcurrently(checkWorkPersistence, ready, start));
-            Future<List<ClaimedCheck>> second = executor.submit(
+            second = executor.submit(
                     () -> claimChecksConcurrently(anotherPersistence, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -110,7 +110,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                             "resource:check-concurrent-1", "resource:check-concurrent-2");
             assertThat(count("watch_attempt")).isEqualTo(2);
         } finally {
-            executor.shutdownNow();
+            cancelIfRunning(first);
+            cancelIfRunning(second);
+            shutdownAndAwait(executor);
         }
     }
 
@@ -127,10 +129,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         DataSourceTransactionManager lockTransactionManager =
                 new DataSourceTransactionManager(testDataSource);
         JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
-        JdbcCheckWorkPersistenceAdapter competingPersistence =
-                new JdbcCheckWorkPersistenceAdapter(
-                        new JdbcTemplate(testDataSource),
-                        new DataSourceTransactionManager(testDataSource));
+        JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
         TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
                 new DefaultTransactionDefinition());
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -157,11 +156,50 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                     lockTransactionManager.rollback(lockTransaction);
                 }
             } finally {
-                executor.shutdownNow();
-                assertThat(executor.awaitTermination(
-                        CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+                shutdownAndAwait(executor);
             }
         }
+    }
+
+    @Test
+    void batchClaimRollsBackEveryAttemptAndLeaseWhenLaterInsertFails() {
+        String firstReference = "resource:check-batch-rollback-1";
+        String secondReference = "resource:check-batch-rollback-2";
+        synchronize(firstReference, 1, "https://batch-one.example/path", BASE_TIME);
+        synchronize(secondReference, 1, "https://batch-two.example/path", BASE_TIME);
+        jdbc.execute("""
+                ALTER TABLE watch_attempt
+                ADD CONSTRAINT ck_test_check_claim_failure
+                CHECK (resource_reference <> 'resource:check-batch-rollback-2')
+                """);
+
+        try {
+            assertThatThrownBy(() -> checkWorkPersistence.claimDueChecks(
+                            BASE_TIME, BASE_TIME.plus(LEASE), 2))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+
+            assertThat(count("watch_attempt")).isZero();
+            assertThat(jdbc.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM watch_monitor
+                    WHERE resource_reference IN (?, ?)
+                      AND (
+                          lease_token IS NOT NULL
+                          OR lease_attempt_id IS NOT NULL
+                          OR lease_expires_at IS NOT NULL
+                      )
+                    """, Integer.class, firstReference, secondReference)).isZero();
+        } finally {
+            jdbc.execute("""
+                    ALTER TABLE watch_attempt
+                    DROP CONSTRAINT ck_test_check_claim_failure
+                    """);
+        }
+
+        assertThat(checkWorkPersistence.claimDueChecks(
+                        BASE_TIME, BASE_TIME.plus(LEASE), 2))
+                .extracting(claim -> claim.resourceReference().value())
+                .containsExactly(firstReference, secondReference);
     }
 
     @Test
@@ -206,16 +244,16 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 CheckObservation.forHttpStatus(200),
                 BASE_TIME.plusSeconds(1),
                 BASE_TIME.plusSeconds(61));
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = new JdbcCheckWorkPersistenceAdapter(
-                new JdbcTemplate(testDataSource),
-                new DataSourceTransactionManager(testDataSource));
+        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<CheckFinalizationStatus> first = null;
+        Future<CheckFinalizationStatus> second = null;
         try {
-            Future<CheckFinalizationStatus> first = executor.submit(
+            first = executor.submit(
                     () -> finalizeConcurrently(checkWorkPersistence, finalization, ready, start));
-            Future<CheckFinalizationStatus> second = executor.submit(
+            second = executor.submit(
                     () -> finalizeConcurrently(anotherPersistence, finalization, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -229,7 +267,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
             assertThat(count("watch_result")).isEqualTo(1);
             assertThat(count("watch_health_change_event")).isEqualTo(1);
         } finally {
-            executor.shutdownNow();
+            cancelIfRunning(first);
+            cancelIfRunning(second);
+            shutdownAndAwait(executor);
         }
     }
 

@@ -31,7 +31,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
 
 class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         extends MonitoringPersistenceIntegrationTestSupport {
@@ -342,8 +341,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     private JdbcHealthChangeEventDeliveryAdapter newDeliveryAdapter() {
         return new JdbcHealthChangeEventDeliveryAdapter(
-                JdbcClient.create(testDataSource),
-                new TransactionTemplate(new DataSourceTransactionManager(testDataSource)));
+                JdbcClient.create(testDataSource), newTransactionOperations());
     }
 
     private UUID createDeliveryEvent(String reference, Instant claimedAt) {
@@ -415,18 +413,6 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 UUID.class,
                 databaseTime(claimedAt),
                 databaseTime(claimedAt));
-    }
-
-    private static void cancelIfRunning(Future<?> future) {
-        if (future != null && !future.isDone()) {
-            future.cancel(true);
-        }
-    }
-
-    private static void shutdownAndAwait(ExecutorService executor) throws InterruptedException {
-        executor.shutdownNow();
-        assertThat(executor.awaitTermination(
-                CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
     }
 
     private UUID insertDeliveredEvent(String reference, Instant changedAt, Instant deliveredAt) {

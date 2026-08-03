@@ -69,9 +69,11 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        Future<SynchronizationStatus> first = null;
+        Future<SynchronizationStatus> second = null;
         try {
-            Future<SynchronizationStatus> first = executor.submit(() -> synchronizeConcurrently(command, ready, start));
-            Future<SynchronizationStatus> second = executor.submit(() -> synchronizeConcurrently(command, ready, start));
+            first = executor.submit(() -> synchronizeConcurrently(command, ready, start));
+            second = executor.submit(() -> synchronizeConcurrently(command, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
             SynchronizationStatus firstStatus = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -86,7 +88,9 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                     """, Integer.class))
                     .isEqualTo(1);
         } finally {
-            executor.shutdownNow();
+            cancelIfRunning(first);
+            cancelIfRunning(second);
+            shutdownAndAwait(executor);
         }
     }
 

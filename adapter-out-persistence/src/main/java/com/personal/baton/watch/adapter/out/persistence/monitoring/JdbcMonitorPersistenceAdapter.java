@@ -22,22 +22,20 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionOperations;
 
 /** JDBC adapter for monitor synchronization, projection queries, and staleness. */
 public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePort {
 
     private final JdbcTemplate jdbc;
-    private final TransactionTemplate transactions;
+    private final TransactionOperations transactions;
     private final HealthDerivationPolicy healthPolicy;
     private final JdbcHealthChangeEventAppender eventAppender;
 
     public JdbcMonitorPersistenceAdapter(
-            JdbcTemplate jdbc, PlatformTransactionManager transactionManager) {
+            JdbcTemplate jdbc, TransactionOperations transactions) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
-        this.transactions = new TransactionTemplate(
-                Objects.requireNonNull(transactionManager, "transactionManager"));
+        this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.healthPolicy = new HealthDerivationPolicy();
         this.eventAppender = new JdbcHealthChangeEventAppender(jdbc);
     }

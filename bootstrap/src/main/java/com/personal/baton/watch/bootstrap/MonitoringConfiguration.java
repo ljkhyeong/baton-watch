@@ -20,21 +20,21 @@ import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
 
 @Configuration(proxyBeanMethods = false)
 public class MonitoringConfiguration {
 
     @Bean
     JdbcMonitorPersistenceAdapter monitorPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
-        return new JdbcMonitorPersistenceAdapter(jdbcTemplate, transactionManager);
+            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
+        return new JdbcMonitorPersistenceAdapter(jdbcTemplate, transactions);
     }
 
     @Bean
     JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
-        return new JdbcCheckWorkPersistenceAdapter(jdbcTemplate, transactionManager);
+            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
+        return new JdbcCheckWorkPersistenceAdapter(jdbcTemplate, transactions);
     }
 
     @Bean

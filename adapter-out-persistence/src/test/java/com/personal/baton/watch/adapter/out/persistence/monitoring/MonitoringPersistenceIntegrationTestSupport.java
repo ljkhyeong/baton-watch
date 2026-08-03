@@ -14,8 +14,14 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 
 abstract class MonitoringPersistenceIntegrationTestSupport
         extends PostgresPersistenceIntegrationTestSupport {
@@ -29,10 +35,18 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     @BeforeEach
     void initializeMonitoringPersistenceAdapters() {
-        DataSourceTransactionManager transactionManager =
-                new DataSourceTransactionManager(testDataSource);
-        monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbc, transactionManager);
-        checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbc, transactionManager);
+        TransactionOperations transactions = newTransactionOperations();
+        monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbc, transactions);
+        checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbc, transactions);
+    }
+
+    protected JdbcCheckWorkPersistenceAdapter newCheckWorkPersistenceAdapter() {
+        return new JdbcCheckWorkPersistenceAdapter(
+                new JdbcTemplate(testDataSource), newTransactionOperations());
+    }
+
+    protected TransactionOperations newTransactionOperations() {
+        return new TransactionTemplate(new DataSourceTransactionManager(testDataSource));
     }
 
     protected SynchronizationResult synchronize(
@@ -76,5 +90,17 @@ abstract class MonitoringPersistenceIntegrationTestSupport
             throw new IllegalArgumentException("unsupported test table");
         }
         return jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
+    }
+
+    protected static void cancelIfRunning(Future<?> future) {
+        if (future != null && !future.isDone()) {
+            future.cancel(true);
+        }
+    }
+
+    protected static void shutdownAndAwait(ExecutorService executor) throws InterruptedException {
+        executor.shutdownNow();
+        assertThat(executor.awaitTermination(
+                CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
     }
 }
