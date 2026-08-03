@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.support.TransactionOperations;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -52,8 +52,8 @@ class EventDeliveryConfigurationTest {
                 .withPropertyValues("watch.event-delivery.enabled=" + enabled)
                 .withBean(EventDeliveryProperties.class, () -> deliveryProperties)
                 .withBean(WatchProperties.class, EventDeliveryConfigurationTest::watchProperties)
-                .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
-                .withBean(PlatformTransactionManager.class, () -> mock(PlatformTransactionManager.class))
+                .withBean(JdbcClient.class, () -> mock(JdbcClient.class))
+                .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
                 .withBean(Clock.class, Clock::systemUTC)
                 .withBean(
                         MonitoringMetrics.class,

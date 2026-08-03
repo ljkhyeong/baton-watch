@@ -18,8 +18,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.support.TransactionOperations;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
@@ -27,8 +27,8 @@ class EventDeliveryConfiguration {
 
     @Bean
     JdbcHealthChangeEventDeliveryAdapter healthChangeEventDeliveryPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, PlatformTransactionManager transactionManager) {
-        return new JdbcHealthChangeEventDeliveryAdapter(jdbcTemplate, transactionManager);
+            JdbcClient jdbcClient, TransactionOperations transactions) {
+        return new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
     }
 
     @Bean(destroyMethod = "close")
