@@ -13,7 +13,6 @@ import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonito
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
 import java.time.Clock;
-import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,7 +25,7 @@ class MonitoringConfigurationTest {
             .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
             .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
             .withBean(Clock.class, Clock::systemUTC)
-            .withBean(WatchProperties.class, MonitoringConfigurationTest::watchProperties);
+            .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties);
 
     @Test
     void createsSeparatePersistenceAdaptersAndAllMonitoringUseCases() {
@@ -48,31 +47,5 @@ class MonitoringConfigurationTest {
             assertThat(context).hasSingleBean(MarkStaleProjectionsUseCase.class);
             assertThat(context).hasSingleBean(PurgeAttemptHistoryUseCase.class);
         });
-    }
-
-    private static WatchProperties watchProperties() {
-        return new WatchProperties(
-                "a-test-token-that-is-longer-than-32-characters",
-                Duration.ofSeconds(1),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(30),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(30),
-                Duration.ofMinutes(10),
-                Duration.ofDays(30),
-                1,
-                100,
-                new WatchProperties.Http(
-                        Duration.ofSeconds(2),
-                        Duration.ofSeconds(3),
-                        Duration.ofSeconds(5),
-                        65_536,
-                        3,
-                        100,
-                        8_192,
-                        2,
-                        8,
-                        1,
-                        1));
     }
 }

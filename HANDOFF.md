@@ -44,10 +44,13 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 237 tests
+- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 238 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
+- Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
+  `JdbcTemplate`, `JdbcClient`, `PlatformTransactionManager`, and
+  `TransactionOperations` wiring all three persistence adapters.
 - Outbound checker and callback adapter suite: 157 tests passed without a
   live-internet dependency.
 - PostgreSQL 18.4 Testcontainers suite: 26 tests passed, including V1/V2
