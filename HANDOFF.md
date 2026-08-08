@@ -69,6 +69,11 @@
   fresh JUnit XML to require all six PostgreSQL suites plus the production-root
   context smoke. Both Testcontainers entry points use the library's fail-closed
   Docker policy, so missing Docker is a test failure rather than a skip.
+- The repository is private and the current GitHub plan does not expose classic
+  branch protection or repository rulesets for it. Both read-only API probes
+  returned `403` with the requirement to upgrade to GitHub Pro or make the
+  repository public, so `Verify / verify` is not yet enforceable as a required
+  check. No repository visibility or account setting was changed.
 
 ## Verification
 
@@ -84,6 +89,9 @@
   readback, and the persisted UNKNOWN/INACTIVE row without attempts or events.
 - The same result-evidence parser used by CI verified seven required suites and
   33 tests: six PostgreSQL suites/32 tests and the one production-root smoke.
+- The first pushed `Verify / verify` run for commit `65bb95b` passed every step
+  in 2 minutes 25 seconds, including Docker preflight, clean uncached tests,
+  boot jar creation, and required-suite evidence validation.
 - Executable boot jar: passed.
 - Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
@@ -129,6 +137,11 @@
   curl configuration, HTTPS-only/no-proxy/TLS/deadline/output controls, and
   HTTP-status handling. A live receiver or public delivery run has not yet
   been verified.
+- Public-staging readiness was checked without printing values. None of the
+  five required local variables was present, and the GitHub repository had no
+  Actions secrets or environments. No live WATCH URL, BATON callback, distinct
+  operator tokens, database/log access, or acknowledgement-loss ingress was
+  available, so the runbook was not executed against an external system.
 - The monitor API authentication boundary has a real embedded-server test under
   a non-empty servlet context path. It verifies the Bearer challenge, exact 401
   problem fields,
@@ -137,11 +150,14 @@
 
 ## Next useful slice
 
-After the first `Verify / verify` run exists, configure it as a required status
-check for protected changes. Then run the controlled public-staging delivery
-exercise in the maintained runbook with distinct operator-managed tokens and a
-one-shot acknowledgement-loss ingress. Verify first delivery, same-`eventId`
-replay, one BATON inbox row, backlog drain, and log redaction. Dashboards,
-alerts, secret rotation, egress, backup/migration, rollout, rollback, and
-reconciliation remain required before production. Do not infer a deployment or
-external alert from repository configuration or local smoke evidence.
+Choose either GitHub Pro while keeping the repository private or an intentional
+public-repository transition, then require `Verify / verify` for `main`. Do not
+weaken this with a repository-local imitation of branch protection. Separately,
+provision the public staging WATCH/BATON endpoints, distinct operator-managed
+tokens, private database/log access, a controlled public target, and a one-shot
+acknowledgement-loss ingress. Then run the maintained exercise and verify first
+delivery, same-`eventId` replay, one BATON inbox row, backlog drain, and log
+redaction. Dashboards, alerts, secret rotation, egress, backup/migration,
+rollout, rollback, and reconciliation remain required before production. Do
+not infer a deployment or external alert from repository configuration or local
+smoke evidence.
