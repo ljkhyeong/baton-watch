@@ -14,8 +14,14 @@ services:
       retries: 12
       start_period: 10s
     restart: unless-stopped
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   watch:
     build:
@@ -25,6 +31,7 @@ services:
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${WATCH_DB_NAME:-baton_watch}"
       SPRING_DATASOURCE_USERNAME: "${WATCH_DB_USER:-baton_watch}"
       SPRING_DATASOURCE_PASSWORD: "${WATCH_DB_PASSWORD:?WATCH_DB_PASSWORD is required}"
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
       WATCH_API_TOKEN: "${WATCH_API_TOKEN:?WATCH_API_TOKEN is required}"
       WATCH_PERSISTENCE_TRANSACTION_TIMEOUT: "${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:-5s}"
       WATCH_PERSISTENCE_LOCK_TIMEOUT: "${WATCH_PERSISTENCE_LOCK_TIMEOUT:-1s}"
@@ -36,14 +43,26 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${WATCH_HOST_PORT:-8080}:8080"
-    stop_grace_period: 70s
+      - "${WATCH_HOST_BIND:-127.0.0.1}:${WATCH_HOST_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8081/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 110s
     init: true
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   watch-postgres-data:

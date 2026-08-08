@@ -2,6 +2,6 @@
 .gradle
 **/build
 .env
+ops/staging.env
 .idea
 *.iml
-
