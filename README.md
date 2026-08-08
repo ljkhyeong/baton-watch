@@ -24,7 +24,8 @@ The implemented service currently provides:
   oldest-age, finalization, and bounded-outcome metrics
 - a hexagonal six-module Gradle layout
 - focused domain, application, HTTP, outbound-policy, and PostgreSQL integration
-  tests
+  tests, plus a fail-closed GitHub Actions check that proves the PostgreSQL and
+  full production-context suites actually executed
 
 Delivery is disabled until an operator supplies the callback and its separate
 service token. Pending events remain durable while delivery is disabled or the
@@ -45,13 +46,15 @@ The modules are domain, application, adapter-in-web, adapter-out-persistence, ad
 
 ## Build and run
 
-The repository includes a Gradle wrapper pinned to 9.2.1.
+The repository includes a Gradle wrapper pinned to 9.2.1. Docker must be
+available for the full test task; PostgreSQL integration tests are intentionally
+not allowed to pass by being skipped.
 `SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT` may override the five-second shared JDBC
 statement deadline and must remain a whole-second duration of at least one
 second.
 
 ~~~bash
-./gradlew test
+./gradlew clean test :bootstrap:bootJar --no-build-cache
 ~~~
 
 For the recommended local container run, copy the environment template and

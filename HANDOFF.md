@@ -64,12 +64,26 @@
   telemetry are configured; Compose does not publish the management port. No
   external alerting stack, frontend, broker, or production deployment is
   present.
+- The GitHub Actions `Verify` job uses SHA-pinned official checkout, Java, and
+  Gradle actions, requires Docker, runs a clean uncached test/build, and parses
+  fresh JUnit XML to require all six PostgreSQL suites plus the production-root
+  context smoke. Both Testcontainers entry points use the library's fail-closed
+  Docker policy, so missing Docker is a test failure rather than a skip.
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache`: 270 tests
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 271 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
+- The real `BatonWatchApplication` root context started against a
+  service-connected PostgreSQL 18.4 container with Flyway V1/V2, Spring
+  Security, all three persistence adapters, outbound check and delivery
+  clients, enabled delivery workers, and all three named schedulers. Its HTTP
+  smoke proved public status access, unauthenticated PUT rejection without a
+  write, authenticated INACTIVE synchronization, authenticated projection
+  readback, and the persisted UNKNOWN/INACTIVE row without attempts or events.
+- The same result-evidence parser used by CI verified seven required suites and
+  33 tests: six PostgreSQL suites/32 tests and the one production-root smoke.
 - Executable boot jar: passed.
 - Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
@@ -123,13 +137,11 @@
 
 ## Next useful slice
 
-Add a CI verification workflow that requires the Docker-backed PostgreSQL suite
-and fails closed when integration tests are skipped. Then add one automated
-`BatonWatchApplication` + Flyway + PostgreSQL root-context smoke. After repository
-verification is fail-closed, run the controlled public-staging delivery exercise
-in the maintained runbook with distinct operator-managed tokens and a one-shot
-acknowledgement-loss ingress. Verify first delivery, same-`eventId` replay, one
-BATON inbox row, backlog drain, and log redaction. Dashboards, alerts, secret
-rotation, egress, backup/migration, rollout, rollback, and reconciliation remain
-required before production. Do not infer a deployment or external alert from
-repository configuration or local smoke evidence.
+After the first `Verify / verify` run exists, configure it as a required status
+check for protected changes. Then run the controlled public-staging delivery
+exercise in the maintained runbook with distinct operator-managed tokens and a
+one-shot acknowledgement-loss ingress. Verify first delivery, same-`eventId`
+replay, one BATON inbox row, backlog drain, and log redaction. Dashboards,
+alerts, secret rotation, egress, backup/migration, rollout, rollback, and
+reconciliation remain required before production. Do not infer a deployment or
+external alert from repository configuration or local smoke evidence.

@@ -7,9 +7,9 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /**
  * Shares one PostgreSQL container across the JUnit root context.
  *
- * <p>The inherited {@code @Testcontainers} annotation only checks Docker availability. Container
- * lifecycle is intentionally owned here, so the test support does not declare an {@code @Container}
- * field that would restart PostgreSQL for every test class.
+ * <p>The inherited {@code @Testcontainers} annotation deliberately fails when Docker is
+ * unavailable. Container lifecycle is intentionally owned here, so the test support does not
+ * declare an {@code @Container} field that would restart PostgreSQL for every test class.
  */
 final class SharedPostgresExtension implements BeforeAllCallback {
 

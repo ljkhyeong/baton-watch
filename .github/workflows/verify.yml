@@ -1,0 +1,92 @@
+name: Verify
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
+        with:
+          cache-provider: basic
+          validate-wrappers: true
+
+      - name: Require Docker
+        run: docker version
+
+      - name: Run clean verification
+        run: ./gradlew clean test :bootstrap:bootJar --no-daemon --no-build-cache
+
+      - name: Require PostgreSQL and full-context test evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+
+          expected = {
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringSchemaIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresReadDeadlineIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperationsIntegrationTest",
+              "com.personal.baton.watch.bootstrap.BatonWatchApplicationSmokeTest",
+          }
+          report_directories = (
+              Path("adapter-out-persistence/build/test-results/test"),
+              Path("bootstrap/build/test-results/test"),
+          )
+
+          found = {}
+          for directory in report_directories:
+              for report in directory.glob("TEST-*.xml"):
+                  suite = ET.parse(report).getroot()
+                  found[suite.attrib["name"]] = {
+                      key: int(suite.attrib.get(key, "0"))
+                      for key in ("tests", "skipped", "failures", "errors")
+                  }
+
+          missing = expected - found.keys()
+          if missing:
+              raise SystemExit("Missing required test suites: " + ", ".join(sorted(missing)))
+
+          invalid = {
+              name: found[name]
+              for name in expected
+              if found[name]["tests"] == 0
+              or found[name]["skipped"] != 0
+              or found[name]["failures"] != 0
+              or found[name]["errors"] != 0
+          }
+          if invalid:
+              raise SystemExit(f"Invalid required test suite results: {invalid}")
+
+          total = sum(found[name]["tests"] for name in expected)
+          print(f"Verified {len(expected)} required suites and {total} tests")
+          PY

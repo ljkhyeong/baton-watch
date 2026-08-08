@@ -14,7 +14,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @ExtendWith(SharedPostgresExtension.class)
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers(disabledWithoutDocker = false)
 @ResourceLock("baton-watch-postgres")
 abstract class PostgresPersistenceIntegrationTestSupport {
 
