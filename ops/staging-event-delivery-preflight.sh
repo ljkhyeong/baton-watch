@@ -145,11 +145,13 @@ if [[ "$watch_status" != "200" ]]; then
     fail "WATCH public status returned unexpected HTTP status $watch_status"
 fi
 
+# The body is deliberately malformed. HTTP 401 externally demonstrates that
+# the receiver rejected it before a JSON deserialization error surfaced.
 if ! receiver_status="$(curl_status \
         "$delivery_endpoint" \
         --request POST \
         --header 'Content-Type: application/json' \
-        --data '{}')"; then
+        --data-binary '{"eventId":')"; then
     fail "BATON receiver authentication preflight request failed"
 fi
 if [[ "$receiver_status" != "401" ]]; then

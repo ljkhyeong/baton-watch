@@ -2,7 +2,7 @@
 
 Status: operator runbook; no live execution is implied
 
-Updated: 2026-08-02
+Updated: 2026-08-08
 
 ## Purpose
 
@@ -47,10 +47,16 @@ read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATC
 ~~~
 
 The preflight validates the compatible token shape and separation, checks the
-public WATCH status endpoint, and expects an unauthenticated callback request
-to be rejected with `401` before JSON parsing. It never sends either token and
-discards response bodies. A passing preflight proves reachability and the
-receiver authentication boundary only; it is not delivery evidence.
+public WATCH status endpoint, and sends a deliberately malformed JSON callback
+request without credentials. The receiver must return `401`; a parser-level
+4xx instead fails the preflight because authentication did not demonstrably
+precede JSON deserialization. The script never sends either token and discards
+response bodies. Its executable test fixes the callback method, content type,
+malformed body, user-curl-configuration isolation, HTTPS-only protocol,
+no-proxy behavior, TLS floor, deadlines, and output discard. A passing preflight
+proves reachability and the externally observed receiver authentication
+boundary only. It does not prove valid-credential acceptance, the deployed
+WATCH configuration, or delivery behavior.
 
 ## Evidence rules
 

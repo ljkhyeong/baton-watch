@@ -98,10 +98,13 @@
   volume were removed afterward.
 - All six project-local skills passed quick_validate.py after documentation
   synchronization.
-- The public-staging preflight has an executable nine-case shell test covering
-  its token separation, child-environment isolation, hostname shape, user curl
-  configuration isolation, and HTTP-status handling. A live receiver or public
-  delivery run has not yet been verified.
+- The public-staging preflight sends malformed JSON without credentials and
+  requires `401`, externally demonstrating rejection before a JSON parser
+  error. Its executable nine-case shell test also fixes token separation,
+  child-environment isolation, hostname shape, POST/content-type/body, user
+  curl configuration, HTTPS-only/no-proxy/TLS/deadline/output controls, and
+  HTTP-status handling. A live receiver or public delivery run has not yet
+  been verified.
 - The monitor API authentication boundary has a real embedded-server test under
   a non-empty servlet context path. It verifies the Bearer challenge, exact 401
   problem fields,
@@ -110,13 +113,12 @@
 
 ## Next useful slice
 
-Close the remaining review findings before public staging: strengthen the
-malformed JSON authentication preflight and add pinned-host TLS verification
-coverage. Then run the controlled public-staging delivery exercise in the
-maintained runbook using distinct operator-managed tokens and a one-shot
-acknowledgement-loss ingress. Verify first delivery, same-`eventId` replay, one
-BATON inbox row, backlog drain, and log redaction. After that, add dashboards
-and alerts and define secret rotation, egress, backup/migration, rollout,
-rollback, and reconciliation procedures before production. Do not infer a
-deployment or external alert from repository configuration or local smoke
-evidence.
+Close the remaining review finding before public staging: add pinned-host TLS
+verification coverage. Then run the controlled public-staging delivery
+exercise in the maintained runbook using distinct operator-managed tokens and
+a one-shot acknowledgement-loss ingress. Verify first delivery, same-`eventId`
+replay, one BATON inbox row, backlog drain, and log redaction. After that, add
+dashboards and alerts and define secret rotation, egress, backup/migration,
+rollout, rollback, and reconciliation procedures before production. Do not
+infer a deployment or external alert from repository configuration or local
+smoke evidence.
