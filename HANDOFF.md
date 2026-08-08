@@ -69,11 +69,19 @@
   fresh JUnit XML to require all six PostgreSQL suites plus the production-root
   context smoke. Both Testcontainers entry points use the library's fail-closed
   Docker policy, so missing Docker is a test failure rather than a skip.
-- The repository is private and the current GitHub plan does not expose classic
-  branch protection or repository rulesets for it. Both read-only API probes
-  returned `403` with the requirement to upgrade to GitHub Pro or make the
-  repository public, so `Verify / verify` is not yet enforceable as a required
-  check. No repository visibility or account setting was changed.
+- The primary GitHub repository is public. `main` strictly requires the
+  GitHub Actions `verify` check from app ID `15368`, enforces that requirement
+  for administrators, and disallows force pushes and branch deletion without
+  requiring a solo-repository review.
+- Repository Actions policy allows only GitHub-owned actions and the
+  SHA-pinned `gradle/actions/setup-gradle` action, requires full commit-SHA
+  references, keeps the default workflow token read-only, and requires
+  approval before any external contributor's fork workflow runs. Secret
+  scanning and push protection are enabled with no open secret alert.
+- The public repository was seeded only from the author/committer-email-
+  normalized history. The previous repository identity remains a private
+  history-only archive, and representative pre-rewrite commit SHAs are not
+  resolvable through the public repository API.
 
 ## Verification
 
@@ -89,9 +97,9 @@
   readback, and the persisted UNKNOWN/INACTIVE row without attempts or events.
 - The same result-evidence parser used by CI verified seven required suites and
   33 tests: six PostgreSQL suites/32 tests and the one production-root smoke.
-- The first pushed `Verify / verify` run for commit `65bb95b` passed every step
-  in 2 minutes 25 seconds, including Docker preflight, clean uncached tests,
-  boot jar creation, and required-suite evidence validation.
+- The first clean public-repository `Verify / verify` run for commit `f5502a7`
+  passed every step in 1 minute 32 seconds, including Docker preflight, clean
+  uncached tests, boot jar creation, and required-suite evidence validation.
 - Executable boot jar: passed.
 - Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
@@ -137,11 +145,15 @@
   curl configuration, HTTPS-only/no-proxy/TLS/deadline/output controls, and
   HTTP-status handling. A live receiver or public delivery run has not yet
   been verified.
+- `https://watch-staging.b4ton.com` is the selected public-staging WATCH base
+  URL. Its DNS record, valid HTTPS routing, deployed instance, and externally
+  successful status response have not been provisioned or verified, so the
+  hostname is not evidence of a live deployment.
 - Public-staging readiness was checked without printing values. None of the
   five required local variables was present, and the GitHub repository had no
-  Actions secrets or environments. No live WATCH URL, BATON callback, distinct
-  operator tokens, database/log access, or acknowledgement-loss ingress was
-  available, so the runbook was not executed against an external system.
+  Actions secrets or environments. No BATON callback, distinct operator
+  tokens, database/log access, or acknowledgement-loss ingress was available,
+  so the runbook was not executed against an external system.
 - The monitor API authentication boundary has a real embedded-server test under
   a non-empty servlet context path. It verifies the Bearer challenge, exact 401
   problem fields,
@@ -150,14 +162,13 @@
 
 ## Next useful slice
 
-Choose either GitHub Pro while keeping the repository private or an intentional
-public-repository transition, then require `Verify / verify` for `main`. Do not
-weaken this with a repository-local imitation of branch protection. Separately,
-provision the public staging WATCH/BATON endpoints, distinct operator-managed
-tokens, private database/log access, a controlled public target, and a one-shot
-acknowledgement-loss ingress. Then run the maintained exercise and verify first
-delivery, same-`eventId` replay, one BATON inbox row, backlog drain, and log
-redaction. Dashboards, alerts, secret rotation, egress, backup/migration,
-rollout, rollback, and reconciliation remain required before production. Do
-not infer a deployment or external alert from repository configuration or local
-smoke evidence.
+Provision DNS, valid HTTPS routing, and a deployed WATCH instance for the
+selected `https://watch-staging.b4ton.com` base URL. Separately provision the
+public BATON callback, distinct operator-managed tokens, private database/log
+access, a controlled public target, and a one-shot acknowledgement-loss
+ingress. Then run the maintained exercise and verify first delivery,
+same-`eventId` replay, one BATON inbox row, backlog drain, and log redaction.
+Dashboards, alerts, secret rotation, egress, backup/migration, rollout,
+rollback, and reconciliation remain required before production. Do not infer a
+deployment or external alert from repository configuration, DNS selection, or
+local smoke evidence.

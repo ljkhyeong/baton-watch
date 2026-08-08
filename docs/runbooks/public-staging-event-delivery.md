@@ -34,11 +34,16 @@ port, or a relaxed WATCH destination policy to make the exercise pass.
 
 ## Safe preflight
 
+`https://watch-staging.b4ton.com` is the selected WATCH public-staging base
+URL. Treat it only as the intended configuration value until its DNS record,
+valid HTTPS routing, deployed instance, and external status response have all
+been verified.
+
 Load these values from the staging secret store without enabling shell tracing:
 
 ~~~bash
 set +x
-export WATCH_PUBLIC_BASE_URL=https://watch.staging.example.com
+export WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com
 export WATCH_EVENT_DELIVERY_ENABLED=true
 export WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.staging.example.com/api/v1/internal/resource-health-events
 read -r -s -p 'WATCH API token: ' WATCH_API_TOKEN && export WATCH_API_TOKEN
