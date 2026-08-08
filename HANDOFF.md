@@ -23,6 +23,16 @@
 - Target checks and event delivery share a neutral request-scoped Apache client,
   bounded deadline executor, pinned resolver, and bounded body discarder while
   retaining separate GET/redirect and POST/acknowledgement semantics.
+- Response-byte accounting never consumes a probe byte beyond the configured
+  allowance. Unknown-length responses that reach the allowance are rejected
+  conservatively, oversized and header-limit failures are classified as
+  `RESPONSE_TOO_LARGE`, and failed responses are aborted without Apache draining
+  the remaining body.
+- Allocation-sensitive response, header, DNS/request executor, and queue
+  settings have hard implementation ceilings validated at bootstrap and again
+  in the external adapter before resource allocation. Production check,
+  delivery, and maintenance batch settings have separate bootstrap ceilings
+  enforced before lease arithmetic and service execution.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
@@ -49,7 +59,7 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache`: 248 tests
+- Gradle 9.2.1 `clean test --no-build-cache`: 266 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
@@ -57,8 +67,10 @@
   `JdbcTemplate`, `JdbcClient`, and `PlatformTransactionManager`, plus the
   WATCH-owned bounded PostgreSQL `TransactionOperations` wiring all three
   persistence adapters.
-- Outbound checker and callback adapter suite: 157 tests passed without a
-  live-internet dependency.
+- Outbound checker and callback adapter suite: 167 tests passed without a
+  live-internet dependency, including exact consumed-byte accounting,
+  no-drain response abort, header count/line classification, and resource
+  ceiling boundaries.
 - PostgreSQL 18.4 Testcontainers suite: 30 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
@@ -98,12 +110,10 @@
 
 ## Next useful slice
 
-Close the remaining review findings before public staging: enforce an exact
-response-byte consumption cap, classify response-header limit failures
-correctly, bound memory-allocation configuration values, strengthen malformed
-JSON authentication preflight, and add pinned-host TLS verification coverage.
-Then run the controlled public-staging delivery exercise in the maintained
-runbook using distinct operator-managed tokens and a one-shot
+Close the remaining review findings before public staging: strengthen the
+malformed JSON authentication preflight and add pinned-host TLS verification
+coverage. Then run the controlled public-staging delivery exercise in the
+maintained runbook using distinct operator-managed tokens and a one-shot
 acknowledgement-loss ingress. Verify first delivery, same-`eventId` replay, one
 BATON inbox row, backlog drain, and log redaction. After that, add dashboards
 and alerts and define secret rotation, egress, backup/migration, rollout,

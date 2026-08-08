@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -13,6 +14,17 @@ import java.util.concurrent.Executors;
 import org.junit.jupiter.api.Test;
 
 class BoundedDnsLookupTest {
+
+    @Test
+    void rejectsExecutorBoundsBeforeAllocatingThreadsOrQueues() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new BoundedDnsLookup(OutboundResourceBounds.MAX_DNS_THREADS + 1, 1));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new BoundedDnsLookup(
+                        1, OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY + 1));
+    }
 
     @Test
     void boundsAPlatformLookupAndDoesNotExposeTheHostnameInItsFailure() throws Exception {

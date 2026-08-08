@@ -43,7 +43,11 @@ preserving Host, SNI, and TLS hostname verification. Redirects, automatic
 client retries, cookies, proxy discovery, and decompression are disabled.
 Connection, read, total time, response headers and bytes, DNS work, HTTP
 concurrency, and queues are bounded. Response content and raw exception text
-are neither persisted nor exposed as metric dimensions.
+are neither persisted nor exposed as metric dimensions. Byte- or header-limit
+failures abort the response immediately rather than allowing connection-reuse
+draining; an unknown-length body that reaches the byte allowance is rejected
+without a probe beyond it. Allocation-sensitive resource settings have
+immutable implementation ceilings that runtime configuration cannot exceed.
 
 Extend the durable outbox with mutable delivery lifecycle state. A dispatcher:
 

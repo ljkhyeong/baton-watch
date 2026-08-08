@@ -118,6 +118,28 @@ class ApacheEventDeliveryTransportTest {
     }
 
     @Test
+    void mapsAnOversizedResponseHeaderLineToResponseTooLarge() throws Exception {
+        server = server();
+        server.createContext("/callback", exchange -> {
+            exchange.getResponseHeaders().add("X-Oversized", "x".repeat(256));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try (ApacheEventDeliveryTransport transport =
+                new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1)) {
+            DeliveryTransportFailure failure = assertThrows(
+                    DeliveryTransportFailure.class,
+                    () -> transport.execute(
+                            request("/callback", "{}".getBytes(StandardCharsets.UTF_8)),
+                            Duration.ofSeconds(2)));
+
+            assertEquals(DeliveryTransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+        }
+    }
+
+    @Test
     void rejectsDisabledExecutorBounds() {
         assertThrows(
                 IllegalArgumentException.class,
@@ -144,12 +166,17 @@ class ApacheEventDeliveryTransportTest {
     }
 
     private static EventDeliveryLimits testLimits(long maxResponseBytes) {
+        return testLimits(maxResponseBytes, 100, 8_192);
+    }
+
+    private static EventDeliveryLimits testLimits(
+            long maxResponseBytes, int maxHeaderCount, int maxHeaderLineLength) {
         return new EventDeliveryLimits(
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
                 maxResponseBytes,
-                100,
-                8_192);
+                maxHeaderCount,
+                maxHeaderLineLength);
     }
 }

@@ -260,6 +260,31 @@ class SafeUrlCheckEngineTest {
     }
 
     @Test
+    void allowsABodylessFinalResponseAfterRedirectsUseTheExactByteBudget() throws Exception {
+        CheckerLimits limits = new CheckerLimits(
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(3),
+                Duration.ofSeconds(5),
+                10,
+                3,
+                100,
+                8_192);
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        transport.add(HttpHopResponse.redirect(302, "/final", 10));
+        transport.add(HttpHopResponse.finalStatus(204, 0));
+
+        CheckObservation observation = engine(limits, dns, transport, clock)
+                .check(new TargetUrl("https://bytes.example/start"));
+
+        assertEquals(CheckOutcome.SUCCESS, observation.outcome());
+        assertEquals(10, observation.responseBytes());
+        assertEquals(1, observation.redirectCount());
+        assertEquals(List.of(10L, 0L), transport.remainingByteBudgets);
+    }
+
+    @Test
     void totalDeadlineIncludesDnsResolution() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         List<InetAddress> answer = publicAnswer();

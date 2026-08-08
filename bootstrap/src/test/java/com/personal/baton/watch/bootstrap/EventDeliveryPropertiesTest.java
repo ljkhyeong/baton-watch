@@ -3,6 +3,7 @@ package com.personal.baton.watch.bootstrap;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -63,8 +64,57 @@ class EventDeliveryPropertiesTest {
                 "????????????????????????????????", "éééééééééééééééééééééééééééééééé"));
     }
 
+    @Test
+    void enforcesBatchSizeHardCeilings() {
+        assertDoesNotThrow(() -> properties(
+                false,
+                URI.create(""),
+                "",
+                Duration.ofMinutes(10),
+                EventDeliveryProperties.MAX_DELIVERY_BATCH_SIZE,
+                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE));
+        assertThrows(IllegalArgumentException.class, () -> properties(
+                false,
+                URI.create(""),
+                "",
+                Duration.ofMinutes(10),
+                EventDeliveryProperties.MAX_DELIVERY_BATCH_SIZE + 1,
+                100));
+        assertThrows(IllegalArgumentException.class, () -> properties(
+                false,
+                URI.create(""),
+                "",
+                Duration.ofSeconds(60),
+                10,
+                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE + 1));
+    }
+
+    @Test
+    void rejectsOutboundResourceSettingsAboveTheirHardCeilings() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> http(
+                        OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES + 1,
+                        1));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> http(
+                        8_192,
+                        OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY + 1));
+    }
+
     private static EventDeliveryProperties properties(
             boolean enabled, URI endpoint, String token, Duration leaseDuration, int batchSize) {
+        return properties(enabled, endpoint, token, leaseDuration, batchSize, 100);
+    }
+
+    private static EventDeliveryProperties properties(
+            boolean enabled,
+            URI endpoint,
+            String token,
+            Duration leaseDuration,
+            int batchSize,
+            int maintenanceBatchSize) {
         return new EventDeliveryProperties(
                 enabled,
                 endpoint,
@@ -76,17 +126,22 @@ class EventDeliveryPropertiesTest {
                 Duration.ofMinutes(15),
                 Duration.ofDays(30),
                 batchSize,
+                maintenanceBatchSize,
+                http(8_192, 1));
+    }
+
+    private static EventDeliveryProperties.Http http(
+            long maxResponseBytes, int requestQueueCapacity) {
+        return new EventDeliveryProperties.Http(
+                Duration.ofSeconds(2),
+                Duration.ofSeconds(3),
+                Duration.ofSeconds(5),
+                maxResponseBytes,
                 100,
-                new EventDeliveryProperties.Http(
-                        Duration.ofSeconds(2),
-                        Duration.ofSeconds(3),
-                        Duration.ofSeconds(5),
-                        8_192,
-                        100,
-                        8_192,
-                        2,
-                        8,
-                        1,
-                        1));
+                8_192,
+                2,
+                8,
+                1,
+                requestQueueCapacity);
     }
 }

@@ -1,5 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
@@ -20,6 +21,9 @@ public record EventDeliveryProperties(
         int maintenanceBatchSize,
         Http http) {
 
+    static final int MAX_DELIVERY_BATCH_SIZE = 100;
+    static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
+
     public EventDeliveryProperties {
         pollInterval = requirePositive(pollInterval, "pollInterval");
         maintenanceInterval = requirePositive(maintenanceInterval, "maintenanceInterval");
@@ -30,8 +34,13 @@ public record EventDeliveryProperties(
         if (initialRetryDelay.compareTo(maxRetryDelay) > 0) {
             throw new IllegalArgumentException("initialRetryDelay must not exceed maxRetryDelay");
         }
-        if (batchSize <= 0 || maintenanceBatchSize <= 0) {
-            throw new IllegalArgumentException("event delivery batch sizes must be positive");
+        if (batchSize <= 0 || batchSize > MAX_DELIVERY_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "batchSize must be between 1 and " + MAX_DELIVERY_BATCH_SIZE);
+        }
+        if (maintenanceBatchSize <= 0 || maintenanceBatchSize > MAX_MAINTENANCE_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "maintenanceBatchSize must be between 1 and " + MAX_MAINTENANCE_BATCH_SIZE);
         }
         Objects.requireNonNull(http, "http");
         Duration maximumBatchRuntime;
@@ -68,12 +77,13 @@ public record EventDeliveryProperties(
             if (connectTimeout.compareTo(totalTimeout) > 0 || responseTimeout.compareTo(totalTimeout) > 0) {
                 throw new IllegalArgumentException("event delivery HTTP phase timeout cannot exceed totalTimeout");
             }
-            if (maxResponseBytes <= 0 || maxHeaderCount <= 0 || maxHeaderLineLength <= 0) {
-                throw new IllegalArgumentException("event delivery HTTP response bounds must be positive");
-            }
-            if (dnsThreads <= 0 || dnsQueueCapacity <= 0 || requestThreads <= 0 || requestQueueCapacity <= 0) {
-                throw new IllegalArgumentException("event delivery HTTP executor bounds must be positive");
-            }
+            OutboundResourceBounds.requireResponseBytes(
+                    maxResponseBytes,
+                    OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);
+            OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
+            OutboundResourceBounds.requireDnsExecutorBounds(dnsThreads, dnsQueueCapacity);
+            OutboundResourceBounds.requireRequestExecutorBounds(
+                    requestThreads, requestQueueCapacity);
         }
     }
 

@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
@@ -11,6 +12,11 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -93,6 +99,75 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void abortsAnUnknownLengthResponseAtTheCapWithoutWaitingForMoreBodyBytes()
+            throws Exception {
+        CountDownLatch prefixSent = new CountDownLatch(1);
+        CountDownLatch releaseBody = new CountDownLatch(1);
+        server = server();
+        server.createContext("/body", exchange -> {
+            exchange.sendResponseHeaders(200, 0);
+            try {
+                exchange.getResponseBody().write("12345678".getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush();
+                prefixSent.countDown();
+                await(releaseBody);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+        Future<TransportFailure> result = null;
+
+        try (ApacheHttpHopTransport transport =
+                new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+            result = caller.submit(() -> {
+                try {
+                    transport.execute(target("/body"), Duration.ofSeconds(2), 8);
+                    return null;
+                } catch (TransportFailure failure) {
+                    return failure;
+                }
+            });
+
+            assertTrue(prefixSent.await(1, TimeUnit.SECONDS));
+            TransportFailure failure = result.get(1, TimeUnit.SECONDS);
+            assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(8, failure.responseBytes());
+        } finally {
+            releaseBody.countDown();
+            if (result != null && !result.isDone()) {
+                result.cancel(true);
+            }
+            caller.shutdownNow();
+            assertTrue(caller.awaitTermination(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void mapsExcessiveResponseHeaderCountToResponseTooLarge() throws Exception {
+        server = server();
+        server.createContext("/headers", exchange -> {
+            for (int index = 0; index < 16; index++) {
+                exchange.getResponseHeaders().add("X-Test-" + index, "value");
+            }
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try (ApacheHttpHopTransport transport =
+                new ApacheHttpHopTransport(testLimits(64, 4, 8_192), 1, 1)) {
+            TransportFailure failure = assertThrows(
+                    TransportFailure.class,
+                    () -> transport.execute(target("/headers"), Duration.ofSeconds(2), 64));
+
+            assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(0, failure.responseBytes());
+        }
+    }
+
+    @Test
     void rejectsDisabledExecutorBounds() {
         assertThrows(
                 IllegalArgumentException.class,
@@ -114,13 +189,26 @@ class ApacheHttpHopTransportTest {
     }
 
     private static CheckerLimits testLimits(long maxResponseBytes) {
+        return testLimits(maxResponseBytes, 100, 8_192);
+    }
+
+    private static CheckerLimits testLimits(
+            long maxResponseBytes, int maxHeaderCount, int maxHeaderLineLength) {
         return new CheckerLimits(
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
                 maxResponseBytes,
                 3,
-                100,
-                8_192);
+                maxHeaderCount,
+                maxHeaderLineLength);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

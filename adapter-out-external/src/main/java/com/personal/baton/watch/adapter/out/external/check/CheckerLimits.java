@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -29,18 +30,12 @@ public record CheckerLimits(
         requireNanosRepresentable(connectTimeout, "connectTimeout");
         requireNanosRepresentable(responseTimeout, "responseTimeout");
         requireNanosRepresentable(totalTimeout, "totalTimeout");
-        if (maxResponseBytes <= 0) {
-            throw new IllegalArgumentException("maxResponseBytes must be positive");
-        }
+        OutboundResourceBounds.requireResponseBytes(
+                maxResponseBytes, OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
         if (maxRedirects < 0 || maxRedirects > 3) {
             throw new IllegalArgumentException("maxRedirects must be between zero and three");
         }
-        if (maxHeaderCount <= 0) {
-            throw new IllegalArgumentException("maxHeaderCount must be positive");
-        }
-        if (maxHeaderLineLength <= 0) {
-            throw new IllegalArgumentException("maxHeaderLineLength must be positive");
-        }
+        OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
     long totalTimeoutNanos() {

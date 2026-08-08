@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import com.personal.baton.watch.adapter.out.external.check.BoundedDnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
@@ -46,8 +47,8 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
         Objects.requireNonNull(limits, "limits");
         ValidatedDeliveryEndpoint validatedEndpoint = validateEndpoint(endpoint);
         String validatedToken = validateBearerToken(bearerToken);
-        requirePositiveExecutorBounds(
-                dnsThreadCount, dnsQueueCapacity, httpThreadCount, httpQueueCapacity);
+        OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
+        OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
         HealthChangeEventJsonSerializer serializer = new HealthChangeEventJsonSerializer(objectMapper);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheEventDeliveryTransport apacheTransport =
@@ -100,19 +101,6 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                     "event delivery bearer token must contain at least 32 safe characters");
         }
         return bearerToken;
-    }
-
-    private static void requirePositiveExecutorBounds(
-            int dnsThreadCount,
-            int dnsQueueCapacity,
-            int httpThreadCount,
-            int httpQueueCapacity) {
-        if (dnsThreadCount <= 0
-                || dnsQueueCapacity <= 0
-                || httpThreadCount <= 0
-                || httpQueueCapacity <= 0) {
-            throw new IllegalArgumentException("event delivery executor bounds must be positive");
-        }
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

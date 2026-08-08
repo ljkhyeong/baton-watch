@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
+import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
@@ -13,6 +14,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
+import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 
 /** Executes one already-validated, DNS-pinned POST without redirects or client state. */
@@ -85,16 +87,19 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             request.setHeader(HttpHeaders.CONNECTION, "close");
             request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
 
-            return client.execute(request, response -> {
-                progress.responseStarted();
-                long responseBytes = 0;
-                HttpEntity entity = response.getEntity();
-                if (entity != null) {
-                    responseBytes = bodyDiscarder.discard(
-                            entity, limits.maxResponseBytes(), progress::responseBytes);
-                }
-                return new DeliveryHttpResponse(response.getCode(), responseBytes);
-            });
+            return ApacheResponseLifecycle.execute(
+                    client, HttpHost.create(delivery.endpoint().uri()), request, response -> {
+                        progress.responseStarted();
+                        long responseBytes = 0;
+                        HttpEntity entity = response.getEntity();
+                        if (entity != null) {
+                            responseBytes = bodyDiscarder.discard(
+                                    entity,
+                                    limits.maxResponseBytes(),
+                                    progress::responseBytes);
+                        }
+                        return new DeliveryHttpResponse(response.getCode(), responseBytes);
+                    });
         }
     }
 

@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -31,15 +32,9 @@ public record EventDeliveryLimits(
                 || responseTimeout.compareTo(totalTimeout) > 0) {
             throw new IllegalArgumentException("phase timeouts must not exceed totalTimeout");
         }
-        if (maxResponseBytes <= 0) {
-            throw new IllegalArgumentException("maxResponseBytes must be positive");
-        }
-        if (maxHeaderCount <= 0) {
-            throw new IllegalArgumentException("maxHeaderCount must be positive");
-        }
-        if (maxHeaderLineLength <= 0) {
-            throw new IllegalArgumentException("maxHeaderLineLength must be positive");
-        }
+        OutboundResourceBounds.requireResponseBytes(
+                maxResponseBytes, OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);
+        OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
     long totalTimeoutNanos() {

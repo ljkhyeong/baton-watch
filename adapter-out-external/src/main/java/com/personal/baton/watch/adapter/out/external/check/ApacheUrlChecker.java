@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
@@ -8,10 +9,10 @@ import java.util.Objects;
 /** Production checker facade. It owns bounded DNS and HTTP executors. */
 public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
 
-    private static final int DNS_THREADS = 4;
-    private static final int DNS_QUEUE_CAPACITY = 16;
+    private static final int DNS_THREADS = 2;
+    private static final int DNS_QUEUE_CAPACITY = 8;
     private static final int HTTP_THREADS = 1;
-    private static final int HTTP_QUEUE_CAPACITY = 4;
+    private static final int HTTP_QUEUE_CAPACITY = 1;
 
     private final SafeUrlCheckEngine engine;
     private final AutoCloseable dnsLookup;
@@ -28,8 +29,8 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
             int httpThreadCount,
             int httpQueueCapacity) {
         Objects.requireNonNull(limits, "limits");
-        requirePositiveExecutorBounds(
-                dnsThreadCount, dnsQueueCapacity, httpThreadCount, httpQueueCapacity);
+        OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
+        OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheHttpHopTransport apacheTransport =
                 new ApacheHttpHopTransport(limits, httpThreadCount, httpQueueCapacity);
@@ -70,16 +71,4 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
         }
     }
 
-    private static void requirePositiveExecutorBounds(
-            int dnsThreadCount,
-            int dnsQueueCapacity,
-            int httpThreadCount,
-            int httpQueueCapacity) {
-        if (dnsThreadCount <= 0
-                || dnsQueueCapacity <= 0
-                || httpThreadCount <= 0
-                || httpQueueCapacity <= 0) {
-            throw new IllegalArgumentException("URL checker executor bounds must be positive");
-        }
-    }
 }

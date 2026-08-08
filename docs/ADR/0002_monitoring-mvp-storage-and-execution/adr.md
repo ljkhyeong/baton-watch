@@ -49,7 +49,11 @@ disabled. For every hop, a policy component parses and resolves the original
 host, rejects non-global addresses, and supplies only the approved addresses to
 a request-scoped client DNS resolver. The request URI keeps the original host
 so HTTP Host, SNI, and TLS hostname verification remain correct. The application
-depends only on an outbound checker port.
+depends only on an outbound checker port. Successful responses are closed
+normally, while byte- or header-limit failures abort the response immediately
+so Apache cannot drain additional bytes for connection reuse. An
+unknown-length body that reaches its remaining byte allowance is rejected
+without an extra probe read.
 
 `TargetUrl` owns the static target syntax policy used when a snapshot is
 accepted and when each redirect is revalidated. Compatibility-deferred
@@ -64,7 +68,10 @@ checks, callback delivery, and database maintenance use independent named
 single-thread schedulers. One check and one delivery batch run at a time per
 process, while a slow callback cannot starve target checks or maintenance.
 Batch size, lease, interval, timeouts, byte limit, staleness, retention, and
-cleanup batch size are bounded configuration values.
+cleanup batch size are bounded configuration values. Security- and
+allocation-sensitive byte, header, executor, queue, and batch settings also
+have immutable implementation ceilings that runtime configuration cannot
+exceed.
 
 The internal monitor API uses one runtime-supplied bearer token. This is service
 authentication only; WATCH still does not make BATON authorization decisions.

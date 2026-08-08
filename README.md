@@ -15,7 +15,8 @@ The implemented service currently provides:
 - isolated single-thread lanes for target checks, callback delivery, and
   maintenance, plus bounded transactional statement and row-lock waits
 - a background checker with DNS pinning, SSRF and redirect defenses, bounded
-  time/headers/bytes, stale projection handling, and bounded retention
+  time/headers/bytes, hard-capped runtime resource settings, stale projection
+  handling, and bounded retention
 - at-least-once delivery to one configured BATON HTTPS callback, with a fixed
   payload, event-ID idempotency, DNS pinning, no redirects, capped exponential
   retries, and delivered-event retention

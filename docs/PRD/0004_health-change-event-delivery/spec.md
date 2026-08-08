@@ -104,12 +104,20 @@ Before every connection, WATCH must:
 6. bound connection, response, and total time, response headers and bytes, DNS
    work, request concurrency, and queued work.
 
+A declared oversized body is rejected before consumption. An unknown-length
+body that reaches the remaining byte limit is rejected without reading a probe
+byte beyond that limit, and the failed response is aborted rather than drained.
+Header-limit violations are classified as `RESPONSE_TOO_LARGE`.
+
 The initial per-process limits are a 2-second connection timeout, 3-second
 response timeout, 5-second total timeout, 8 KiB consumed response limit, at
 most 100 response headers of at most 8 KiB per line, two DNS threads with eight
-queued lookups, and one HTTP request thread with one queued request. These are
-bounded runtime settings and may not be disabled while delivery is active.
-Response bodies are discarded and never persisted.
+queued lookups, and one HTTP request thread with one queued request. Runtime
+settings may not exceed 64 KiB of response bytes, 200 response headers, 16 KiB
+per header line, eight DNS threads with 64 queued lookups, or four HTTP request
+threads with 16 queued requests. Delivery claims are capped at 100 events and
+maintenance batches at 1,000 events. These limits may not be disabled while
+delivery is active. Response bodies are discarded and never persisted.
 
 ## Durable delivery lifecycle
 

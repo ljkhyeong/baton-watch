@@ -81,7 +81,7 @@ final class SafeUrlCheckEngine {
                 }
 
                 long remainingBytes = limits.maxResponseBytes() - state.responseBytes;
-                if (remainingBytes <= 0) {
+                if (remainingBytes < 0) {
                     return failure(CheckOutcome.RESPONSE_TOO_LARGE, startedAt, state);
                 }
 

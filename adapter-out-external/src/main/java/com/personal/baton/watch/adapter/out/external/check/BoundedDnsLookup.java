@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -83,9 +84,7 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
     }
 
     private static ExecutorService createExecutor(int threadCount, int queueCapacity) {
-        if (threadCount <= 0 || queueCapacity <= 0) {
-            throw new IllegalArgumentException("DNS executor bounds must be positive");
-        }
+        OutboundResourceBounds.requireDnsExecutorBounds(threadCount, queueCapacity);
         AtomicInteger sequence = new AtomicInteger();
         ThreadFactory threadFactory = task -> {
             Thread thread = new Thread(task, "watch-dns-" + sequence.incrementAndGet());

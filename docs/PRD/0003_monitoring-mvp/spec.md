@@ -72,13 +72,23 @@ per-workspace authorization, and end-user access are outside this MVP.
 - Automatic retries, cookies, authentication caching, proxy discovery, and
   response decompression are disabled.
 - Connection time, response time, total check time, response headers, and
-  consumed response bytes are bounded. Response bodies are discarded and never
+  consumed response bytes are bounded. A declared oversized body is rejected
+  before consumption. An unknown-length body that reaches the remaining byte
+  limit is rejected without reading a probe byte beyond that limit, and the
+  failed response is aborted rather than drained. Header-limit violations are
+  classified as `RESPONSE_TOO_LARGE`. Response bodies are discarded and never
   persisted.
 
 The default limits are a 2-second connection timeout, 3-second response
-timeout, 5-second total timeout, and 64 KiB consumed response limit. Limits are
-runtime configuration but may not be disabled. DNS resolution runs in a bounded
-executor because the JVM resolver has no per-call cancellation contract.
+timeout, 5-second total timeout, 64 KiB consumed response limit, at most 100
+response headers of at most 8 KiB per line, two DNS threads with eight queued
+lookups, and one HTTP request thread with one queued request. Runtime settings
+may not exceed 1 MiB of response bytes, 200 response headers, 16 KiB per header
+line, eight DNS threads with 64 queued lookups, or four HTTP request threads
+with 16 queued requests. Check claims are capped at 100 items and maintenance
+batches at 1,000 items. These limits may not be disabled. DNS resolution runs
+in a bounded executor because the JVM resolver has no per-call cancellation
+contract.
 
 ## Outcomes and health
 

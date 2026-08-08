@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
@@ -17,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
+import org.apache.hc.core5.http.MessageConstraintException;
 import org.junit.jupiter.api.Test;
 
 class ApacheHttpRequestExecutorTest {
@@ -114,6 +116,11 @@ class ApacheHttpRequestExecutorTest {
                     throw new IOException("sensitive network detail");
                 });
         assertBlockingFailure(
+                ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE,
+                progress -> {
+                    throw new MessageConstraintException("sensitive parser detail");
+                });
+        assertBlockingFailure(
                 ApacheHttpFailure.Kind.INTERNAL_FAILURE,
                 progress -> {
                     throw new IllegalStateException("sensitive adapter detail");
@@ -128,6 +135,18 @@ class ApacheHttpRequestExecutorTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHttpRequestExecutor(1, 0, "test-http-"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ApacheHttpRequestExecutor(
+                        OutboundResourceBounds.MAX_REQUEST_THREADS + 1,
+                        1,
+                        "test-http-"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new ApacheHttpRequestExecutor(
+                        1,
+                        OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY + 1,
+                        "test-http-"));
     }
 
     private static void assertTimedOut(

@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.http;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -13,12 +14,7 @@ public record ApacheHttpClientLimits(
     public ApacheHttpClientLimits {
         connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         responseTimeout = requirePositive(responseTimeout, "responseTimeout");
-        if (maxHeaderCount <= 0) {
-            throw new IllegalArgumentException("maxHeaderCount must be positive");
-        }
-        if (maxHeaderLineLength <= 0) {
-            throw new IllegalArgumentException("maxHeaderLineLength must be positive");
-        }
+        OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
     public static ApacheHttpClientLimits cappedBy(

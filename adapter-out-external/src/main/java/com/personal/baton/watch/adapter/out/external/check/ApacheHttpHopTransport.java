@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
+import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
+import org.apache.hc.core5.http.HttpHost;
 
 /** Apache HttpClient 5 transport for one already-validated and DNS-pinned hop. */
 public final class ApacheHttpHopTransport implements HttpHopTransport, AutoCloseable {
@@ -48,7 +50,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
         if (remainingTime.isZero() || remainingTime.isNegative()) {
             throw new TransportFailure(TransportFailure.Kind.CONNECT_TIMEOUT, 0);
         }
-        if (remainingBytes <= 0) {
+        if (remainingBytes < 0) {
             throw new TransportFailure(TransportFailure.Kind.RESPONSE_TOO_LARGE, 0);
         }
 
@@ -84,20 +86,22 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
                 target.target().hostname(), target.addresses(), clientLimits)) {
             HttpGet request = new HttpGet(target.target().uri());
             request.setHeader(HttpHeaders.CONNECTION, "close");
-            return client.execute(request, response -> {
-                progress.responseStarted();
-                List<String> locations = new ArrayList<>();
-                for (Header header : response.getHeaders(HttpHeaders.LOCATION)) {
-                    locations.add(header.getValue() == null ? "" : header.getValue());
-                }
-                long responseBytes = 0;
-                HttpEntity entity = response.getEntity();
-                if (entity != null) {
-                    responseBytes = bodyDiscarder.discard(
-                            entity, remainingBytes, progress::responseBytes);
-                }
-                return new HttpHopResponse(response.getCode(), locations, responseBytes);
-            });
+            return ApacheResponseLifecycle.execute(
+                    client, HttpHost.create(target.target().uri()), request, response -> {
+                        progress.responseStarted();
+                        List<String> locations = new ArrayList<>();
+                        for (Header header : response.getHeaders(HttpHeaders.LOCATION)) {
+                            locations.add(header.getValue() == null ? "" : header.getValue());
+                        }
+                        long responseBytes = 0;
+                        HttpEntity entity = response.getEntity();
+                        if (entity != null) {
+                            responseBytes = bodyDiscarder.discard(
+                                    entity, remainingBytes, progress::responseBytes);
+                        }
+                        return new HttpHopResponse(
+                                response.getCode(), locations, responseBytes);
+                    });
         }
     }
 

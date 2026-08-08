@@ -1,5 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -18,6 +19,9 @@ public record WatchProperties(
         int maintenanceBatchSize,
         Http http) {
 
+    static final int MAX_CHECK_BATCH_SIZE = 100;
+    static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
+
     public WatchProperties {
         apiToken = requireToken(apiToken);
         pollInterval = requirePositive(pollInterval, "pollInterval");
@@ -28,8 +32,13 @@ public record WatchProperties(
                 internalFailureRetryInterval, "internalFailureRetryInterval");
         staleAfter = requirePositive(staleAfter, "staleAfter");
         retention = requirePositive(retention, "retention");
-        if (checkBatchSize <= 0 || maintenanceBatchSize <= 0) {
-            throw new IllegalArgumentException("worker batch sizes must be positive");
+        if (checkBatchSize <= 0 || checkBatchSize > MAX_CHECK_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "checkBatchSize must be between 1 and " + MAX_CHECK_BATCH_SIZE);
+        }
+        if (maintenanceBatchSize <= 0 || maintenanceBatchSize > MAX_MAINTENANCE_BATCH_SIZE) {
+            throw new IllegalArgumentException(
+                    "maintenanceBatchSize must be between 1 and " + MAX_MAINTENANCE_BATCH_SIZE);
         }
         Objects.requireNonNull(http, "http");
         Duration maximumBatchRuntime;
@@ -69,15 +78,15 @@ public record WatchProperties(
             if (connectTimeout.compareTo(totalTimeout) > 0 || responseTimeout.compareTo(totalTimeout) > 0) {
                 throw new IllegalArgumentException("HTTP phase timeout cannot exceed totalTimeout");
             }
-            if (maxResponseBytes <= 0 || maxRedirects < 0 || maxRedirects > 3) {
-                throw new IllegalArgumentException("HTTP response and redirect bounds are invalid");
+            OutboundResourceBounds.requireResponseBytes(
+                    maxResponseBytes, OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
+            if (maxRedirects < 0 || maxRedirects > 3) {
+                throw new IllegalArgumentException("maxRedirects must be between zero and three");
             }
-            if (maxHeaderCount <= 0 || maxHeaderLineLength <= 0) {
-                throw new IllegalArgumentException("HTTP header bounds must be positive");
-            }
-            if (dnsThreads <= 0 || dnsQueueCapacity <= 0 || requestThreads <= 0 || requestQueueCapacity <= 0) {
-                throw new IllegalArgumentException("HTTP executor bounds must be positive");
-            }
+            OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
+            OutboundResourceBounds.requireDnsExecutorBounds(dnsThreads, dnsQueueCapacity);
+            OutboundResourceBounds.requireRequestExecutorBounds(
+                    requestThreads, requestQueueCapacity);
         }
     }
 

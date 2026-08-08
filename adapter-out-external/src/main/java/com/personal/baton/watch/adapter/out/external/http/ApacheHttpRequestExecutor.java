@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.http;
 
+import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.MessageConstraintException;
 
 /** Owns a bounded HTTP executor and applies one hard deadline to each request. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
@@ -109,6 +111,8 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
             throw failure(
                     ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE,
                     Math.max(progress.responseBytes(), exception.consumedWithinLimit()));
+        } catch (MessageConstraintException exception) {
+            throw failure(ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE, progress.responseBytes());
         } catch (ConnectTimeoutException | ConnectionRequestTimeoutException exception) {
             throw failure(ApacheHttpFailure.Kind.CONNECT_TIMEOUT, progress.responseBytes());
         } catch (SSLException exception) {
@@ -134,9 +138,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
 
     private static ExecutorService createExecutor(
             int threadCount, int queueCapacity, String threadNamePrefix) {
-        if (threadCount <= 0 || queueCapacity <= 0) {
-            throw new IllegalArgumentException("HTTP executor bounds must be positive");
-        }
+        OutboundResourceBounds.requireRequestExecutorBounds(threadCount, queueCapacity);
         if (threadNamePrefix == null || threadNamePrefix.isBlank()) {
             throw new IllegalArgumentException("HTTP thread name prefix must not be blank");
         }
