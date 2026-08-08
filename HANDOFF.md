@@ -51,7 +51,9 @@
 - Target checks, callback delivery, and maintenance run on separate named
   single-thread schedulers, so a slow callback batch cannot starve check polling
   or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
-  local Compose grants the process 70 seconds before forced termination.
+  local and staging Compose grant the process 110 seconds before forced
+  termination, covering the default 30-second web shutdown phase, scheduler
+  drain, and a bounded margin.
 - Adapter-owned persistence transactions have a five-second JDBC statement
   deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
   reject an existing outer Spring transaction before work starts, preserving
@@ -82,6 +84,19 @@
   normalized history. The previous repository identity remains a private
   history-only archive, and representative pre-rewrite commit SHAs are not
   resolvable through the public repository API.
+- Staging deployment artifacts now define a SHA-tagged local WATCH image,
+  mode-0600 Compose secret files, an external PostgreSQL volume, separate
+  internal database and egress-capable edge networks, health checks, bounded
+  resources and logs, and a Cloudflare Tunnel overlay. Both base and tunnel
+  configurations publish no host ports. The staging configuration fixes
+  health-change delivery to disabled. The runbook keeps the active external
+  volume name in a separate single-assignment mode-0600 state file so a schema
+  rollback remains selected across operator shells and repository updates.
+- `https://watch-staging.b4ton.com` remains an intended staging URL, not a live
+  deployment claim. The current Mac has not authenticated a Cloudflare Tunnel
+  connector, a remotely managed tunnel and its connector token have not been
+  provisioned, and live DNS/TLS/origin routing has not been externally
+  verified.
 
 ## Verification
 
@@ -159,16 +174,39 @@
   problem fields,
   fail-closed `/api/v1/**` handling, statelessness, public status access, and
   authenticated PUT without CSRF.
+- Staging Compose artifacts are available as `compose.staging.yml`,
+  `compose.staging-tunnel.yml`, and `ops/staging.env.example`. Their merged
+  configuration is designed to require an immutable WATCH image, external
+  PostgreSQL volume, and three file-backed secrets while publishing no host
+  port in either mode. This is static artifact evidence only; no live
+  Cloudflare connector or external endpoint test has passed yet.
+- The executable staging Compose policy test passed for both the base and
+  tunnel-rendered models. An isolated base-origin smoke then used mode-0600 test
+  secrets, a dedicated external volume, and the hardened image: PostgreSQL and
+  WATCH became healthy, Flyway V1/V2 were present, internal status and
+  readiness were `UP`, the edge-network status path succeeded, unauthenticated
+  monitor access returned `401`, and both containers had empty host port
+  bindings. WATCH environment inspection contained no password or token value,
+  and bounded logs contained none of the exercised secrets or prohibited
+  request-data categories.
+- A graceful stop preserved the external volume; the same image and volume
+  restarted healthy with both migration records intact. Compose shutdown again
+  preserved the volume before the explicitly named test volume, test image,
+  containers, networks, and temporary secret files were removed. This proves a
+  local origin path only, not a Cloudflare connector or public deployment.
 
 ## Next useful slice
 
-Provision DNS, valid HTTPS routing, and a deployed WATCH instance for the
-selected `https://watch-staging.b4ton.com` base URL. Separately provision the
-public BATON callback, distinct operator-managed tokens, private database/log
-access, a controlled public target, and a one-shot acknowledgement-loss
-ingress. Then run the maintained exercise and verify first delivery,
-same-`eventId` replay, one BATON inbox row, backlog drain, and log redaction.
-Dashboards, alerts, secret rotation, egress, backup/migration, rollout,
-rollback, and reconciliation remain required before production. Do not infer a
-deployment or external alert from repository configuration, DNS selection, or
-local smoke evidence.
+Authenticate the current Mac to the `b4ton.com` Cloudflare account, create the
+remotely managed staging tunnel, install its connector token and the independent
+database/API secret files with mode 0600, initialize the active-volume state,
+create the external PostgreSQL volume, and build the selected clean Git SHA
+locally. Configure
+`watch-staging.b4ton.com` with status and monitor paths routed to
+`http://watch:8080`, a final `404` catch-all, cache bypass, and an Active edge
+certificate. Then deploy with both staging Compose files and verify internal
+application/database health plus external status, unauthenticated `401`, TLS, cache, and log
+redaction while delivery remains disabled. Only after that should the separate
+BATON callback and acknowledgement-loss delivery exercise be provisioned. Do
+not infer a deployment from repository artifacts or Cloudflare configuration
+alone.

@@ -90,3 +90,9 @@ jobs:
           total = sum(found[name]["tests"] for name in expected)
           print(f"Verified {len(expected)} required suites and {total} tests")
           PY
+
+      - name: Validate staging deployment policy
+        run: ./ops/tests/staging-compose-policy-test.sh
+
+      - name: Build pinned runtime image
+        run: docker build --tag baton-watch:verify .

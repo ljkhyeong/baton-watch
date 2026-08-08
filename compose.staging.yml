@@ -1,0 +1,124 @@
+name: "${WATCH_COMPOSE_PROJECT_NAME:-baton-watch-staging}"
+
+services:
+  postgres:
+    image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    environment:
+      POSTGRES_DB: "${WATCH_DB_NAME:-baton_watch}"
+      POSTGRES_USER: "${WATCH_DB_USER:-baton_watch}"
+      POSTGRES_PASSWORD_FILE: /run/secrets/spring.datasource.password
+    secrets:
+      - source: watch-db-password
+        target: spring.datasource.password
+    volumes:
+      - watch-postgres-data:/var/lib/postgresql
+    networks:
+      - watch-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/run/postgresql:rw,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: 1.0
+          memory: 768M
+          pids: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  watch:
+    image: "baton-watch:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
+    pull_policy: never
+    environment:
+      JAVA_TOOL_OPTIONS: "${WATCH_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}"
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${WATCH_DB_NAME:-baton_watch}"
+      SPRING_DATASOURCE_USERNAME: "${WATCH_DB_USER:-baton_watch}"
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
+      MANAGEMENT_SERVER_ADDRESS: 127.0.0.1
+      WATCH_PERSISTENCE_TRANSACTION_TIMEOUT: "${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:-5s}"
+      WATCH_PERSISTENCE_LOCK_TIMEOUT: "${WATCH_PERSISTENCE_LOCK_TIMEOUT:-1s}"
+      SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT: "${SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT:-5s}"
+      WATCH_EVENT_DELIVERY_ENABLED: "false"
+    secrets:
+      - source: watch-db-password
+        target: spring.datasource.password
+      - source: watch-api-token
+        target: watch.api-token
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    networks:
+      - watch-db
+      - watch-edge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+    stop_grace_period: 110s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    deploy:
+      resources:
+        limits:
+          cpus: 1.0
+          memory: 768M
+          pids: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  watch-db:
+    driver: bridge
+    internal: true
+  watch-edge:
+    driver: bridge
+    internal: false
+
+volumes:
+  watch-postgres-data:
+    external: true
+    name: "${WATCH_POSTGRES_VOLUME_NAME:?WATCH_POSTGRES_VOLUME_NAME is required}"
+
+secrets:
+  watch-db-password:
+    file: "${WATCH_DB_PASSWORD_FILE:?WATCH_DB_PASSWORD_FILE is required}"
+  watch-api-token:
+    file: "${WATCH_API_TOKEN_FILE:?WATCH_API_TOKEN_FILE is required}"

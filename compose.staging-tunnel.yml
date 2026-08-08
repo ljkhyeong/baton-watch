@@ -1,0 +1,53 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    command:
+      - tunnel
+      - --loglevel
+      - info
+      - --metrics
+      - 127.0.0.1:2000
+      - run
+      - --token-file
+      - /run/secrets/cloudflare-tunnel-token
+    secrets:
+      - source: cloudflare-tunnel-token
+        target: cloudflare-tunnel-token
+    depends_on:
+      watch:
+        condition: service_healthy
+        restart: true
+    networks:
+      - watch-edge
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 15s
+    restart: unless-stopped
+    stop_grace_period: 40s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    deploy:
+      resources:
+        limits:
+          cpus: 0.5
+          memory: 256M
+          pids: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+secrets:
+  cloudflare-tunnel-token:
+    file: "${WATCH_TUNNEL_TOKEN_FILE:?WATCH_TUNNEL_TOKEN_FILE is required}"
