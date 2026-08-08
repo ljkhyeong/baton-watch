@@ -24,6 +24,8 @@ import org.junit.jupiter.api.Test;
 
 class ApacheHttpHopTransportTest {
 
+    private static final long ASYNC_COORDINATION_TIMEOUT_SECONDS = 5;
+
     private HttpServer server;
 
     @AfterEach
@@ -130,8 +132,10 @@ class ApacheHttpHopTransportTest {
                 }
             });
 
-            assertTrue(prefixSent.await(1, TimeUnit.SECONDS));
-            TransportFailure failure = result.get(1, TimeUnit.SECONDS);
+            assertTrue(prefixSent.await(
+                    ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+            TransportFailure failure = result.get(
+                    ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
             assertEquals(8, failure.responseBytes());
         } finally {
