@@ -44,6 +44,13 @@ carrying the setting into later work. Persistence fails before starting if a
 caller already owns a Spring transaction, preserving the rule that application
 network I/O cannot accidentally run inside an outer transaction.
 
+Boot's shared `JdbcTemplate` has a five-second query timeout. The auto-configured
+`JdbcClient` reuses that template through `NamedParameterJdbcTemplate`, so the
+same statement deadline bounds the non-transactional projection lookup and
+event-backlog aggregation without a WATCH-owned JDBC wrapper. An active Spring
+transaction may shorten the effective statement deadline to its remaining
+transaction time.
+
 Use Apache HttpClient 5 in the external adapter. Automatic redirects are
 disabled. For every hop, a policy component parses and resolves the original
 host, rejects non-global addresses, and supplies only the approved addresses to
@@ -84,10 +91,12 @@ migrations. Spring JDBC keeps locking and transaction scopes visible at the
 cost of manual mapping.
 
 Transaction limits apply to transaction-scoped JDBC statements and row-lock
-waits. They do not bound connection acquisition or non-transactional projection
-and backlog queries, which remain subject to separate datasource and runtime
-controls. Independent scheduler lanes can use up to three database connections
-concurrently, so pool sizing must retain that minimum operational headroom.
+waits, while the shared Spring JDBC query timeout also bounds non-transactional
+projection and backlog statements. These statement deadlines do not bound
+connection acquisition or a network path that cannot complete JDBC cancellation;
+those remain subject to datasource and runtime controls. Independent scheduler
+lanes can use up to three database connections concurrently, so pool sizing must
+retain that minimum operational headroom.
 
 DNS pinning requires an HTTP client with an injectable resolver; the JDK HTTP
 client is not used because Java 21 does not expose an equivalent per-request

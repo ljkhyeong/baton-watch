@@ -42,7 +42,8 @@ class PersistenceAutoWiringTest {
             .withPropertyValues(
                     "watch.event-delivery.enabled=false",
                     "watch.persistence.transaction-timeout=5s",
-                    "watch.persistence.lock-timeout=1s")
+                    "watch.persistence.lock-timeout=1s",
+                    "spring.jdbc.template.query-timeout=3s")
             .withBean(DataSource.class, () -> mock(DataSource.class))
             .withBean(Clock.class, Clock::systemUTC)
             .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties)
@@ -55,6 +56,7 @@ class PersistenceAutoWiringTest {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(JdbcTemplate.class);
+            assertThat(context.getBean(JdbcTemplate.class).getQueryTimeout()).isEqualTo(3);
             assertThat(context).hasSingleBean(JdbcClient.class);
             assertThat(context).hasSingleBean(PlatformTransactionManager.class);
             assertThat(context).hasSingleBean(TransactionOperations.class);

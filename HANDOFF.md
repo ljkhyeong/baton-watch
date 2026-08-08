@@ -56,6 +56,9 @@
   deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
   reject an existing outer Spring transaction before work starts, preserving
   the network-outside-transaction boundary.
+- Boot's shared `JdbcTemplate` and auto-configured `JdbcClient` apply the same
+  five-second statement deadline to non-transactional projection and event
+  backlog reads.
 - Separate-port Actuator health/Prometheus endpoints and low-cardinality check,
   scheduler, backlog, oldest-event-age, finalization, and delivery-outcome
   telemetry are configured; Compose does not publish the management port. No
@@ -64,28 +67,29 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache`: 268 tests
+- Gradle 9.2.1 `clean test --no-build-cache`: 270 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
 - Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
-  `JdbcTemplate`, `JdbcClient`, and `PlatformTransactionManager`, plus the
-  WATCH-owned bounded PostgreSQL `TransactionOperations` wiring all three
-  persistence adapters.
+  `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
+  `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
+  `TransactionOperations` wiring all three persistence adapters.
 - Outbound checker and callback adapter suite: 169 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
   no-drain response abort, header count/line classification, resource ceiling
   boundaries, pinned-address TLS Host/SNI preservation, DNS SAN verification,
   and trusted-certificate hostname-mismatch classification.
-- PostgreSQL 18.4 Testcontainers suite: 30 tests passed, including V1/V2
+- PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
   idempotency, delivery token/attempt stale rejection, batch check- and
   delivery-claim rollback, check and delivery lease recovery, atomic event
   rollback across finalization, synchronization, and staleness, retry
   boundaries, backlog state, delivered-only retention, row-lock timeout,
-  transaction-deadline rollback, transaction-local setting restoration, and
-  outer-transaction rejection.
+  transaction-deadline rollback, transaction-local setting restoration,
+  bounded non-transactional projection and backlog reads, and outer-transaction
+  rejection.
 - Named scheduler context tests verify independent single-thread execution,
   owned thread prefixes, shutdown policies, and explicit routing of every
   scheduled method.
@@ -119,10 +123,13 @@
 
 ## Next useful slice
 
-Run the controlled public-staging delivery exercise in the maintained runbook
-using distinct operator-managed tokens and a one-shot acknowledgement-loss
-ingress. Verify first delivery, same-`eventId` replay, one BATON inbox row,
-backlog drain, and log redaction. After that, add dashboards and alerts and
-define secret rotation, egress, backup/migration, rollout, rollback, and
-reconciliation procedures before production. Do not infer a deployment or
-external alert from repository configuration or local smoke evidence.
+Add a CI verification workflow that requires the Docker-backed PostgreSQL suite
+and fails closed when integration tests are skipped. Then add one automated
+`BatonWatchApplication` + Flyway + PostgreSQL root-context smoke. After repository
+verification is fail-closed, run the controlled public-staging delivery exercise
+in the maintained runbook with distinct operator-managed tokens and a one-shot
+acknowledgement-loss ingress. Verify first delivery, same-`eventId` replay, one
+BATON inbox row, backlog drain, and log redaction. Dashboards, alerts, secret
+rotation, egress, backup/migration, rollout, rollback, and reconciliation remain
+required before production. Do not infer a deployment or external alert from
+repository configuration or local smoke evidence.

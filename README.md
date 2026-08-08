@@ -13,7 +13,7 @@ The implemented service currently provides:
 - PostgreSQL schedules, leases, immutable attempts/results, current health, and
   durable health-change events with delivery leases and retry state
 - isolated single-thread lanes for target checks, callback delivery, and
-  maintenance, plus bounded transactional statement and row-lock waits
+  maintenance, plus bounded JDBC statement and transactional row-lock waits
 - a background checker with DNS pinning, SSRF and redirect defenses, bounded
   time/headers/bytes, hard-capped runtime resource settings, stale projection
   handling, and bounded retention
@@ -46,6 +46,9 @@ The modules are domain, application, adapter-in-web, adapter-out-persistence, ad
 ## Build and run
 
 The repository includes a Gradle wrapper pinned to 9.2.1.
+`SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT` may override the five-second shared JDBC
+statement deadline and must remain a whole-second duration of at least one
+second.
 
 ~~~bash
 ./gradlew test
