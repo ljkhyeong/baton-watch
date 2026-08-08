@@ -23,6 +23,11 @@
 - Target checks and event delivery share a neutral request-scoped Apache client,
   bounded deadline executor, pinned resolver, and bounded body discarder while
   retaining separate GET/redirect and POST/acknowledgement semantics.
+- A real local TLS handshake verifies that the shared client connects only to
+  the approved pinned address while preserving the original HTTP Host and TLS
+  SNI. A certificate trusted by the test client succeeds only for its DNS SAN;
+  the same certificate under a mismatched hostname is classified as
+  `TLS_FAILURE` before the server handles an HTTP request.
 - Response-byte accounting never consumes a probe byte beyond the configured
   allowance. Unknown-length responses that reach the allowance are rejected
   conservatively, oversized and header-limit failures are classified as
@@ -59,7 +64,7 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache`: 266 tests
+- Gradle 9.2.1 `clean test --no-build-cache`: 268 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
@@ -67,10 +72,11 @@
   `JdbcTemplate`, `JdbcClient`, and `PlatformTransactionManager`, plus the
   WATCH-owned bounded PostgreSQL `TransactionOperations` wiring all three
   persistence adapters.
-- Outbound checker and callback adapter suite: 167 tests passed without a
+- Outbound checker and callback adapter suite: 169 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
-  no-drain response abort, header count/line classification, and resource
-  ceiling boundaries.
+  no-drain response abort, header count/line classification, resource ceiling
+  boundaries, pinned-address TLS Host/SNI preservation, DNS SAN verification,
+  and trusted-certificate hostname-mismatch classification.
 - PostgreSQL 18.4 Testcontainers suite: 30 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
@@ -113,12 +119,10 @@
 
 ## Next useful slice
 
-Close the remaining review finding before public staging: add pinned-host TLS
-verification coverage. Then run the controlled public-staging delivery
-exercise in the maintained runbook using distinct operator-managed tokens and
-a one-shot acknowledgement-loss ingress. Verify first delivery, same-`eventId`
-replay, one BATON inbox row, backlog drain, and log redaction. After that, add
-dashboards and alerts and define secret rotation, egress, backup/migration,
-rollout, rollback, and reconciliation procedures before production. Do not
-infer a deployment or external alert from repository configuration or local
-smoke evidence.
+Run the controlled public-staging delivery exercise in the maintained runbook
+using distinct operator-managed tokens and a one-shot acknowledgement-loss
+ingress. Verify first delivery, same-`eventId` replay, one BATON inbox row,
+backlog drain, and log redaction. After that, add dashboards and alerts and
+define secret rotation, egress, backup/migration, rollout, rollback, and
+reconciliation procedures before production. Do not infer a deployment or
+external alert from repository configuration or local smoke evidence.
