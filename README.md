@@ -12,6 +12,8 @@ The implemented service currently provides:
 - revision-safe ACTIVE/INACTIVE monitor synchronization
 - PostgreSQL schedules, leases, immutable attempts/results, current health, and
   durable health-change events with delivery leases and retry state
+- isolated single-thread lanes for target checks, callback delivery, and
+  maintenance, plus bounded transactional statement and row-lock waits
 - a background checker with DNS pinning, SSRF and redirect defenses, bounded
   time/headers/bytes, stale projection handling, and bounded retention
 - at-least-once delivery to one configured BATON HTTPS callback, with a fixed

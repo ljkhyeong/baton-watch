@@ -9,14 +9,15 @@ spring:
     enabled: true
   task:
     scheduling:
-      pool:
-        size: 1
       shutdown:
         await-termination: true
         await-termination-period: 65s
 
 watch:
   api-token: ${WATCH_API_TOKEN}
+  persistence:
+    transaction-timeout: ${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:5s}
+    lock-timeout: ${WATCH_PERSISTENCE_LOCK_TIMEOUT:1s}
   poll-interval: 1s
   maintenance-interval: 1m
   lease-duration: 30s

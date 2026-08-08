@@ -23,7 +23,9 @@ final class EventDeliveryScheduler {
         this.metrics = Objects.requireNonNull(metrics, "metrics");
     }
 
-    @Scheduled(fixedDelayString = "${watch.event-delivery.poll-interval}")
+    @Scheduled(
+            fixedDelayString = "${watch.event-delivery.poll-interval}",
+            scheduler = WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER)
     void deliverPendingEvents() {
         try {
             EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();

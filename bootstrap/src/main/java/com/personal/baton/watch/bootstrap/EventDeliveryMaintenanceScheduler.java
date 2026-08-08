@@ -27,7 +27,9 @@ final class EventDeliveryMaintenanceScheduler {
         this.metrics = Objects.requireNonNull(metrics, "metrics");
     }
 
-    @Scheduled(fixedDelayString = "${watch.event-delivery.maintenance-interval}")
+    @Scheduled(
+            fixedDelayString = "${watch.event-delivery.maintenance-interval}",
+            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void maintainDeliveryState() {
         try {
             int purged = purgeDeliveredEvents.purgeDeliveredEvents();

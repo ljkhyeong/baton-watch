@@ -31,7 +31,9 @@ public final class MonitoringScheduler {
         this.metrics = Objects.requireNonNull(metrics, "metrics");
     }
 
-    @Scheduled(fixedDelayString = "${watch.poll-interval}")
+    @Scheduled(
+            fixedDelayString = "${watch.poll-interval}",
+            scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
     void checkDueMonitors() {
         try {
             DueCheckBatchResult result = runDueChecks.runDueChecks();
@@ -50,7 +52,9 @@ public final class MonitoringScheduler {
         }
     }
 
-    @Scheduled(fixedDelayString = "${watch.maintenance-interval}")
+    @Scheduled(
+            fixedDelayString = "${watch.maintenance-interval}",
+            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void maintainMonitoringState() {
         try {
             int stale = markStaleProjections.markStaleProjectionsUnknown();

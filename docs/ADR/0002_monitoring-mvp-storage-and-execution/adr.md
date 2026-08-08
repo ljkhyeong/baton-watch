@@ -36,6 +36,14 @@ domain policy, updates the projection, and inserts an event when health changes
 in one transaction. The attempt identifier is unique so repeated finalization
 is a no-op.
 
+Every adapter-owned persistence transaction has a five-second Spring
+transaction timeout and applies a one-second PostgreSQL `lock_timeout` with
+transaction-local scope. The lock limit fails row-lock contention before the
+broader statement deadline, and local scope prevents a pooled connection from
+carrying the setting into later work. Persistence fails before starting if a
+caller already owns a Spring transaction, preserving the rule that application
+network I/O cannot accidentally run inside an outer transaction.
+
 Use Apache HttpClient 5 in the external adapter. Automatic redirects are
 disabled. For every hop, a policy component parses and resolves the original
 host, rejects non-global addresses, and supplies only the approved addresses to
@@ -51,10 +59,12 @@ to `DESTINATION_REJECTED`; new synchronization commands must pass the same
 check before persistence. The external adapter adds only raw redirect-reference
 validation, resolution, and loop canonicalization before DNS/address approval.
 
-Spring scheduling lives in bootstrap and invokes application use cases. One
-check runs at a time per process; batch size, lease, interval, timeouts, byte
-limit, staleness, retention, and cleanup batch size are bounded configuration
-values.
+Spring scheduling lives in bootstrap and invokes application use cases. Target
+checks, callback delivery, and database maintenance use independent named
+single-thread schedulers. One check and one delivery batch run at a time per
+process, while a slow callback cannot starve target checks or maintenance.
+Batch size, lease, interval, timeouts, byte limit, staleness, retention, and
+cleanup batch size are bounded configuration values.
 
 The internal monitor API uses one runtime-supplied bearer token. This is service
 authentication only; WATCH still does not make BATON authorization decisions.
@@ -65,6 +75,12 @@ The SQL is PostgreSQL-specific and persistence integration tests must exercise
 PostgreSQL, especially lease competition, recovery, stale revisions, and
 migrations. Spring JDBC keeps locking and transaction scopes visible at the
 cost of manual mapping.
+
+Transaction limits apply to transaction-scoped JDBC statements and row-lock
+waits. They do not bound connection acquisition or non-transactional projection
+and backlog queries, which remain subject to separate datasource and runtime
+controls. Independent scheduler lanes can use up to three database connections
+concurrently, so pool sizing must retain that minimum operational headroom.
 
 DNS pinning requires an HTTP client with an injectable resolver; the JDK HTTP
 client is not used because Java 21 does not expose an equivalent per-request

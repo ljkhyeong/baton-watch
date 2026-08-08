@@ -7,6 +7,7 @@ import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChange
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
+import com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperations;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
@@ -34,8 +35,14 @@ class PersistenceAutoWiringTest {
                     JdbcClientAutoConfiguration.class,
                     DataSourceTransactionManagerAutoConfiguration.class,
                     TransactionAutoConfiguration.class))
-            .withUserConfiguration(MonitoringConfiguration.class, EventDeliveryConfiguration.class)
-            .withPropertyValues("watch.event-delivery.enabled=false")
+            .withUserConfiguration(
+                    PersistenceTransactionConfiguration.class,
+                    MonitoringConfiguration.class,
+                    EventDeliveryConfiguration.class)
+            .withPropertyValues(
+                    "watch.event-delivery.enabled=false",
+                    "watch.persistence.transaction-timeout=5s",
+                    "watch.persistence.lock-timeout=1s")
             .withBean(DataSource.class, () -> mock(DataSource.class))
             .withBean(Clock.class, Clock::systemUTC)
             .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties)
@@ -51,6 +58,8 @@ class PersistenceAutoWiringTest {
             assertThat(context).hasSingleBean(JdbcClient.class);
             assertThat(context).hasSingleBean(PlatformTransactionManager.class);
             assertThat(context).hasSingleBean(TransactionOperations.class);
+            assertThat(context.getBean(TransactionOperations.class))
+                    .isInstanceOf(PostgresTransactionOperations.class);
 
             assertThat(context).hasSingleBean(JdbcMonitorPersistenceAdapter.class);
             assertThat(context).hasSingleBean(MonitorPersistencePort.class);

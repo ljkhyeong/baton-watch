@@ -33,9 +33,14 @@
   deployment and public WATCH-to-BATON integration are not yet verified.
 - Delivery is disabled by default. Undelivered events remain durable while it
   is disabled or BATON is unavailable.
-- Scheduler shutdown waits up to 65 seconds so the bounded worst-case delivery
-  batch can drain; local Compose grants the process 70 seconds before forced
-  termination.
+- Target checks, callback delivery, and maintenance run on separate named
+  single-thread schedulers, so a slow callback batch cannot starve check polling
+  or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
+  local Compose grants the process 70 seconds before forced termination.
+- Adapter-owned persistence transactions have a five-second JDBC statement
+  deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
+  reject an existing outer Spring transaction before work starts, preserving
+  the network-outside-transaction boundary.
 - Separate-port Actuator health/Prometheus endpoints and low-cardinality check,
   scheduler, backlog, oldest-event-age, finalization, and delivery-outcome
   telemetry are configured; Compose does not publish the management port. No
@@ -44,22 +49,28 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test --no-build-cache` run without the daemon: 238 tests
+- Gradle 9.2.1 `clean test --no-build-cache`: 248 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - Executable boot jar: passed.
 - Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
-  `JdbcTemplate`, `JdbcClient`, `PlatformTransactionManager`, and
-  `TransactionOperations` wiring all three persistence adapters.
+  `JdbcTemplate`, `JdbcClient`, and `PlatformTransactionManager`, plus the
+  WATCH-owned bounded PostgreSQL `TransactionOperations` wiring all three
+  persistence adapters.
 - Outbound checker and callback adapter suite: 157 tests passed without a
   live-internet dependency.
-- PostgreSQL 18.4 Testcontainers suite: 26 tests passed, including V1/V2
+- PostgreSQL 18.4 Testcontainers suite: 30 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
   idempotency, delivery token/attempt stale rejection, batch check- and
   delivery-claim rollback, check and delivery lease recovery, atomic event
   rollback across finalization, synchronization, and staleness, retry
-  boundaries, backlog state, and delivered-only retention.
+  boundaries, backlog state, delivered-only retention, row-lock timeout,
+  transaction-deadline rollback, transaction-local setting restoration, and
+  outer-transaction rejection.
+- Named scheduler context tests verify independent single-thread execution,
+  owned thread prefixes, shutdown policies, and explicit routing of every
+  scheduled method.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were
@@ -87,12 +98,15 @@
 
 ## Next useful slice
 
-Run the controlled public-staging delivery exercise in the maintained runbook
-using distinct operator-managed tokens and a one-shot acknowledgement-loss
-ingress. Verify first delivery, same-`eventId` replay, one BATON inbox row,
-backlog drain, and log redaction. After that, add dashboards and alerts for
-backlog, oldest-event age, delivery outcomes, scheduler failures, and database
-health; define secret rotation, egress policy, backup/migration, rollout,
-rollback, and reconciliation procedures before production. Do not infer
-deployment or an external alert from repository configuration, the preflight,
-or the earlier local Compose smoke.
+Close the remaining review findings before public staging: enforce an exact
+response-byte consumption cap, classify response-header limit failures
+correctly, bound memory-allocation configuration values, strengthen malformed
+JSON authentication preflight, and add pinned-host TLS verification coverage.
+Then run the controlled public-staging delivery exercise in the maintained
+runbook using distinct operator-managed tokens and a one-shot
+acknowledgement-loss ingress. Verify first delivery, same-`eventId` replay, one
+BATON inbox row, backlog drain, and log redaction. After that, add dashboards
+and alerts and define secret rotation, egress, backup/migration, rollout,
+rollback, and reconciliation procedures before production. Do not infer a
+deployment or external alert from repository configuration or local smoke
+evidence.
