@@ -2,11 +2,17 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetryPolicy;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
+@Validated
 @ConfigurationProperties("watch.event-delivery")
 public record EventDeliveryProperties(
         boolean enabled,
@@ -18,9 +24,9 @@ public record EventDeliveryProperties(
         Duration initialRetryDelay,
         Duration maxRetryDelay,
         Duration retention,
-        int batchSize,
-        int maintenanceBatchSize,
-        Http http) {
+        @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
+        @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
+        @Valid @NotNull Http http) {
 
     static final int MAX_DELIVERY_BATCH_SIZE = 100;
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
@@ -34,25 +40,19 @@ public record EventDeliveryProperties(
         initialRetryDelay = retryPolicy.initialDelay();
         maxRetryDelay = retryPolicy.maxDelay();
         retention = requirePositive(retention, "retention");
-        if (batchSize <= 0 || batchSize > MAX_DELIVERY_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "batchSize must be between 1 and " + MAX_DELIVERY_BATCH_SIZE);
-        }
-        if (maintenanceBatchSize <= 0 || maintenanceBatchSize > MAX_MAINTENANCE_BATCH_SIZE) {
-            throw new IllegalArgumentException(
-                    "maintenanceBatchSize must be between 1 and " + MAX_MAINTENANCE_BATCH_SIZE);
-        }
-        Objects.requireNonNull(http, "http");
-        Duration maximumBatchRuntime;
-        try {
-            maximumBatchRuntime = http.totalTimeout().multipliedBy(batchSize);
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException("event delivery batch runtime is too large");
-        }
-        if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
-            throw new IllegalArgumentException("event delivery leaseDuration must exceed the maximum batch runtime");
+        if (http != null && batchSize >= 1 && batchSize <= MAX_DELIVERY_BATCH_SIZE) {
+            Duration maximumBatchRuntime;
+            try {
+                maximumBatchRuntime = http.totalTimeout().multipliedBy(batchSize);
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("event delivery batch runtime is too large");
+            }
+            if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
+                throw new IllegalArgumentException("event delivery leaseDuration must exceed the maximum batch runtime");
+            }
         }
         if (enabled) {
+            // Boot may include rejected field values in validation reports; keep URL and token redacted.
             endpoint = requireEndpoint(endpoint);
             bearerToken = requireToken(bearerToken);
         }
@@ -62,13 +62,13 @@ public record EventDeliveryProperties(
             Duration connectTimeout,
             Duration responseTimeout,
             Duration totalTimeout,
-            long maxResponseBytes,
-            int maxHeaderCount,
-            int maxHeaderLineLength,
-            int dnsThreads,
-            int dnsQueueCapacity,
-            int requestThreads,
-            int requestQueueCapacity) {
+            @Min(1) @Max(OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES) long maxResponseBytes,
+            @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_COUNT) int maxHeaderCount,
+            @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_LINE_LENGTH) int maxHeaderLineLength,
+            @Min(1) @Max(OutboundResourceBounds.MAX_DNS_THREADS) int dnsThreads,
+            @Min(1) @Max(OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY) int dnsQueueCapacity,
+            @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_THREADS) int requestThreads,
+            @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
 
         public Http {
             connectTimeout = requirePositive(connectTimeout, "http.connectTimeout");
@@ -77,13 +77,6 @@ public record EventDeliveryProperties(
             if (connectTimeout.compareTo(totalTimeout) > 0 || responseTimeout.compareTo(totalTimeout) > 0) {
                 throw new IllegalArgumentException("event delivery HTTP phase timeout cannot exceed totalTimeout");
             }
-            OutboundResourceBounds.requireResponseBytes(
-                    maxResponseBytes,
-                    OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);
-            OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
-            OutboundResourceBounds.requireDnsExecutorBounds(dnsThreads, dnsQueueCapacity);
-            OutboundResourceBounds.requireRequestExecutorBounds(
-                    requestThreads, requestQueueCapacity);
         }
     }
 

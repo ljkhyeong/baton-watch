@@ -46,7 +46,11 @@
   settings have hard implementation ceilings validated at bootstrap and again
   in the external adapter before resource allocation. Production check,
   delivery, and maintenance batch settings have separate bootstrap ceilings
-  enforced before lease arithmetic and service execution.
+  enforced before lease arithmetic and service execution. Bootstrap delegates
+  non-sensitive independent numeric bounds and nested-property presence to
+  Spring Boot configuration-properties Bean Validation, while secrets,
+  positive-duration checks, conditional rules, cross-field comparisons, and
+  overflow handling remain explicit redacted constructor checks.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
@@ -121,7 +125,7 @@
 ## Verification
 
 - Gradle 9.2.1 `test :bootstrap:bootJar --rerun-tasks --no-build-cache` with
-  two workers and a 512 MiB Gradle heap: 359 tests passed with no skips,
+  two workers and a 512 MiB Gradle heap: 361 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a
@@ -165,6 +169,9 @@
 - Delivery retry policy tests verify first, exponential, and maximum-attempt
   delays plus the exact 30-day accepted and 30-day-plus-one-nanosecond rejected
   configuration boundary before a persistence claim.
+- Configuration-properties binding tests verify that Spring rejects invalid
+  monitoring and delivery batch limits plus nested HTTP executor bounds with
+  field-specific validation failures.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were

@@ -90,6 +90,15 @@ allocation-sensitive byte, header, executor, queue, and batch settings also
 have immutable implementation ceilings that runtime configuration cannot
 exceed.
 
+Bootstrap binding delegates non-sensitive independent numeric bounds and
+nested-property presence to Spring Boot configuration-properties Bean
+Validation. Secret validation, positive-duration checks, conditional rules,
+cross-field comparisons, and overflow handling remain explicit constructor
+checks so failures stay redacted and invariants that span multiple values
+remain visible. External adapters still enforce allocation ceilings at the
+resource boundary even when bootstrap validation has already accepted the
+configuration.
+
 The internal monitor API uses one runtime-supplied bearer token. This is service
 authentication only; WATCH still does not make BATON authorization decisions.
 

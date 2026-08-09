@@ -1,14 +1,35 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 class EventDeliveryPropertiesTest {
+
+    private static ValidatorFactory validatorFactory;
+    private static Validator validator;
+
+    @BeforeAll
+    static void createValidator() {
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        validator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void closeValidator() {
+        validatorFactory.close();
+    }
 
     @Test
     void acceptsDisabledDeliveryWithoutCredentials() {
@@ -66,27 +87,28 @@ class EventDeliveryPropertiesTest {
 
     @Test
     void enforcesBatchSizeHardCeilings() {
-        assertDoesNotThrow(() -> properties(
+        assertThat(validationFields(properties(
                 false,
                 URI.create(""),
                 "",
                 Duration.ofMinutes(10),
                 EventDeliveryProperties.MAX_DELIVERY_BATCH_SIZE,
-                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE));
-        assertThrows(IllegalArgumentException.class, () -> properties(
+                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE))).isEmpty();
+        assertThat(validationFields(properties(
                 false,
                 URI.create(""),
                 "",
                 Duration.ofMinutes(10),
                 EventDeliveryProperties.MAX_DELIVERY_BATCH_SIZE + 1,
-                100));
-        assertThrows(IllegalArgumentException.class, () -> properties(
+                100))).containsExactly("batchSize");
+        assertThat(validationFields(properties(
                 false,
                 URI.create(""),
                 "",
                 Duration.ofSeconds(60),
                 10,
-                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE + 1));
+                EventDeliveryProperties.MAX_MAINTENANCE_BATCH_SIZE + 1)))
+                .containsExactly("maintenanceBatchSize");
     }
 
     @Test
@@ -111,16 +133,13 @@ class EventDeliveryPropertiesTest {
 
     @Test
     void rejectsOutboundResourceSettingsAboveTheirHardCeilings() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> http(
-                        OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES + 1,
-                        1));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> http(
-                        8_192,
-                        OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY + 1));
+        assertThat(validationFields(http(
+                OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES + 1,
+                1))).containsExactly("maxResponseBytes");
+        assertThat(validationFields(http(
+                8_192,
+                OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY + 1)))
+                .containsExactly("requestQueueCapacity");
     }
 
     private static EventDeliveryProperties properties(
@@ -181,5 +200,12 @@ class EventDeliveryPropertiesTest {
                 8,
                 1,
                 requestQueueCapacity);
+    }
+
+    private static List<String> validationFields(Object value) {
+        return validator.validate(value).stream()
+                .map(violation -> violation.getPropertyPath().toString())
+                .sorted()
+                .toList();
     }
 }
