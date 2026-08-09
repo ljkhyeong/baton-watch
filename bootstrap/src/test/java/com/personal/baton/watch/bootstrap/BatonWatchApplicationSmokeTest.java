@@ -176,6 +176,10 @@ class BatonWatchApplicationSmokeTest {
         assertThat(applicationContext.getBean(MonitoringScheduler.class)).isNotNull();
         assertThat(applicationContext.getBean(EventDeliveryScheduler.class)).isNotNull();
         assertThat(applicationContext.getBean(EventDeliveryMaintenanceScheduler.class)).isNotNull();
+        assertThat(applicationContext.getBean(RedactingScheduledTaskErrorHandler.class)).isNotNull();
+        assertThat(applicationContext.getEnvironment()
+                        .getProperty("management.endpoints.web.exposure.include"))
+                .isEqualTo("health,prometheus");
 
         Map<String, ThreadPoolTaskScheduler> schedulers =
                 applicationContext.getBeansOfType(ThreadPoolTaskScheduler.class);

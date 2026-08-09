@@ -1,6 +1,8 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
@@ -34,7 +36,8 @@ class EventDeliverySchedulerTest {
                 metrics);
 
         scheduler.deliverPendingEvents();
-        maintenance.maintainDeliveryState();
+        maintenance.purgeDeliveredEventHistory();
+        maintenance.refreshEventDeliveryBacklog();
 
         assertEquals(
                 1.0,
@@ -53,28 +56,60 @@ class EventDeliverySchedulerTest {
     }
 
     @Test
-    void containsWorkerFailuresAndStillRefreshesBacklog() {
+    void propagatesWorkerFailuresToTheScheduledObservationBoundary() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
+        IllegalStateException failure = new IllegalStateException("sensitive callback detail");
         EventDeliveryScheduler scheduler = new EventDeliveryScheduler(
                 () -> {
-                    throw new IllegalStateException("sensitive callback detail");
+                    throw failure;
                 },
                 metrics);
+
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                scheduler::deliverPendingEvents);
+
+        assertSame(failure, thrown);
+    }
+
+    @Test
+    void keepsBacklogRefreshIndependentFromRetentionFailures() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+        IllegalStateException failure = new IllegalStateException("sensitive retention detail");
         EventDeliveryMaintenanceScheduler maintenance = new EventDeliveryMaintenanceScheduler(
-                () -> 0,
-                () -> new EventDeliveryBacklog(0, Optional.empty()),
+                () -> {
+                    throw failure;
+                },
+                () -> new EventDeliveryBacklog(4, Optional.of(Duration.ofSeconds(73))),
                 metrics);
 
-        scheduler.deliverPendingEvents();
-        maintenance.maintainDeliveryState();
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                maintenance::purgeDeliveredEventHistory);
+        maintenance.refreshEventDeliveryBacklog();
 
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.scheduler.failures")
-                        .tag("operation", "event_delivery")
-                        .counter()
-                        .count());
-        assertEquals(0.0, registry.get("baton.watch.event.delivery.backlog").gauge().value());
+        assertSame(failure, thrown);
+        assertEquals(4.0, registry.get("baton.watch.event.delivery.backlog").gauge().value());
+        assertEquals(73.0, registry.get("baton.watch.event.delivery.oldest.age").gauge().value());
+    }
+
+    @Test
+    void propagatesBacklogRefreshFailuresToTheScheduledObservationBoundary() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        IllegalStateException failure = new IllegalStateException("sensitive backlog detail");
+        EventDeliveryMaintenanceScheduler maintenance = new EventDeliveryMaintenanceScheduler(
+                () -> 0,
+                () -> {
+                    throw failure;
+                },
+                new MonitoringMetrics(registry));
+
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                maintenance::refreshEventDeliveryBacklog);
+
+        assertSame(failure, thrown);
     }
 }

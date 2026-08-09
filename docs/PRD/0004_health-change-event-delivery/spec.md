@@ -162,13 +162,19 @@ WATCH exposes low-cardinality telemetry for:
   event;
 - callback attempts grouped only by the bounded delivery outcome above;
 - bounded claim/finalization state needed to distinguish idle delivery from a
-  stuck or failing dispatcher.
+  stuck or failing dispatcher;
+- Spring scheduled-execution duration and success/failure for dispatch,
+  delivered-event cleanup, and backlog refresh. Cleanup and backlog refresh are
+  independent single-thread maintenance tasks, so either task continues to be
+  scheduled when the other fails.
 
 Raw callback URLs, hosts, resource references, event IDs, exception messages,
-and HTTP response content are never metric labels. Logs may use `eventId` as a
-correlation value but must not include the callback URL, bearer token, resource
-reference, response body, or raw exception message. Repository telemetry does
-not imply that an external monitoring stack or alert is deployed.
+and HTTP response content are never metric labels. Framework-supplied scheduled
+class/method and exception-class labels are allowed because they contain no
+request data. Logs may use `eventId` as a correlation value but must not include
+the callback URL, bearer token, resource reference, response body, or raw
+exception message. Repository telemetry does not imply that an external
+monitoring stack or alert is deployed.
 
 ## Acceptance criteria
 

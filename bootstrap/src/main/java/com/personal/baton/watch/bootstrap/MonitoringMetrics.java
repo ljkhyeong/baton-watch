@@ -3,7 +3,6 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -22,7 +21,6 @@ final class MonitoringMetrics {
     private static final String DELIVERY_ATTEMPTS = "baton.watch.event.delivery.attempts";
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
     private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
-    private static final String SCHEDULER_FAILURES = "baton.watch.scheduler.failures";
 
     private final MeterRegistry registry;
     private final AtomicLong eventDeliveryBacklog = new AtomicLong();
@@ -70,13 +68,6 @@ final class MonitoringMetrics {
         increment(MAINTENANCE_ITEMS, "operation", "delivered_event_purged", purgedEvents);
     }
 
-    void recordSchedulerFailure(String operation) {
-        Counter.builder(SCHEDULER_FAILURES)
-                .tag("operation", boundedOperation(operation))
-                .register(registry)
-                .increment();
-    }
-
     void updateEventDeliveryBacklog(long pendingCount, Optional<Duration> oldestAge) {
         if (pendingCount < 0) {
             throw new IllegalArgumentException("pendingCount must be non-negative");
@@ -100,11 +91,4 @@ final class MonitoringMetrics {
         }
     }
 
-    private static String boundedOperation(String operation) {
-        return switch (Objects.requireNonNull(operation, "operation")) {
-            case "check", "monitoring_maintenance", "event_delivery", "event_retention", "event_backlog" ->
-                operation;
-            default -> throw new IllegalArgumentException("unsupported scheduler operation");
-        };
-    }
 }

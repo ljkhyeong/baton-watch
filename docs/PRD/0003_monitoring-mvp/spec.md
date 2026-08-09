@@ -126,7 +126,15 @@ HTTPS callback. BATON can still read the current projection over HTTP.
 - Logs may include attempt correlation and bounded outcome/status values, but
   never raw URLs, hosts, queries, resource references, resolved addresses,
   response bodies, or exception messages.
-- Metrics use only bounded outcome, protocol, and health labels.
+- Unexpected scheduler failures propagate through Spring's scheduled-task
+  observation before a redacting error handler suppresses them so the next
+  fixed-delay execution remains scheduled. The handler logs only the exception
+  class, never its message or stack trace.
+- Metrics use only bounded outcome, protocol, health, scheduled class/method,
+  and exception-class labels. They never use request data or exception messages.
+- The Actuator `scheduledtasks` endpoint is not exposed. Runtime task diagnostics
+  may retain the original exception for internal bookkeeping, while the adopted
+  management surface remains limited to redacted health and Prometheus output.
 
 ## Acceptance criteria
 

@@ -62,7 +62,9 @@
   or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
   local and staging Compose grant the process 110 seconds before forced
   termination, covering the default 30-second web shutdown phase, scheduler
-  drain, and a bounded margin.
+  drain, and a bounded margin. Delivered-event cleanup and backlog refresh are
+  independent methods on the maintenance lane, so one failure does not prevent
+  the other task from remaining scheduled.
 - Adapter-owned persistence transactions have a five-second JDBC statement
   deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
   reject an existing outer Spring transaction before work starts, preserving
@@ -74,7 +76,13 @@
   scheduler, backlog, oldest-event-age, finalization, and delivery-outcome
   telemetry are configured; Compose does not publish the management port. No
   external alerting stack, frontend, broker, or production deployment is
-  present.
+  present. Scheduler errors use Spring's `tasks.scheduled.execution` timer;
+  failures reach that observation before a redacting handler logs only their
+  class and keeps the fixed-delay task scheduled. The redundant WATCH-owned
+  scheduler-failure counter has no repository consumer and is removed. The
+  management allowlist remains exactly `health,prometheus`; `scheduledtasks` is
+  not exposed because Spring's internal task diagnostics retain the original
+  exception.
 - The GitHub Actions `Verify` job uses SHA-pinned official checkout, Java, and
   Gradle actions, requires Docker, runs a clean uncached test/build, and parses
   fresh JUnit XML to require all six PostgreSQL suites plus the production-root
@@ -109,7 +117,7 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 348 tests
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 354 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - The real `BatonWatchApplication` root context started against a
@@ -146,9 +154,10 @@
   transaction-deadline rollback, transaction-local setting restoration,
   bounded non-transactional projection and backlog reads, and outer-transaction
   rejection.
-- Named scheduler context tests verify independent single-thread execution,
-  owned thread prefixes, shutdown policies, and explicit routing of every
-  scheduled method.
+- Named scheduler tests verify independent single-thread execution, owned
+  thread prefixes, shutdown policies, explicit routing of all five scheduled
+  methods, `outcome=ERROR` framework observation, redacted failure logging, and
+  continued fixed-delay execution after a failure.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were
