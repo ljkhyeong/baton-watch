@@ -7,7 +7,10 @@
 - GET /api/v1/system/status and authenticated PUT/GET
   /api/v1/resource-monitors/{resourceReference} are implemented.
 - Spring Security applies stateless service-token authentication to every
-  non-status `/api/v1/**` request with context-path-aware matching.
+  non-status `/api/v1/**` request with context-path-aware matching. After
+  authentication, Spring MVC 400/404/405/406/415 rejections use the stable
+  redacted Problem Details contract while preserving standard `Allow` and
+  `Accept` response headers.
 - Application time comes from an injected UTC Clock.
 - PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
   current derived health, and durable health-change events with pending/delivered
@@ -106,7 +109,7 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 338 tests
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 348 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - The real `BatonWatchApplication` root context started against a

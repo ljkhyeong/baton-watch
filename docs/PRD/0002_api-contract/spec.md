@@ -2,7 +2,7 @@
 
 Status: maintained contract
 
-Updated: 2026-08-02
+Updated: 2026-08-09
 
 ## System status
 
@@ -78,6 +78,33 @@ unexpected safe server failure returns HTTP 500. Errors use
 `application/problem+json` with stable `type`, `title`, `status`, and `code`
 fields. They never include a target URL, resolved address, credential, response
 body, raw exception, or BATON authorization decision.
+
+After successful authentication, Spring MVC request rejections use the same
+stable problem contract:
+
+- malformed JSON or request validation: HTTP 400,
+  `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`;
+- an unknown `/api/v1/**` route: HTTP 404,
+  `urn:baton-watch:problem:route-not-found`, `ROUTE_NOT_FOUND`;
+- an unsupported method: HTTP 405,
+  `urn:baton-watch:problem:method-not-allowed`, `METHOD_NOT_ALLOWED`;
+- an unacceptable response media type: HTTP 406,
+  `urn:baton-watch:problem:not-acceptable`, `NOT_ACCEPTABLE`;
+- an unsupported request media type: HTTP 415,
+  `urn:baton-watch:problem:unsupported-media-type`,
+  `UNSUPPORTED_MEDIA_TYPE`.
+
+Any other Spring MVC client rejection preserves its HTTP 4xx status and uses
+`urn:baton-watch:problem:request-rejected` with `REQUEST_REJECTED`. Unclassified
+framework failures are reduced to the same safe HTTP 500 `INTERNAL_ERROR`
+contract as application failures; framework-generated details and rejected
+values are not returned.
+
+Authentication still precedes all of these routing, body, and media-type
+decisions, so a missing or invalid credential returns the existing HTTP 401
+problem instead. HTTP-defined capability headers such as `Allow` and `Accept`
+are preserved. The problem `instance`, when present, is the fixed redacted URN
+`urn:baton-watch:request`, never the raw request path.
 
 No attempt-history, manual-check, inbound webhook, or event-delivery route is
 adopted. PRD-0004 direct delivery is an outbound WATCH callback and does not

@@ -95,7 +95,12 @@ class MonitorApiSecurityIntegrationTest {
                 "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}");
 
         assertUnauthorized(missing);
-        assertThat(malformed.statusCode()).isEqualTo(400);
+        assertProblem(
+                malformed,
+                400,
+                "urn:baton-watch:problem:invalid-request",
+                "Invalid request",
+                "INVALID_REQUEST");
         assertThat(valid.statusCode()).isEqualTo(200);
     }
 
@@ -109,7 +114,65 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(apiRoot);
         assertUnauthorized(statusPost);
         assertUnauthorized(missing);
-        assertThat(authenticated.statusCode()).isEqualTo(404);
+        assertProblem(
+                authenticated,
+                404,
+                "urn:baton-watch:problem:route-not-found",
+                "Route not found",
+                "ROUTE_NOT_FOUND");
+    }
+
+    @Test
+    void authenticatedFrameworkErrorsUseStableProblems() throws Exception {
+        HttpResponse<String> unauthenticatedMediaType = put(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.TEXT_PLAIN_VALUE,
+                "{}");
+        HttpResponse<String> unauthenticatedAccept = get(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.APPLICATION_XML_VALUE);
+        HttpResponse<String> methodNotAllowed = post("/api/v1/system/status", API_TOKEN);
+        HttpResponse<String> unsupportedMediaType = put(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                MediaType.TEXT_PLAIN_VALUE,
+                "{}");
+        HttpResponse<String> notAcceptable = get(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                MediaType.APPLICATION_XML_VALUE);
+
+        assertUnauthorized(unauthenticatedMediaType);
+        assertUnauthorized(unauthenticatedAccept);
+        assertProblem(
+                methodNotAllowed,
+                405,
+                "urn:baton-watch:problem:method-not-allowed",
+                "Method not allowed",
+                "METHOD_NOT_ALLOWED");
+        assertHeaderContains(methodNotAllowed, HttpHeaders.ALLOW, "GET");
+        assertProblem(
+                unsupportedMediaType,
+                415,
+                "urn:baton-watch:problem:unsupported-media-type",
+                "Unsupported media type",
+                "UNSUPPORTED_MEDIA_TYPE");
+        assertHeaderContains(
+                unsupportedMediaType,
+                HttpHeaders.ACCEPT,
+                MediaType.APPLICATION_JSON_VALUE);
+        assertProblem(
+                notAcceptable,
+                406,
+                "urn:baton-watch:problem:not-acceptable",
+                "Not acceptable",
+                "NOT_ACCEPTABLE");
+        assertHeaderContains(
+                notAcceptable,
+                HttpHeaders.ACCEPT,
+                MediaType.APPLICATION_JSON_VALUE);
     }
 
     @Test
@@ -123,13 +186,21 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {
-        return send(HttpRequest.newBuilder(uri(path)).GET(), token);
+        return get(path, token, MediaType.APPLICATION_JSON_VALUE);
+    }
+
+    private HttpResponse<String> get(String path, String token, String accept) throws Exception {
+        return send(HttpRequest.newBuilder(uri(path)).GET(), token, accept);
     }
 
     private HttpResponse<String> put(String path, String token, String body) throws Exception {
+        return put(path, token, MediaType.APPLICATION_JSON_VALUE, body);
+    }
+
+    private HttpResponse<String> put(String path, String token, String contentType, String body) throws Exception {
         return send(
                 HttpRequest.newBuilder(uri(path))
-                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .header(HttpHeaders.CONTENT_TYPE, contentType)
                         .PUT(HttpRequest.BodyPublishers.ofString(body)),
                 token);
     }
@@ -139,7 +210,11 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     private HttpResponse<String> send(HttpRequest.Builder request, String token) throws Exception {
-        request.header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE);
+        return send(request, token, MediaType.APPLICATION_JSON_VALUE);
+    }
+
+    private HttpResponse<String> send(HttpRequest.Builder request, String token, String accept) throws Exception {
+        request.header(HttpHeaders.ACCEPT, accept);
         if (token != null) {
             request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }
@@ -167,6 +242,34 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(problem.required("title").stringValue()).isEqualTo("Unauthorized");
         assertThat(problem.required("status").intValue()).isEqualTo(401);
         assertThat(problem.required("code").stringValue()).isEqualTo("UNAUTHORIZED");
+    }
+
+    private void assertProblem(
+            HttpResponse<String> response,
+            int status,
+            String type,
+            String title,
+            String code) throws Exception {
+        assertThat(response.statusCode()).isEqualTo(status);
+        MediaType contentType = MediaType.parseMediaType(
+                response.headers().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow());
+        assertThat(contentType.isCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)).isTrue();
+        assertThat(response.headers().firstValue(HttpHeaders.LOCATION)).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).isEmpty();
+
+        JsonNode problem = objectMapper.readTree(response.body());
+        assertThat(problem.size()).isEqualTo(5);
+        assertThat(problem.required("type").stringValue()).isEqualTo(type);
+        assertThat(problem.required("title").stringValue()).isEqualTo(title);
+        assertThat(problem.required("status").intValue()).isEqualTo(status);
+        assertThat(problem.required("instance").stringValue()).isEqualTo("urn:baton-watch:request");
+        assertThat(problem.required("code").stringValue()).isEqualTo(code);
+    }
+
+    private void assertHeaderContains(HttpResponse<String> response, String name, String expected) {
+        assertThat(response.headers().firstValue(name))
+                .hasValueSatisfying(value -> assertThat(value).contains(expected));
     }
 
     private static MonitorProjection projection() {
