@@ -20,6 +20,12 @@
   transactions and handles staleness and bounded attempt retention. Monitor
   synchronization and redirect hops share the same static `TargetUrl` policy;
   legacy unsafe encodings can be rehydrated but are rejected before DNS or I/O.
+- IPv6 destination approval fails closed against the IANA global-unicast
+  allocation registry snapshot dated 2025-10-10. Unlisted, reserved, and
+  carved-out special-purpose ranges are rejected before connection in both
+  target checks and callback delivery. Deployment-specific RFC 6052 NAT64
+  prefixes cannot be inferred from an address alone and remain subject to the
+  required infrastructure egress policy.
 - Target checks and event delivery share a neutral request-scoped Apache client,
   bounded deadline executor, pinned resolver, and bounded body discarder while
   retaining separate GET/redirect and POST/acknowledgement semantics.
@@ -100,7 +106,7 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 271 tests
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 338 tests
   passed with no skips, failures, or errors, including the Docker-backed
   PostgreSQL Testcontainers suite.
 - The real `BatonWatchApplication` root context started against a
@@ -120,11 +126,13 @@
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
   `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
   `TransactionOperations` wiring all three persistence adapters.
-- Outbound checker and callback adapter suite: 169 tests passed without a
+- Outbound checker and callback adapter suite: 236 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
   no-drain response abort, header count/line classification, resource ceiling
-  boundaries, pinned-address TLS Host/SNI preservation, DNS SAN verification,
-  and trusted-certificate hostname-mismatch classification.
+  boundaries, every current IANA-allocated IPv6 range boundary, reserved and
+  unallocated IPv6 rejection before check or delivery transport,
+  pinned-address TLS Host/SNI preservation, DNS SAN verification, and
+  trusted-certificate hostname-mismatch classification.
 - PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization

@@ -71,6 +71,20 @@ class SafeUrlCheckEngineTest {
     }
 
     @Test
+    void rejectsReservedIpv6BeforeTheInitialConnection() throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(InetAddress.getByName("3000::1")));
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+
+        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+                .check(new TargetUrl("https://reserved.example/"));
+
+        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
+        assertEquals(List.of("reserved.example"), dns.hostnames);
+        assertEquals(0, transport.targets.size());
+    }
+
+    @Test
     void rejectsHttpsDowngradeWithoutResolvingOrConnectingToTheRedirect() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());

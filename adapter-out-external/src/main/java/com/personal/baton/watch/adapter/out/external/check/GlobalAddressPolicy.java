@@ -13,6 +13,35 @@ import java.util.Map;
 /** Rejects an entire DNS answer when any address is not public global unicast. */
 public final class GlobalAddressPolicy {
 
+    /**
+     * Allocated public IPv6 global-unicast prefixes from the IANA registry snapshot dated
+     * 2025-10-10. Unlisted and future allocations fail closed until they are reviewed.
+     * IANA protocol assignments and 6to4 are intentionally excluded.
+     * Source: https://www.iana.org/assignments/ipv6-unicast-address-assignments/
+     */
+    private static final List<Cidr> ALLOCATED_PUBLIC_IPV6 = List.of(
+            cidr("2001:200::", 23),
+            cidr("2001:400::", 22),
+            cidr("2001:800::", 21),
+            cidr("2001:1200::", 23),
+            cidr("2001:1400::", 22),
+            cidr("2001:1800::", 21),
+            cidr("2001:2000::", 19),
+            cidr("2001:4000::", 21),
+            cidr("2001:4800::", 22),
+            cidr("2001:4c00::", 23),
+            cidr("2001:5000::", 20),
+            cidr("2001:8000::", 18),
+            cidr("2003::", 18),
+            cidr("2400::", 11),
+            cidr("2600::", 12),
+            cidr("2610::", 23),
+            cidr("2620::", 23),
+            cidr("2630::", 12),
+            cidr("2800::", 12),
+            cidr("2a00::", 11),
+            cidr("2c00::", 12));
+
     private static final List<Cidr> REJECTED_IPV4 = List.of(
             cidr("0.0.0.0", 8),
             cidr("10.0.0.0", 8),
@@ -34,11 +63,8 @@ public final class GlobalAddressPolicy {
             cidr("240.0.0.0", 4));
 
     private static final List<Cidr> REJECTED_IPV6 = List.of(
-            cidr("2001:0000::", 23),
             cidr("2001:db8::", 32),
-            cidr("2002::", 16),
-            cidr("2620:4f:8000::", 48),
-            cidr("3fff::", 20));
+            cidr("2620:4f:8000::", 48));
 
     public List<InetAddress> approve(List<InetAddress> answer) throws AddressPolicyException {
         if (answer == null || answer.isEmpty()) {
@@ -71,12 +97,8 @@ public final class GlobalAddressPolicy {
             return false;
         }
 
-        byte[] bytes = address.getAddress();
-        // Currently allocated public IPv6 global unicast space is 2000::/3.
-        if ((bytes[0] & 0xe0) != 0x20) {
-            return false;
-        }
-        return REJECTED_IPV6.stream().noneMatch(cidr -> cidr.contains(address));
+        return REJECTED_IPV6.stream().noneMatch(cidr -> cidr.contains(address))
+                && ALLOCATED_PUBLIC_IPV6.stream().anyMatch(cidr -> cidr.contains(address));
     }
 
     private static Cidr cidr(String network, int prefixLength) {
