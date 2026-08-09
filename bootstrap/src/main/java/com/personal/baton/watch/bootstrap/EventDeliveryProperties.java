@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetryPolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
@@ -28,12 +29,11 @@ public record EventDeliveryProperties(
         pollInterval = requirePositive(pollInterval, "pollInterval");
         maintenanceInterval = requirePositive(maintenanceInterval, "maintenanceInterval");
         leaseDuration = requirePositive(leaseDuration, "leaseDuration");
-        initialRetryDelay = requirePositive(initialRetryDelay, "initialRetryDelay");
-        maxRetryDelay = requirePositive(maxRetryDelay, "maxRetryDelay");
+        EventDeliveryRetryPolicy retryPolicy = new EventDeliveryRetryPolicy(
+                initialRetryDelay, maxRetryDelay);
+        initialRetryDelay = retryPolicy.initialDelay();
+        maxRetryDelay = retryPolicy.maxDelay();
         retention = requirePositive(retention, "retention");
-        if (initialRetryDelay.compareTo(maxRetryDelay) > 0) {
-            throw new IllegalArgumentException("initialRetryDelay must not exceed maxRetryDelay");
-        }
         if (batchSize <= 0 || batchSize > MAX_DELIVERY_BATCH_SIZE) {
             throw new IllegalArgumentException(
                     "batchSize must be between 1 and " + MAX_DELIVERY_BATCH_SIZE);

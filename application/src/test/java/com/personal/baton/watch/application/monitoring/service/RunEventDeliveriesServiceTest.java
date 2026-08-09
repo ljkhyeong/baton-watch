@@ -2,6 +2,7 @@ package com.personal.baton.watch.application.monitoring.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
@@ -95,6 +96,22 @@ class RunEventDeliveriesServiceTest {
         assertEquals(1, result.alreadyDelivered());
         assertEquals(0, result.retryScheduled());
         assertEquals(1, result.outcomes().get(EventDeliveryOutcome.CONNECT_TIMEOUT));
+    }
+
+    @Test
+    void rejectsRetryBackoffBeyondTheSupportedCeilingBeforeClaimingEvents() {
+        RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
+
+        assertThrows(IllegalArgumentException.class, () -> new RunEventDeliveriesService(
+                persistence,
+                event -> EventDeliveryObservation.failure(EventDeliveryOutcome.NETWORK_FAILURE),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                LEASE,
+                INITIAL_BACKOFF,
+                Duration.ofSeconds(Long.MAX_VALUE),
+                5));
+
+        assertEquals(List.of(), persistence.calls);
     }
 
     private RunEventDeliveriesService service(

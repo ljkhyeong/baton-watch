@@ -90,6 +90,26 @@ class EventDeliveryPropertiesTest {
     }
 
     @Test
+    void enforcesTheRetryDelayHardCeiling() {
+        assertDoesNotThrow(() -> properties(
+                false,
+                URI.create(""),
+                "",
+                Duration.ofMinutes(10),
+                10,
+                100,
+                Duration.ofDays(30)));
+        assertThrows(IllegalArgumentException.class, () -> properties(
+                false,
+                URI.create(""),
+                "",
+                Duration.ofMinutes(10),
+                10,
+                100,
+                Duration.ofDays(30).plusNanos(1)));
+    }
+
+    @Test
     void rejectsOutboundResourceSettingsAboveTheirHardCeilings() {
         assertThrows(
                 IllegalArgumentException.class,
@@ -115,6 +135,24 @@ class EventDeliveryPropertiesTest {
             Duration leaseDuration,
             int batchSize,
             int maintenanceBatchSize) {
+        return properties(
+                enabled,
+                endpoint,
+                token,
+                leaseDuration,
+                batchSize,
+                maintenanceBatchSize,
+                Duration.ofMinutes(15));
+    }
+
+    private static EventDeliveryProperties properties(
+            boolean enabled,
+            URI endpoint,
+            String token,
+            Duration leaseDuration,
+            int batchSize,
+            int maintenanceBatchSize,
+            Duration maxRetryDelay) {
         return new EventDeliveryProperties(
                 enabled,
                 endpoint,
@@ -123,7 +161,7 @@ class EventDeliveryPropertiesTest {
                 Duration.ofMinutes(1),
                 leaseDuration,
                 Duration.ofSeconds(5),
-                Duration.ofMinutes(15),
+                maxRetryDelay,
                 Duration.ofDays(30),
                 batchSize,
                 maintenanceBatchSize,

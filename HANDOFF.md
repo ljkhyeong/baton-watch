@@ -50,8 +50,11 @@
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
-  capped retries, and delivered-only retention. The sender boundary accepts
-  only immutable event payload data; lease and retry metadata stay internal.
+  capped retries with a 30-day hard configuration ceiling, and delivered-only
+  retention. The sender boundary accepts only immutable event payload data;
+  lease and retry metadata stay internal. A shared application retry policy
+  rejects larger delays before any event is claimed and owns the safely capped
+  exponential calculation.
 - A compatible BATON receiver with separate bearer authentication and an atomic
   immutable `eventId` inbox is implemented in the BATON repository. Its
   deployment and public WATCH-to-BATON integration are not yet verified.
@@ -117,9 +120,10 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 354 tests
-  passed with no skips, failures, or errors, including the Docker-backed
-  PostgreSQL Testcontainers suite.
+- Gradle 9.2.1 `test :bootstrap:bootJar --rerun-tasks --no-build-cache` with
+  two workers and a 512 MiB Gradle heap: 359 tests passed with no skips,
+  failures, or errors, including the Docker-backed PostgreSQL Testcontainers
+  suite.
 - The real `BatonWatchApplication` root context started against a
   service-connected PostgreSQL 18.4 container with Flyway V1/V2, Spring
   Security, all three persistence adapters, outbound check and delivery
@@ -158,6 +162,9 @@
   thread prefixes, shutdown policies, explicit routing of all five scheduled
   methods, `outcome=ERROR` framework observation, redacted failure logging, and
   continued fixed-delay execution after a failure.
+- Delivery retry policy tests verify first, exponential, and maximum-attempt
+  delays plus the exact 30-day accepted and 30-day-plus-one-nanosecond rejected
+  configuration boundary before a persistence claim.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were

@@ -23,8 +23,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
     private final HealthChangeEventSender sender;
     private final Clock clock;
     private final Duration leaseDuration;
-    private final Duration initialBackoff;
-    private final Duration maxBackoff;
+    private final EventDeliveryRetryPolicy retryPolicy;
     private final int batchSize;
 
     public RunEventDeliveriesService(
@@ -39,11 +38,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         this.sender = Objects.requireNonNull(sender, "sender");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.leaseDuration = requirePositive(leaseDuration, "leaseDuration");
-        this.initialBackoff = requirePositive(initialBackoff, "initialBackoff");
-        this.maxBackoff = requirePositive(maxBackoff, "maxBackoff");
-        if (maxBackoff.compareTo(initialBackoff) < 0) {
-            throw new IllegalArgumentException("maxBackoff cannot be shorter than initialBackoff");
-        }
+        this.retryPolicy = new EventDeliveryRetryPolicy(initialBackoff, maxBackoff);
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -72,7 +67,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             Instant completedAt = clock.instant();
             Instant nextAttemptAt = observation.outcome().isDelivered()
                     ? null
-                    : completedAt.plus(retryDelay(event.deliveryAttempt()));
+                    : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt());
             EventDeliveryFinalizationResult result = Objects.requireNonNull(
                     persistence.finalizeDelivery(new EventDeliveryFinalization(
                             event.payload().eventId(),
@@ -109,21 +104,6 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         } catch (RuntimeException ignored) {
             return EventDeliveryObservation.internalFailure();
         }
-    }
-
-    private Duration retryDelay(int deliveryAttempt) {
-        Duration delay = initialBackoff;
-        int remainingDoublings = deliveryAttempt - 1;
-        while (remainingDoublings > 0 && delay.compareTo(maxBackoff) < 0) {
-            try {
-                Duration doubled = delay.multipliedBy(2);
-                delay = doubled.compareTo(maxBackoff) > 0 ? maxBackoff : doubled;
-            } catch (ArithmeticException ignored) {
-                return maxBackoff;
-            }
-            remainingDoublings--;
-        }
-        return delay;
     }
 
     private static Duration requirePositive(Duration duration, String name) {
