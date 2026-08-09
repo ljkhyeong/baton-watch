@@ -22,7 +22,8 @@ class ConfigurationPropertiesValidationTest {
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
-                            .contains("checkBatchSize", "http.dnsQueueCapacity");
+                            .containsExactlyInAnyOrder(
+                                    "checkBatchSize", "http.dnsQueueCapacity");
                 });
     }
 
@@ -36,7 +37,8 @@ class ConfigurationPropertiesValidationTest {
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
-                            .contains("batchSize", "http.requestQueueCapacity");
+                            .containsExactlyInAnyOrder(
+                                    "batchSize", "http.requestQueueCapacity");
                 });
     }
 
