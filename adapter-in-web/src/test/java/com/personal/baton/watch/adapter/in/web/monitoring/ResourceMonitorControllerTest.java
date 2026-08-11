@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -17,13 +18,19 @@ import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ResourceMonitorControllerTest {
 
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
@@ -227,6 +235,22 @@ class ResourceMonitorControllerTest {
                         org.hamcrest.Matchers.containsString("raw-output-secret"))));
     }
 
+    @Test
+    void committedFrameworkResponsesDoNotRelogExceptionDetails(CapturedOutput output) throws Exception {
+        var result = mockMvc.perform(get("/api/v1/framework-committed-write-failure"))
+                .andExpect(status().isAccepted())
+                .andExpect(content().string("already-sent"))
+                .andReturn();
+
+        assertThat(result.getResponse().isCommitted()).isTrue();
+        assertThat(result.getResolvedException())
+                .isInstanceOf(HttpMessageNotWritableException.class);
+        assertThat(output)
+                .contains("monitor API failed failureType=HttpMessageNotWritableException")
+                .doesNotContain("raw-output-secret")
+                .doesNotContain("Response already committed");
+    }
+
     private void rebuildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceMonitorController(synchronizeMonitor, getMonitor),
@@ -244,6 +268,15 @@ class ResourceMonitorControllerTest {
 
         @GetMapping("/api/v1/framework-write-failure")
         void writeFailure() {
+            throw new HttpMessageNotWritableException("raw-output-secret");
+        }
+
+        @GetMapping("/api/v1/framework-committed-write-failure")
+        void committedWriteFailure(HttpServletResponse response) throws IOException {
+            response.setStatus(HttpStatus.ACCEPTED.value());
+            response.setContentType(MediaType.TEXT_PLAIN_VALUE);
+            response.getWriter().write("already-sent");
+            response.flushBuffer();
             throw new HttpMessageNotWritableException("raw-output-secret");
         }
     }

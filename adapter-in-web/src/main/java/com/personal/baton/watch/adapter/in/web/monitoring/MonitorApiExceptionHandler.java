@@ -16,6 +16,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
@@ -127,6 +128,12 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
+        if (responseCommitted(request)) {
+            if (!status.is4xxClientError()) {
+                logFailure(exception);
+            }
+            return null;
+        }
         if (!status.is4xxClientError()) {
             logFailure(exception);
             return frameworkProblem(
@@ -148,6 +155,12 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
                     headers);
         }
         return frameworkProblem(exception, request, status, REQUEST_REJECTED, headers);
+    }
+
+    private boolean responseCommitted(WebRequest request) {
+        return request instanceof ServletWebRequest servletRequest
+                && servletRequest.getResponse() != null
+                && servletRequest.getResponse().isCommitted();
     }
 
     private ResponseEntity<Object> invalidRequest(

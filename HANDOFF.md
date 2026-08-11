@@ -10,7 +10,14 @@
   non-status `/api/v1/**` request with context-path-aware matching. After
   authentication, Spring MVC 400/404/405/406/415 rejections use the stable
   redacted Problem Details contract while preserving standard `Allow` and
-  `Accept` response headers.
+  `Accept` response headers. The strict HTTP firewall remains in front of that
+  authentication boundary; suspicious path forms fail closed with a fixed
+  redacted HTTP 400 Problem Details response while retaining Spring Security's
+  request-rejection observation.
+- Framework failures detected after an HTTP response is already committed do
+  not re-enter Spring's default exception writer, preventing its fallback WARN
+  log from restoring a raw exception message. Unexpected server failures still
+  log only their bounded exception class.
 - Application time comes from an injected UTC Clock.
 - PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
   current derived health, and durable health-change events with pending/delivered
@@ -125,7 +132,7 @@
 ## Verification
 
 - Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
-  and a 512 MiB Gradle heap: 363 tests passed with no skips,
+  and a 512 MiB Gradle heap: 367 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a
@@ -208,7 +215,11 @@
   a non-empty servlet context path. It verifies the Bearer challenge, exact 401
   problem fields,
   fail-closed `/api/v1/**` handling, statelessness, public status access, and
-  authenticated PUT without CSRF.
+  authenticated PUT without CSRF. The same server test verifies that strict
+  firewall rejection of semicolon and duplicate-slash paths returns a fixed
+  redacted HTTP 400 problem without exposing the rejected path or resource
+  reference. A focused exception-handler test proves that a committed response
+  cannot trigger Spring's raw exception-message fallback log.
 - Staging Compose artifacts are available as `compose.staging.yml`,
   `compose.staging-tunnel.yml`, and `ops/staging.env.example`. Their merged
   configuration is designed to require an immutable WATCH image, external

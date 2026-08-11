@@ -24,6 +24,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -120,6 +122,28 @@ class MonitorApiSecurityIntegrationTest {
                 "urn:baton-watch:problem:route-not-found",
                 "Route not found",
                 "ROUTE_NOT_FOUND");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/v1/resource-monitors/resource-1;secret=raw-value",
+        "/api//v1/resource-monitors/resource-1",
+        "/api/v1/resource-monitors//resource-1"
+    })
+    void httpFirewallRejectionsUseAStableRedactedProblem(String path) throws Exception {
+        HttpResponse<String> response = get(path, null);
+
+        assertProblem(
+                response,
+                400,
+                "urn:baton-watch:problem:request-rejected",
+                "Request rejected",
+                "REQUEST_REJECTED");
+        assertThat(response.body())
+                .doesNotContain("raw-value")
+                .doesNotContain("resource-1")
+                .doesNotContain(CONTEXT_PATH)
+                .doesNotContain(path);
     }
 
     @Test

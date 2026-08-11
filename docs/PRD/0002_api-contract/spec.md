@@ -2,7 +2,7 @@
 
 Status: maintained contract
 
-Updated: 2026-08-09
+Updated: 2026-08-11
 
 ## System status
 
@@ -38,10 +38,10 @@ The Bearer authentication scheme is matched case-insensitively as required by
 HTTP authentication semantics. A credential failure returns a
 `WWW-Authenticate` Bearer challenge with the HTTP 401 problem response.
 
-Only the exact system-status GET is public. Every other request under
-`/api/v1/**` crosses the stateless service-authentication boundary before
-routing. The boundary is relative to the servlet context, so deploying WATCH
-under a context path cannot expose a monitoring route.
+Only the exact system-status GET is public. Every other syntactically accepted
+request under `/api/v1/**` crosses the stateless service-authentication boundary
+before routing. The boundary is relative to the servlet context, so deploying
+WATCH under a context path cannot expose a monitoring route.
 
 PUT accepts `application/json`. An active snapshot is:
 
@@ -98,13 +98,24 @@ Any other Spring MVC client rejection preserves its HTTP 4xx status and uses
 `urn:baton-watch:problem:request-rejected` with `REQUEST_REJECTED`. Unclassified
 framework failures are reduced to the same safe HTTP 500 `INTERNAL_ERROR`
 contract as application failures; framework-generated details and rejected
-values are not returned.
+values are not returned. This reduction applies before response commitment. If
+a framework failure is reported after status and body bytes are committed,
+WATCH preserves that response, writes no second problem body, and logs only the
+exception class without its message or stack trace.
 
 Authentication still precedes all of these routing, body, and media-type
 decisions, so a missing or invalid credential returns the existing HTTP 401
 problem instead. HTTP-defined capability headers such as `Allow` and `Accept`
 are preserved. The problem `instance`, when present, is the fixed redacted URN
 `urn:baton-watch:request`, never the raw request path.
+
+Requests that Spring Security's strict HTTP firewall rejects before path
+matching are outside that authentication-first sequence. Ambiguous separators,
+matrix syntax, and other suspicious path forms fail closed before authentication
+with HTTP 400, `application/problem+json`,
+`urn:baton-watch:problem:request-rejected`, and `REQUEST_REJECTED`. This response
+uses the same fixed redacted `instance` and never includes the raw path,
+resource reference, or firewall exception. The firewall policy is not relaxed.
 
 No attempt-history, manual-check, inbound webhook, or event-delivery route is
 adopted. PRD-0004 direct delivery is an outbound WATCH callback and does not
