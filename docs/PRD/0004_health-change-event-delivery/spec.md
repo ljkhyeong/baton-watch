@@ -177,8 +177,10 @@ and HTTP response content are never metric labels. Framework-supplied scheduled
 class/method and exception-class labels are allowed because they contain no
 request data. Logs may use `eventId` as a correlation value but must not include
 the callback URL, bearer token, resource reference, response body, or raw
-exception message. Repository telemetry does not imply that an external
-monitoring stack or alert is deployed.
+exception message. Apache HTTP header, wire, implementation, and TLS diagnostic
+logger categories remain disabled even under broader DEBUG logging. Operators
+must not override those protected logger categories. Repository telemetry does
+not imply that an external monitoring stack or alert is deployed.
 
 ## Acceptance criteria
 

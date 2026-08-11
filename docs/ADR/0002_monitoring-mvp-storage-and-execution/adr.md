@@ -62,6 +62,14 @@ so Apache cannot drain additional bytes for connection reuse. An
 unknown-length body that reaches its remaining byte allowance is rejected
 without an extra probe read.
 
+Bootstrap fixes Apache HttpClient's raw header, wire, implementation, and TLS
+logger categories at `OFF`. These more specific levels remain effective when
+root or the broader Apache HTTP package is raised to `DEBUG`, preventing bearer
+headers, target queries, payloads, response bodies, hostnames, resolved
+addresses, certificate names, and raw close-failure exceptions from bypassing
+WATCH's redacted application logs. Operators must not explicitly override
+those protected categories.
+
 `TargetUrl` owns the static target syntax policy used when a snapshot is
 accepted and when each redirect is revalidated. Compatibility-deferred
 encoded-character checks remain explicit so historical rows can still be
