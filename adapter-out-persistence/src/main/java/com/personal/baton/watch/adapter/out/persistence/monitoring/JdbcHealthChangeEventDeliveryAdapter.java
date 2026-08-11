@@ -6,7 +6,6 @@ import static com.personal.baton.watch.adapter.out.persistence.monitoring.Monito
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
@@ -57,11 +56,11 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         if (!leaseUntil.isAfter(claimedAt)) {
             throw new IllegalArgumentException("lease must expire after it is claimed");
         }
-        return List.copyOf(inTransaction(() -> claimInTransaction(claimedAt, leaseUntil, limit)));
+        return inTransaction(() -> claimInTransaction(claimedAt, leaseUntil, limit));
     }
 
     @Override
-    public EventDeliveryFinalizationResult finalizeDelivery(EventDeliveryFinalization finalization) {
+    public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
         Objects.requireNonNull(finalization, "finalization");
         return inTransaction(() -> finalizeInTransaction(finalization));
     }
@@ -130,7 +129,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         }).toList();
     }
 
-    private EventDeliveryFinalizationResult finalizeInTransaction(EventDeliveryFinalization finalization) {
+    private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
         Optional<DeliveryRow> locked = jdbc.sql(
                         "SELECT " + DELIVERY_COLUMNS
                                 + " FROM watch_health_change_event WHERE event_id = ? FOR UPDATE")
@@ -138,16 +137,16 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 .query(JdbcHealthChangeEventDeliveryAdapter::mapDelivery)
                 .optional();
         if (locked.isEmpty()) {
-            return result(EventDeliveryFinalizationStatus.STALE_CLAIM);
+            return EventDeliveryFinalizationStatus.STALE_CLAIM;
         }
 
         DeliveryRow event = locked.orElseThrow();
         if (event.deliveryStatus() == DeliveryStatus.DELIVERED) {
-            return result(EventDeliveryFinalizationStatus.ALREADY_DELIVERED);
+            return EventDeliveryFinalizationStatus.ALREADY_DELIVERED;
         }
         if (!finalization.leaseToken().equals(event.leaseToken())
                 || finalization.deliveryAttempt() != event.deliveryAttempt()) {
-            return result(EventDeliveryFinalizationStatus.STALE_CLAIM);
+            return EventDeliveryFinalizationStatus.STALE_CLAIM;
         }
         if (finalization.completedAt().isBefore(event.changedAt())) {
             throw new IllegalArgumentException("delivery completion cannot precede the event");
@@ -188,7 +187,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                             finalization.eventId())
                     .update();
         }
-        return result(EventDeliveryFinalizationStatus.APPLIED);
+        return EventDeliveryFinalizationStatus.APPLIED;
     }
 
     private int purgeDeliveredInTransaction(Instant deliveredBefore, int limit) {
@@ -219,10 +218,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 DeliveryStatus.valueOf(resultSet.getString("delivery_status")),
                 resultSet.getInt("delivery_attempt"),
                 resultSet.getObject("delivery_lease_token", UUID.class));
-    }
-
-    private static EventDeliveryFinalizationResult result(EventDeliveryFinalizationStatus status) {
-        return new EventDeliveryFinalizationResult(status);
     }
 
     private static void requirePositiveLimit(int limit) {

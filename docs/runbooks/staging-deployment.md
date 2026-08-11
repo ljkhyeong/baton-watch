@@ -119,8 +119,8 @@ all five files outside the repository. The separate state file retains the
 currently active PostgreSQL volume across operator shells and repository
 updates. Populate the three secret files from an operator-controlled secret
 manager without echoing their values or enabling shell history expansion. The
-WATCH API token must contain at least 32 characters; the database password and
-tunnel token must be independent values.
+WATCH API token must contain at least 32 non-padding RFC 6750 `token68`
+characters; the database password and tunnel token must be independent values.
 
 ~~~bash
 install -d -m 0700 "$STAGING_CONFIG_DIR"

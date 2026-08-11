@@ -6,10 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -25,10 +23,7 @@ class EventDeliverySchedulerTest {
                         1,
                         1,
                         0,
-                        0,
-                        Map.of(
-                                EventDeliveryOutcome.DELIVERED, 1,
-                                EventDeliveryOutcome.READ_TIMEOUT, 1)),
+                        0),
                 metrics);
         EventDeliveryMaintenanceScheduler maintenance = new EventDeliveryMaintenanceScheduler(
                 () -> 3,

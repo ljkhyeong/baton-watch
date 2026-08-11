@@ -43,6 +43,6 @@ final class EventDeliveryMaintenanceScheduler {
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void refreshEventDeliveryBacklog() {
         EventDeliveryBacklog backlog = getBacklog.getEventDeliveryBacklog();
-        metrics.updateEventDeliveryBacklog(backlog.pendingCount(), backlog.oldestEventAge());
+        metrics.updateEventDeliveryBacklog(backlog);
     }
 }

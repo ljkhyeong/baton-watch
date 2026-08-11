@@ -175,7 +175,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 lastConclusiveAt,
                 nextCheckAt,
                 null,
-                null,
                 null);
         return new SynchronizationResult(
                 SynchronizationStatus.APPLIED, toProjection(updated));
@@ -222,7 +221,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 null,
                 null,
                 nextCheckAt,
-                null,
                 null,
                 null);
     }

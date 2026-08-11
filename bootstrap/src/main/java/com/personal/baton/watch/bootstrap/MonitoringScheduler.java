@@ -50,12 +50,22 @@ public final class MonitoringScheduler {
     @Scheduled(
             fixedDelayString = "${watch.maintenance-interval}",
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
-    void maintainMonitoringState() {
+    void markStaleProjections() {
         int stale = markStaleProjections.markStaleProjectionsUnknown();
+        metrics.recordStaleProjections(stale);
+        if (stale > 0) {
+            log.info("monitor stale projections marked count={}", stale);
+        }
+    }
+
+    @Scheduled(
+            fixedDelayString = "${watch.maintenance-interval}",
+            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
+    void purgeAttemptHistory() {
         int purged = purgeAttemptHistory.purgeAttemptHistory();
-        metrics.recordMonitoringMaintenance(stale, purged);
-        if (stale > 0 || purged > 0) {
-            log.info("monitor maintenance completed stale={} purged={}", stale, purged);
+        metrics.recordPurgedAttempts(purged);
+        if (purged > 0) {
+            log.info("monitor attempt history purged count={}", purged);
         }
     }
 }

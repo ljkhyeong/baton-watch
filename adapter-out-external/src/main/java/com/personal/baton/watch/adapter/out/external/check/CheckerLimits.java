@@ -14,15 +14,6 @@ public record CheckerLimits(
         int maxHeaderCount,
         int maxHeaderLineLength) {
 
-    public static final CheckerLimits DEFAULTS = new CheckerLimits(
-            Duration.ofSeconds(2),
-            Duration.ofSeconds(3),
-            Duration.ofSeconds(5),
-            64L * 1024L,
-            3,
-            100,
-            8 * 1024);
-
     public CheckerLimits {
         connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         responseTimeout = requirePositive(responseTimeout, "responseTimeout");
@@ -44,7 +35,7 @@ public record CheckerLimits(
 
     private static Duration requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
-        if (value.isZero() || value.isNegative()) {
+        if (!value.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;

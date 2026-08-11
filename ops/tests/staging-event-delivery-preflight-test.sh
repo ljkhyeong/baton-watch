@@ -145,12 +145,9 @@ if [[ "$(cat "$CURL_CALLS")" != $'watch\nreceiver' ]]; then
     fail "successful preflight did not call WATCH then receiver exactly once"
 fi
 
-non_url_safe_monitor_output="$(run_preflight \
-    WATCH_API_TOKEN="monitor:api:token:0123456789:abcdef")"
-if [[ "$non_url_safe_monitor_output" != *"checks passed"* ]]; then
-    fail "valid non-URL-safe monitor API token was rejected"
-fi
-
+assert_failure_contains \
+    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters" \
+    WATCH_API_TOKEN="monitor:api:token:0123456789:abcdef"
 assert_failure_contains \
     "must be distinct" \
     WATCH_EVENT_DELIVERY_TOKEN="monitor-api-token-0123456789-abcdef"

@@ -19,7 +19,7 @@ final class ApprovedDeliveryRequest {
             String bearerToken,
             String idempotencyKey) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
-        this.addresses = List.copyOf(Objects.requireNonNull(addresses, "addresses"));
+        this.addresses = List.copyOf(addresses);
         this.payload = Objects.requireNonNull(payload, "payload").clone();
         this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey");

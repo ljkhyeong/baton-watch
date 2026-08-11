@@ -14,6 +14,7 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -23,15 +24,23 @@ import org.junit.jupiter.params.provider.ValueSource;
 class SafeUrlCheckEngineTest {
 
     private static final String PUBLIC_V4 = "8.8.8.8";
+    private static final CheckerLimits DEFAULT_LIMITS = new CheckerLimits(
+            Duration.ofSeconds(2),
+            Duration.ofSeconds(3),
+            Duration.ofSeconds(5),
+            64L * 1024L,
+            3,
+            100,
+            8 * 1024);
 
     @Test
     void followsRelativeRedirectsAndRevalidatesRepinsEveryHop() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ofMillis(5));
-        transport.add(HttpHopResponse.redirect(302, "/next", 5));
-        transport.add(HttpHopResponse.finalStatus(204, 7));
-        SafeUrlCheckEngine engine = engine(CheckerLimits.DEFAULTS, dns, transport, clock);
+        transport.add(redirect(302, "/next", 5));
+        transport.add(finalStatus(204, 7));
+        SafeUrlCheckEngine engine = engine(DEFAULT_LIMITS, dns, transport, clock);
 
         CheckObservation observation = engine.check(new TargetUrl("https://Example.COM/start"));
 
@@ -47,7 +56,7 @@ class SafeUrlCheckEngineTest {
         assertEquals(publicAnswer(), transport.targets.get(0).addresses());
         assertEquals(publicAnswer(), transport.targets.get(1).addresses());
         assertEquals(
-                List.of(CheckerLimits.DEFAULTS.maxResponseBytes(), CheckerLimits.DEFAULTS.maxResponseBytes() - 5),
+                List.of(DEFAULT_LIMITS.maxResponseBytes(), DEFAULT_LIMITS.maxResponseBytes() - 5),
                 transport.remainingByteBudgets);
     }
 
@@ -58,9 +67,9 @@ class SafeUrlCheckEngineTest {
         dns.answers.put("blocked.example", List.of(
                 InetAddress.getByName(PUBLIC_V4), InetAddress.getByName("10.0.0.1")));
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(301, "https://blocked.example/", 2));
+        transport.add(redirect(301, "https://blocked.example/", 2));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://public.example/"));
 
         assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
@@ -76,7 +85,7 @@ class SafeUrlCheckEngineTest {
         RecordingDnsLookup dns = new RecordingDnsLookup(List.of(InetAddress.getByName("3000::1")));
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://reserved.example/"));
 
         assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
@@ -89,9 +98,9 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(302, "http://other.example/", 0));
+        transport.add(redirect(302, "http://other.example/", 0));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://start.example/"));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
@@ -111,9 +120,9 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(302, location, 0));
+        transport.add(redirect(302, location, 0));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://start.example/"));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
@@ -128,7 +137,7 @@ class SafeUrlCheckEngineTest {
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://example.com/%0d%0aHost:internal"));
 
         assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
@@ -141,9 +150,9 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(308, "https://EXAMPLE.com:443/", 1));
+        transport.add(redirect(308, "https://EXAMPLE.com:443/", 1));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://example.com"));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
@@ -156,12 +165,12 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(301, "https://one.example/", 1));
-        transport.add(HttpHopResponse.redirect(302, "https://two.example/", 1));
-        transport.add(HttpHopResponse.redirect(303, "https://three.example/", 1));
-        transport.add(HttpHopResponse.redirect(307, "https://four.example/", 1));
+        transport.add(redirect(301, "https://one.example/", 1));
+        transport.add(redirect(302, "https://two.example/", 1));
+        transport.add(redirect(303, "https://three.example/", 1));
+        transport.add(redirect(307, "https://four.example/", 1));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://start.example/"));
 
         assertEquals(CheckOutcome.TOO_MANY_REDIRECTS, observation.outcome());
@@ -181,7 +190,7 @@ class SafeUrlCheckEngineTest {
             ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
             transport.add(response);
 
-            CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+            CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                     .check(new TargetUrl("https://start.example/"));
 
             assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
@@ -194,9 +203,9 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.finalStatus(status, 4));
+        transport.add(finalStatus(status, 4));
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://status.example/"));
 
         assertEquals(expected, observation.outcome());
@@ -214,7 +223,7 @@ class SafeUrlCheckEngineTest {
         TransportFailure scriptedFailure = new TransportFailure(transportKind, 3);
         transport.add(scriptedFailure);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://failure.example/secret?token=value"));
 
         assertEquals(expected, observation.outcome());
@@ -231,7 +240,7 @@ class SafeUrlCheckEngineTest {
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://missing.example/"));
 
         assertEquals(CheckOutcome.DNS_FAILURE, observation.outcome());
@@ -247,7 +256,7 @@ class SafeUrlCheckEngineTest {
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://resolver-capacity.example/"));
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
@@ -261,7 +270,7 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(302, "/next", 6));
+        transport.add(redirect(302, "/next", 6));
         transport.add(new TransportFailure(TransportFailure.Kind.RESPONSE_TOO_LARGE, 4));
 
         CheckObservation observation = engine(limits, dns, transport, clock)
@@ -286,8 +295,8 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(HttpHopResponse.redirect(302, "/final", 10));
-        transport.add(HttpHopResponse.finalStatus(204, 0));
+        transport.add(redirect(302, "/final", 10));
+        transport.add(finalStatus(204, 0));
 
         CheckObservation observation = engine(limits, dns, transport, clock)
                 .check(new TargetUrl("https://bytes.example/start"));
@@ -308,7 +317,7 @@ class SafeUrlCheckEngineTest {
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://slow-dns.example/"));
 
         assertEquals(CheckOutcome.DNS_FAILURE, observation.outcome());
@@ -324,7 +333,7 @@ class SafeUrlCheckEngineTest {
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
-        CheckObservation observation = engine(CheckerLimits.DEFAULTS, dns, transport, clock)
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://internal.example/"));
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
@@ -335,7 +344,7 @@ class SafeUrlCheckEngineTest {
             CheckerLimits limits,
             DnsLookup dns,
             HttpHopTransport transport,
-            MonotonicClock clock) {
+            LongSupplier clock) {
         return new SafeUrlCheckEngine(
                 limits,
                 new TargetUriPolicy(),
@@ -347,6 +356,14 @@ class SafeUrlCheckEngineTest {
 
     private static List<InetAddress> publicAnswer() throws Exception {
         return List.of(InetAddress.getByName(PUBLIC_V4));
+    }
+
+    private static HttpHopResponse finalStatus(int statusCode, long responseBytes) {
+        return new HttpHopResponse(statusCode, List.of(), responseBytes);
+    }
+
+    private static HttpHopResponse redirect(int statusCode, String location, long responseBytes) {
+        return new HttpHopResponse(statusCode, List.of(location), responseBytes);
     }
 
     private static java.util.stream.Stream<Arguments> finalStatuses() {
@@ -375,12 +392,12 @@ class SafeUrlCheckEngineTest {
                 DnsLookupException.Reason.FAILED);
     }
 
-    private static final class MutableNanoClock implements MonotonicClock {
+    private static final class MutableNanoClock implements LongSupplier {
 
         private long now;
 
         @Override
-        public long nanoTime() {
+        public long getAsLong() {
             return now;
         }
 

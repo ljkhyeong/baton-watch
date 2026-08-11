@@ -8,7 +8,6 @@ import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -28,6 +27,7 @@ class EventDeliveryApplicationModelTest {
                 EventDeliveryOutcome.HTTP_SERVER_ERROR,
                 EventDeliveryObservation.forHttpStatus(503).outcome());
         assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(199));
+        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.delivered(199));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> EventDeliveryObservation.failure(EventDeliveryOutcome.DELIVERED));
@@ -45,17 +45,13 @@ class EventDeliveryApplicationModelTest {
     }
 
     @Test
-    void batchResultDefensivelyCopiesBoundedOutcomeCounts() {
-        Map<EventDeliveryOutcome, Integer> mutable = new java.util.EnumMap<>(EventDeliveryOutcome.class);
-        mutable.put(EventDeliveryOutcome.DELIVERED, 1);
-        EventDeliveryBatchResult result = new EventDeliveryBatchResult(1, 1, 0, 0, 0, mutable);
-
-        mutable.clear();
-
-        assertEquals(1, result.outcomes().get(EventDeliveryOutcome.DELIVERED));
+    void batchResultRequiresNonNegativeCountsThatMatchClaimedEvents() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new EventDeliveryBatchResult(1, 1, 0, 0, 0, Map.of()));
+                () -> new EventDeliveryBatchResult(1, 0, 0, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new EventDeliveryBatchResult(1, -1, 0, 0, 2));
     }
 
     private ClaimedHealthChangeEvent claimed(Health previous, Health current, int deliveryAttempt) {

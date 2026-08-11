@@ -57,7 +57,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
     public <T> T execute(Duration timeout, Operation<T> operation) throws ApacheHttpFailure {
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
-        if (timeout.isZero() || timeout.isNegative()) {
+        if (!timeout.isPositive()) {
             throw failure(ApacheHttpFailure.Kind.CONNECT_TIMEOUT, 0);
         }
 

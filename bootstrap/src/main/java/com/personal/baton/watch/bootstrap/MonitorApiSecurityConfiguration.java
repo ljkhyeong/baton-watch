@@ -2,7 +2,6 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiAuthenticationEntryPoint;
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestRejectedHandler;
-import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationConverter;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationManager;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.annotation.Bean;
@@ -26,11 +25,6 @@ class MonitorApiSecurityConfiguration {
             PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/system/status");
     private static final PathPatternRequestMatcher VERSIONED_API =
             PathPatternRequestMatcher.pathPattern("/api/v1/**");
-
-    @Bean
-    MonitorBearerTokenAuthenticationConverter monitorBearerTokenAuthenticationConverter() {
-        return new MonitorBearerTokenAuthenticationConverter();
-    }
 
     @Bean
     MonitorBearerTokenAuthenticationManager monitorBearerTokenAuthenticationManager(WatchProperties properties) {
@@ -64,7 +58,6 @@ class MonitorApiSecurityConfiguration {
     @Order(2)
     SecurityFilterChain versionedApiSecurityFilterChain(
             HttpSecurity http,
-            MonitorBearerTokenAuthenticationConverter converter,
             MonitorBearerTokenAuthenticationManager authenticationManager,
             MonitorApiAuthenticationEntryPoint authenticationEntryPoint) throws Exception {
         return stateless(http)
@@ -73,7 +66,6 @@ class MonitorApiSecurityConfiguration {
                 .exceptionHandling(errors -> errors.authenticationEntryPoint(authenticationEntryPoint))
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .authenticationManagerResolver(request -> authenticationManager)
-                        .authenticationConverter(converter)
                         .authenticationEntryPoint(authenticationEntryPoint))
                 .build();
     }

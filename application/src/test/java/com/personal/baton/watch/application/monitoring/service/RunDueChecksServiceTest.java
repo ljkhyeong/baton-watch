@@ -3,7 +3,6 @@ package com.personal.baton.watch.application.monitoring.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
-import com.personal.baton.watch.application.monitoring.model.CheckFinalizationResult;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
@@ -104,10 +103,10 @@ class RunDueChecksServiceTest {
         }
 
         @Override
-        public CheckFinalizationResult finalizeCheck(CheckFinalization finalization) {
+        public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
             calls.add("finalize");
             this.finalization = finalization;
-            return new CheckFinalizationResult(CheckFinalizationStatus.APPLIED);
+            return CheckFinalizationStatus.APPLIED;
         }
 
         @Override

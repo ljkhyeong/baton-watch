@@ -11,6 +11,7 @@ import java.net.InetAddress;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.LongSupplier;
 
 final class SafeEventDeliveryEngine {
 
@@ -21,7 +22,7 @@ final class SafeEventDeliveryEngine {
     private final GlobalAddressPolicy addressPolicy;
     private final DeliveryTransport transport;
     private final HealthChangeEventSerializer serializer;
-    private final DeliveryMonotonicClock clock;
+    private final LongSupplier clock;
 
     SafeEventDeliveryEngine(
             ValidatedDeliveryEndpoint endpoint,
@@ -31,7 +32,7 @@ final class SafeEventDeliveryEngine {
             GlobalAddressPolicy addressPolicy,
             DeliveryTransport transport,
             HealthChangeEventSerializer serializer,
-            DeliveryMonotonicClock clock) {
+            LongSupplier clock) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
         this.limits = Objects.requireNonNull(limits, "limits");
@@ -43,7 +44,7 @@ final class SafeEventDeliveryEngine {
     }
 
     EventDeliveryObservation send(HealthChangeEventPayload payload) {
-        long startedAt = clock.nanoTime();
+        long startedAt = clock.getAsLong();
         try {
             if (payload == null) {
                 return EventDeliveryObservation.internalFailure();
@@ -83,16 +84,16 @@ final class SafeEventDeliveryEngine {
                     body,
                     bearerToken,
                     payload.eventId().toString());
-            DeliveryHttpResponse response;
+            int statusCode;
             try {
-                response = transport.execute(request, remaining);
+                statusCode = transport.execute(request, remaining);
             } catch (DeliveryTransportFailure exception) {
                 return transportFailure(exception.kind());
             }
-            if (response.statusCode() < 200 || response.statusCode() > 599) {
+            if (statusCode < 200 || statusCode > 599) {
                 return failure(EventDeliveryOutcome.NETWORK_FAILURE);
             }
-            return EventDeliveryObservation.forHttpStatus(response.statusCode());
+            return EventDeliveryObservation.forHttpStatus(statusCode);
         } catch (RuntimeException exception) {
             return EventDeliveryObservation.internalFailure();
         }
@@ -115,7 +116,7 @@ final class SafeEventDeliveryEngine {
     }
 
     private Duration remaining(long startedAt) {
-        long elapsed = Math.max(0, clock.nanoTime() - startedAt);
+        long elapsed = Math.max(0, clock.getAsLong() - startedAt);
         long remaining = limits.totalTimeoutNanos() - elapsed;
         return remaining <= 0 ? Duration.ZERO : Duration.ofNanos(remaining);
     }

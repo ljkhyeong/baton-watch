@@ -10,9 +10,6 @@ public record EventDeliveryObservation(EventDeliveryOutcome outcome, Integer htt
     }
 
     public static EventDeliveryObservation delivered(int httpStatusCode) {
-        if (httpStatusCode < 200 || httpStatusCode > 299) {
-            throw new IllegalArgumentException("delivered HTTP status must be in the 2xx range");
-        }
         return new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, httpStatusCode);
     }
 
@@ -30,12 +27,6 @@ public record EventDeliveryObservation(EventDeliveryOutcome outcome, Integer htt
     }
 
     public static EventDeliveryObservation failure(EventDeliveryOutcome outcome) {
-        Objects.requireNonNull(outcome, "outcome");
-        if (outcome == EventDeliveryOutcome.DELIVERED
-                || outcome == EventDeliveryOutcome.HTTP_CLIENT_ERROR
-                || outcome == EventDeliveryOutcome.HTTP_SERVER_ERROR) {
-            throw new IllegalArgumentException("outcome requires HTTP response metadata");
-        }
         return new EventDeliveryObservation(outcome, null);
     }
 

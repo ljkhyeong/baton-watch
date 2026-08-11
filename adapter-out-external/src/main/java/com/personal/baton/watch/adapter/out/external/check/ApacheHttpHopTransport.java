@@ -47,7 +47,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
             throws TransportFailure {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(remainingTime, "remainingTime");
-        if (remainingTime.isZero() || remainingTime.isNegative()) {
+        if (!remainingTime.isPositive()) {
             throw new TransportFailure(TransportFailure.Kind.CONNECT_TIMEOUT, 0);
         }
         if (remainingBytes < 0) {

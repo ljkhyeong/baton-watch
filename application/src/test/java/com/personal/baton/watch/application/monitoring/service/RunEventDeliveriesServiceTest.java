@@ -2,13 +2,11 @@ package com.personal.baton.watch.application.monitoring.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
@@ -51,8 +49,7 @@ class RunEventDeliveriesServiceTest {
 
         assertEquals(List.of("claim", "send", "finalize"), calls);
         assertEquals(
-                new EventDeliveryBatchResult(
-                        1, 1, 0, 0, 0, java.util.Map.of(EventDeliveryOutcome.DELIVERED, 1)),
+                new EventDeliveryBatchResult(1, 1, 0, 0, 0),
                 result);
         assertEquals(NOW, persistence.claimedAt);
         assertEquals(NOW.plus(LEASE), persistence.leaseUntil);
@@ -81,7 +78,6 @@ class RunEventDeliveriesServiceTest {
         assertEquals(NOW.plus(MAX_BACKOFF), capped.finalization.nextAttemptAt());
         assertEquals(EventDeliveryObservation.internalFailure(), capped.finalization.observation());
         assertEquals(1, result.retryScheduled());
-        assertEquals(1, result.outcomes().get(EventDeliveryOutcome.INTERNAL_FAILURE));
     }
 
     @Test
@@ -95,23 +91,7 @@ class RunEventDeliveriesServiceTest {
 
         assertEquals(1, result.alreadyDelivered());
         assertEquals(0, result.retryScheduled());
-        assertEquals(1, result.outcomes().get(EventDeliveryOutcome.CONNECT_TIMEOUT));
-    }
-
-    @Test
-    void rejectsRetryBackoffBeyondTheSupportedCeilingBeforeClaimingEvents() {
-        RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
-
-        assertThrows(IllegalArgumentException.class, () -> new RunEventDeliveriesService(
-                persistence,
-                event -> EventDeliveryObservation.failure(EventDeliveryOutcome.NETWORK_FAILURE),
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INITIAL_BACKOFF,
-                Duration.ofSeconds(Long.MAX_VALUE),
-                5));
-
-        assertEquals(List.of(), persistence.calls);
+        assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, persistence.finalization.observation().outcome());
     }
 
     private RunEventDeliveriesService service(
@@ -122,8 +102,7 @@ class RunEventDeliveriesServiceTest {
                 sender,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 LEASE,
-                INITIAL_BACKOFF,
-                MAX_BACKOFF,
+                new EventDeliveryRetryPolicy(INITIAL_BACKOFF, MAX_BACKOFF),
                 5);
     }
 
@@ -166,10 +145,10 @@ class RunEventDeliveriesServiceTest {
         }
 
         @Override
-        public EventDeliveryFinalizationResult finalizeDelivery(EventDeliveryFinalization finalization) {
+        public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
             calls.add("finalize");
             this.finalization = finalization;
-            return new EventDeliveryFinalizationResult(status);
+            return status;
         }
 
         @Override

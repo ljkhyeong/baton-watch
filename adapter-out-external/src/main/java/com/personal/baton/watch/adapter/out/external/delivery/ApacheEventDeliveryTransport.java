@@ -44,11 +44,11 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
     }
 
     @Override
-    public DeliveryHttpResponse execute(ApprovedDeliveryRequest request, Duration remainingTime)
+    public int execute(ApprovedDeliveryRequest request, Duration remainingTime)
             throws DeliveryTransportFailure {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(remainingTime, "remainingTime");
-        if (remainingTime.isZero() || remainingTime.isNegative()) {
+        if (!remainingTime.isPositive()) {
             throw new DeliveryTransportFailure(DeliveryTransportFailure.Kind.CONNECT_TIMEOUT);
         }
 
@@ -66,7 +66,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
         requestExecutor.close();
     }
 
-    private DeliveryHttpResponse executeBlocking(
+    private int executeBlocking(
             ApprovedDeliveryRequest delivery,
             Duration remainingTime,
             ApacheHttpRequestExecutor.Progress progress)
@@ -90,15 +90,14 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(delivery.endpoint().uri()), request, response -> {
                         progress.responseStarted();
-                        long responseBytes = 0;
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {
-                            responseBytes = bodyDiscarder.discard(
+                            bodyDiscarder.discard(
                                     entity,
                                     limits.maxResponseBytes(),
                                     progress::responseBytes);
                         }
-                        return new DeliveryHttpResponse(response.getCode(), responseBytes);
+                        return response.getCode();
                     });
         }
     }

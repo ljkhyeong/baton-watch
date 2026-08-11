@@ -8,6 +8,7 @@ import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEve
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
+import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetryPolicy;
 import com.personal.baton.watch.application.monitoring.service.GetEventDeliveryBacklogService;
 import com.personal.baton.watch.application.monitoring.service.PurgeDeliveredEventsService;
 import com.personal.baton.watch.application.monitoring.service.RunEventDeliveriesService;
@@ -24,6 +25,12 @@ import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class EventDeliveryConfiguration {
+
+    @Bean
+    EventDeliveryRetryPolicy eventDeliveryRetryPolicy(EventDeliveryProperties properties) {
+        return new EventDeliveryRetryPolicy(
+                properties.initialRetryDelay(), properties.maxRetryDelay());
+    }
 
     @Bean
     JdbcHealthChangeEventDeliveryAdapter healthChangeEventDeliveryPersistenceAdapter(
@@ -71,14 +78,14 @@ class EventDeliveryConfiguration {
             HealthChangeEventDeliveryPersistencePort persistence,
             HealthChangeEventSender sender,
             Clock clock,
-            EventDeliveryProperties properties) {
+            EventDeliveryProperties properties,
+            EventDeliveryRetryPolicy retryPolicy) {
         return new RunEventDeliveriesService(
                 persistence,
                 sender,
                 clock,
                 properties.leaseDuration(),
-                properties.initialRetryDelay(),
-                properties.maxRetryDelay(),
+                retryPolicy,
                 properties.batchSize());
     }
 

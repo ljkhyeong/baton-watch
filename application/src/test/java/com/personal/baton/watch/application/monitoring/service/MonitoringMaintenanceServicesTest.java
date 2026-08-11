@@ -3,7 +3,7 @@ package com.personal.baton.watch.application.monitoring.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
-import com.personal.baton.watch.application.monitoring.model.CheckFinalizationResult;
+import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
@@ -86,7 +86,7 @@ class MonitoringMaintenanceServicesTest {
         }
 
         @Override
-        public CheckFinalizationResult finalizeCheck(CheckFinalization finalization) {
+        public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
             throw new UnsupportedOperationException();
         }
 

@@ -9,6 +9,7 @@ import java.util.Objects;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import tools.jackson.databind.ObjectMapper;
@@ -16,11 +17,8 @@ import tools.jackson.databind.ObjectMapper;
 /** Writes the stable RFC 9457-compatible unauthorized response for monitor APIs. */
 public final class MonitorApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private static final UnauthorizedProblem UNAUTHORIZED = new UnauthorizedProblem(
-            URI.create("urn:baton-watch:problem:unauthorized"),
-            "Unauthorized",
-            HttpStatus.UNAUTHORIZED.value(),
-            "UNAUTHORIZED");
+    private static final URI UNAUTHORIZED_TYPE =
+            URI.create("urn:baton-watch:problem:unauthorized");
 
     private final ObjectMapper objectMapper;
 
@@ -37,9 +35,14 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        objectMapper.writeValue(response.getOutputStream(), UNAUTHORIZED);
+        objectMapper.writeValue(response.getOutputStream(), unauthorizedProblem());
     }
 
-    private record UnauthorizedProblem(URI type, String title, int status, String code) {
+    private static ProblemDetail unauthorizedProblem() {
+        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
+        problem.setType(UNAUTHORIZED_TYPE);
+        problem.setTitle("Unauthorized");
+        problem.setProperty("code", "UNAUTHORIZED");
+        return problem;
     }
 }

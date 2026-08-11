@@ -33,7 +33,7 @@ public record ApacheHttpClientLimits(
 
     private static Duration requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
-        if (value.isZero() || value.isNegative()) {
+        if (!value.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;

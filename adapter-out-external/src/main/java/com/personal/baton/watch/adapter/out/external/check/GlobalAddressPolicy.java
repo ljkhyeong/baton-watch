@@ -4,11 +4,9 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /** Rejects an entire DNS answer when any address is not public global unicast. */
 public final class GlobalAddressPolicy {
@@ -71,14 +69,14 @@ public final class GlobalAddressPolicy {
             throw new AddressPolicyException();
         }
 
-        Map<AddressBytes, InetAddress> unique = new LinkedHashMap<>();
+        Set<InetAddress> unique = new LinkedHashSet<>();
         for (InetAddress address : answer) {
             if (!isGlobal(address)) {
                 throw new AddressPolicyException();
             }
-            unique.putIfAbsent(new AddressBytes(address.getAddress()), address);
+            unique.add(address);
         }
-        return List.copyOf(new ArrayList<>(unique.values()));
+        return List.copyOf(unique);
     }
 
     boolean isGlobal(InetAddress address) {
@@ -135,30 +133,6 @@ public final class GlobalAddressPolicy {
             }
             int mask = 0xff << (Byte.SIZE - remainingBits);
             return (candidate[completeBytes] & mask) == (network[completeBytes] & mask);
-        }
-
-        @Override
-        public byte[] network() {
-            return network.clone();
-        }
-    }
-
-    private static final class AddressBytes {
-
-        private final byte[] value;
-
-        private AddressBytes(byte[] value) {
-            this.value = value.clone();
-        }
-
-        @Override
-        public boolean equals(Object other) {
-            return other instanceof AddressBytes that && Arrays.equals(value, that.value);
-        }
-
-        @Override
-        public int hashCode() {
-            return Arrays.hashCode(value);
         }
     }
 }

@@ -46,6 +46,7 @@ class DeliveryEndpointPolicyTest {
                 "https://events.example.com:0443/callback",
                 "https://events.example.com./callback",
                 "https://127.0.0.1/callback",
+                "https://1.2.3.4.5/callback",
                 "https://2130706433/callback",
                 "https://0x7f000001/callback",
                 "https://[2001:4860:4860::8888]/callback",

@@ -135,7 +135,10 @@ class WorkerSchedulingConfigurationTest {
                 MonitoringScheduler.class.getDeclaredMethod("checkDueMonitors"),
                 WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER);
         assertScheduler(
-                MonitoringScheduler.class.getDeclaredMethod("maintainMonitoringState"),
+                MonitoringScheduler.class.getDeclaredMethod("markStaleProjections"),
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
+        assertScheduler(
+                MonitoringScheduler.class.getDeclaredMethod("purgeAttemptHistory"),
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
         assertScheduler(
                 EventDeliveryScheduler.class.getDeclaredMethod("deliverPendingEvents"),

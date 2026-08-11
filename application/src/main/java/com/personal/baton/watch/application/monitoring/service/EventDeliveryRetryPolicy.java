@@ -38,7 +38,7 @@ public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay)
 
     private static Duration requirePositive(Duration duration, String name) {
         Objects.requireNonNull(duration, name);
-        if (duration.isZero() || duration.isNegative()) {
+        if (!duration.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return duration;

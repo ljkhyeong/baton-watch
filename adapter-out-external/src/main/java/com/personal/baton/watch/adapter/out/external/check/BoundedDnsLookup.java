@@ -4,7 +4,6 @@ import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -48,7 +47,7 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
     public List<InetAddress> resolve(String hostname, Duration timeout) throws DnsLookupException {
         Objects.requireNonNull(hostname, "hostname");
         Objects.requireNonNull(timeout, "timeout");
-        if (timeout.isZero() || timeout.isNegative()) {
+        if (!timeout.isPositive()) {
             throw new DnsLookupException(DnsLookupException.Reason.TIMED_OUT);
         }
 
@@ -64,7 +63,7 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
             if (resolved == null || resolved.length == 0) {
                 throw new DnsLookupException(DnsLookupException.Reason.NOT_FOUND);
             }
-            return List.copyOf(Arrays.asList(resolved.clone()));
+            return List.of(resolved);
         } catch (TimeoutException exception) {
             future.cancel(true);
             throw new DnsLookupException(DnsLookupException.Reason.TIMED_OUT);
