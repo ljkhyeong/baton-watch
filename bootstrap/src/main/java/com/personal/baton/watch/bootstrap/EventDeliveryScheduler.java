@@ -27,21 +27,16 @@ final class EventDeliveryScheduler {
             fixedDelayString = "${watch.event-delivery.poll-interval}",
             scheduler = WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER)
     void deliverPendingEvents() {
-        try {
-            EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();
-            metrics.recordEventDeliveryBatch(result);
-            if (result.claimed() > 0) {
-                log.info(
-                        "health-change delivery batch completed claimed={} delivered={} retry={} replayed={} stale={}",
-                        result.claimed(),
-                        result.delivered(),
-                        result.retryScheduled(),
-                        result.alreadyDelivered(),
-                        result.staleClaims());
-            }
-        } catch (RuntimeException exception) {
-            metrics.recordSchedulerFailure("event_delivery");
-            log.error("health-change delivery batch failed failureType={}", exception.getClass().getSimpleName());
+        EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();
+        metrics.recordEventDeliveryBatch(result);
+        if (result.claimed() > 0) {
+            log.info(
+                    "health-change delivery batch completed claimed={} delivered={} retry={} replayed={} stale={}",
+                    result.claimed(),
+                    result.delivered(),
+                    result.retryScheduled(),
+                    result.alreadyDelivered(),
+                    result.staleClaims());
         }
     }
 }

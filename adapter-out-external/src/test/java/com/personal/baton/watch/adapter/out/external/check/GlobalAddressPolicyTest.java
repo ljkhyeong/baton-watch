@@ -19,11 +19,64 @@ class GlobalAddressPolicyTest {
     @ValueSource(strings = {
         "8.8.8.8",
         "1.1.1.1",
+        "2001:db7:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:db9::1",
         "2001:4860:4860::8888",
-        "2606:4700:4700::1111"
+        "2606:4700:4700::1111",
+        "2620:4f:7fff:ffff:ffff:ffff:ffff:ffff",
+        "2620:4f:8001::1"
     })
     void acceptsPublicGlobalUnicast(String literal) throws Exception {
         assertTrue(policy.isGlobal(InetAddress.getByName(literal)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "2001:200::",
+        "2001:3ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:400::",
+        "2001:7ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:800::",
+        "2001:fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:1200::",
+        "2001:13ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:1400::",
+        "2001:17ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:1800::",
+        "2001:1fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:2000::",
+        "2001:3fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:4000::",
+        "2001:47ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:4800::",
+        "2001:4bff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:4c00::",
+        "2001:4dff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:5000::",
+        "2001:5fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2001:8000::",
+        "2001:bfff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2003::",
+        "2003:3fff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2400::",
+        "241f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2600::",
+        "260f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2610::",
+        "2610:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2620::",
+        "2620:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2630::",
+        "263f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2800::",
+        "280f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2a00::",
+        "2a1f:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+        "2c00::",
+        "2c0f:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+    })
+    void acceptsAllocatedIpv6RangeBoundaries(String literal) throws Exception {
+        assertTrue(policy.isGlobal(InetAddress.getByName(literal)), literal);
     }
 
     @ParameterizedTest
@@ -58,9 +111,11 @@ class GlobalAddressPolicyTest {
         "2001:2::1",
         "2001:10::1",
         "2001:20::1",
-        "2001:db8::1",
+        "2001:db8::",
+        "2001:db8:ffff:ffff:ffff:ffff:ffff:ffff",
         "2002::1",
-        "2620:4f:8000::1",
+        "2620:4f:8000::",
+        "2620:4f:8000:ffff:ffff:ffff:ffff:ffff",
         "3fff::1",
         "5f00::1",
         "fc00::1",
@@ -70,6 +125,30 @@ class GlobalAddressPolicyTest {
         "ff02::1"
     })
     void rejectsSpecialUseAndNonGlobalRanges(String literal) throws Exception {
+        assertFalse(policy.isGlobal(InetAddress.getByName(literal)), literal);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "2000::1",
+        "2001:1000::1",
+        "2001:4e00::1",
+        "2001:6000::1",
+        "2001:c000::1",
+        "2003:4000::1",
+        "2004::1",
+        "2420::1",
+        "2610:200::1",
+        "2620:200::1",
+        "2640::1",
+        "2810::1",
+        "2a20::1",
+        "2c10::1",
+        "2d00::1",
+        "3000::1",
+        "3ffe::1"
+    })
+    void rejectsUnallocatedOrReservedGlobalUnicastSpace(String literal) throws Exception {
         assertFalse(policy.isGlobal(InetAddress.getByName(literal)), literal);
     }
 

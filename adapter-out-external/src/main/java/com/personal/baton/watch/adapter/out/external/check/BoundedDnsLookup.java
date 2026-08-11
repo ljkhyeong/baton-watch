@@ -12,11 +12,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Runs the JVM resolver in a bounded executor. Cancelling a future cannot force
@@ -34,7 +32,11 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
     private final HostResolver resolver;
 
     public BoundedDnsLookup(int threadCount, int queueCapacity) {
-        this(createExecutor(threadCount, queueCapacity), InetAddress::getAllByName);
+        this(threadCount, queueCapacity, InetAddress::getAllByName);
+    }
+
+    BoundedDnsLookup(int threadCount, int queueCapacity, HostResolver resolver) {
+        this(createExecutor(threadCount, queueCapacity), resolver);
     }
 
     BoundedDnsLookup(ExecutorService executor, HostResolver resolver) {
@@ -85,19 +87,16 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
     private static ExecutorService createExecutor(int threadCount, int queueCapacity) {
         OutboundResourceBounds.requireDnsExecutorBounds(threadCount, queueCapacity);
-        AtomicInteger sequence = new AtomicInteger();
-        ThreadFactory threadFactory = task -> {
-            Thread thread = new Thread(task, "watch-dns-" + sequence.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        };
         return new ThreadPoolExecutor(
                 threadCount,
                 threadCount,
                 0L,
                 TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(queueCapacity),
-                threadFactory,
+                Thread.ofPlatform()
+                        .daemon()
+                        .name("watch-dns-", 1)
+                        .factory(),
                 new ThreadPoolExecutor.AbortPolicy());
     }
 }

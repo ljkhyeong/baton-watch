@@ -30,28 +30,19 @@ final class EventDeliveryMaintenanceScheduler {
     @Scheduled(
             fixedDelayString = "${watch.event-delivery.maintenance-interval}",
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
-    void maintainDeliveryState() {
-        try {
-            int purged = purgeDeliveredEvents.purgeDeliveredEvents();
-            metrics.recordPurgedDeliveredEvents(purged);
-            if (purged > 0) {
-                log.info("health-change delivery maintenance completed purged={}", purged);
-            }
-        } catch (RuntimeException exception) {
-            metrics.recordSchedulerFailure("event_retention");
-            log.error("health-change delivery maintenance failed failureType={}", exception.getClass().getSimpleName());
+    void purgeDeliveredEventHistory() {
+        int purged = purgeDeliveredEvents.purgeDeliveredEvents();
+        metrics.recordPurgedDeliveredEvents(purged);
+        if (purged > 0) {
+            log.info("health-change delivery maintenance completed purged={}", purged);
         }
-        updateBacklogSafely();
     }
 
-    private void updateBacklogSafely() {
-        try {
-            EventDeliveryBacklog backlog = getBacklog.getEventDeliveryBacklog();
-            metrics.updateEventDeliveryBacklog(backlog.pendingCount(), backlog.oldestEventAge());
-        } catch (RuntimeException exception) {
-            metrics.recordSchedulerFailure("event_backlog");
-            log.error("health-change delivery backlog refresh failed failureType={}",
-                    exception.getClass().getSimpleName());
-        }
+    @Scheduled(
+            fixedDelayString = "${watch.event-delivery.maintenance-interval}",
+            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
+    void refreshEventDeliveryBacklog() {
+        EventDeliveryBacklog backlog = getBacklog.getEventDeliveryBacklog();
+        metrics.updateEventDeliveryBacklog(backlog.pendingCount(), backlog.oldestEventAge());
     }
 }

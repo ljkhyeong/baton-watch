@@ -35,20 +35,15 @@ public final class MonitoringScheduler {
             fixedDelayString = "${watch.poll-interval}",
             scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
     void checkDueMonitors() {
-        try {
-            DueCheckBatchResult result = runDueChecks.runDueChecks();
-            metrics.recordCheckBatch(result);
-            if (result.claimed() > 0) {
-                log.info(
-                        "monitor check batch completed claimed={} applied={} replayed={} stale={}",
-                        result.claimed(),
-                        result.applied(),
-                        result.alreadyFinalized(),
-                        result.staleClaims());
-            }
-        } catch (RuntimeException exception) {
-            metrics.recordSchedulerFailure("check");
-            log.error("monitor check batch failed failureType={}", exception.getClass().getSimpleName());
+        DueCheckBatchResult result = runDueChecks.runDueChecks();
+        metrics.recordCheckBatch(result);
+        if (result.claimed() > 0) {
+            log.info(
+                    "monitor check batch completed claimed={} applied={} replayed={} stale={}",
+                    result.claimed(),
+                    result.applied(),
+                    result.alreadyFinalized(),
+                    result.staleClaims());
         }
     }
 
@@ -56,16 +51,11 @@ public final class MonitoringScheduler {
             fixedDelayString = "${watch.maintenance-interval}",
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void maintainMonitoringState() {
-        try {
-            int stale = markStaleProjections.markStaleProjectionsUnknown();
-            int purged = purgeAttemptHistory.purgeAttemptHistory();
-            metrics.recordMonitoringMaintenance(stale, purged);
-            if (stale > 0 || purged > 0) {
-                log.info("monitor maintenance completed stale={} purged={}", stale, purged);
-            }
-        } catch (RuntimeException exception) {
-            metrics.recordSchedulerFailure("monitoring_maintenance");
-            log.error("monitor maintenance failed failureType={}", exception.getClass().getSimpleName());
+        int stale = markStaleProjections.markStaleProjectionsUnknown();
+        int purged = purgeAttemptHistory.purgeAttemptHistory();
+        metrics.recordMonitoringMaintenance(stale, purged);
+        if (stale > 0 || purged > 0) {
+            log.info("monitor maintenance completed stale={} purged={}", stale, purged);
         }
     }
 }

@@ -32,7 +32,6 @@ class MonitoringMetricsTest {
                         EventDeliveryOutcome.HTTP_SERVER_ERROR, 1,
                         EventDeliveryOutcome.INTERNAL_FAILURE, 1)));
         metrics.recordEventDeliveryAttempt(EventDeliveryOutcome.CONNECT_TIMEOUT);
-        metrics.recordSchedulerFailure("event_delivery");
 
         assertEquals(3.0, registry.get("baton.watch.check.claimed").counter().count());
         assertEquals(
@@ -45,12 +44,6 @@ class MonitoringMetricsTest {
                 1.0,
                 registry.get("baton.watch.event.delivery.finalizations")
                         .tag("status", "retry_scheduled")
-                        .counter()
-                        .count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.scheduler.failures")
-                        .tag("operation", "event_delivery")
                         .counter()
                         .count());
         assertEquals(

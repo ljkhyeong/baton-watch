@@ -1,8 +1,10 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiAuthenticationEntryPoint;
+import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestRejectedHandler;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationConverter;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationManager;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -11,6 +13,9 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.firewall.CompositeRequestRejectedHandler;
+import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 
@@ -35,6 +40,15 @@ class MonitorApiSecurityConfiguration {
     @Bean
     MonitorApiAuthenticationEntryPoint monitorApiAuthenticationEntryPoint(ObjectMapper objectMapper) {
         return new MonitorApiAuthenticationEntryPoint(objectMapper);
+    }
+
+    @Bean
+    RequestRejectedHandler monitorApiRequestRejectedHandler(
+            ObjectMapper objectMapper,
+            ObservationRegistry observationRegistry) {
+        return new CompositeRequestRejectedHandler(
+                new ObservationMarkingRequestRejectedHandler(observationRegistry),
+                new MonitorApiRequestRejectedHandler(objectMapper));
     }
 
     @Bean

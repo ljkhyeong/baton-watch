@@ -12,11 +12,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
@@ -142,19 +140,16 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         if (threadNamePrefix == null || threadNamePrefix.isBlank()) {
             throw new IllegalArgumentException("HTTP thread name prefix must not be blank");
         }
-        AtomicInteger sequence = new AtomicInteger();
-        ThreadFactory threadFactory = task -> {
-            Thread thread = new Thread(task, threadNamePrefix + sequence.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        };
         return new ThreadPoolExecutor(
                 threadCount,
                 threadCount,
                 0L,
                 TimeUnit.MILLISECONDS,
                 new ArrayBlockingQueue<>(queueCapacity),
-                threadFactory,
+                Thread.ofPlatform()
+                        .daemon()
+                        .name(threadNamePrefix, 1)
+                        .factory(),
                 new ThreadPoolExecutor.AbortPolicy());
     }
 

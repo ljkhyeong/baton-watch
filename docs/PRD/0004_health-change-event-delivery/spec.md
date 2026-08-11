@@ -134,8 +134,10 @@ delivery is active. Response bodies are discarded and never persisted.
 - An expired lease becomes claimable again. Disabling delivery stops new claims
   but does not delete or rewrite pending events.
 - Failure schedules `min(initialDelay * 2^(attemptCount - 1), maxDelay)` using a
-  safely capped exponent. Both delays are positive bounded configuration, and
-  retry count is not used to discard an event.
+  safely capped exponent. The configuration must satisfy
+  `0 < initialDelay <= maxDelay <= 30 days`; values above the implementation
+  ceiling fail startup before any event is claimed. Retry count is not used to
+  discard an event.
 
 The persisted and metric outcome taxonomy is bounded to `DELIVERED`,
 `HTTP_CLIENT_ERROR` for 3xx-4xx, `HTTP_SERVER_ERROR` for 5xx,
@@ -147,7 +149,9 @@ classes; response headers, bodies, and exception text are not retained.
 The initial dispatcher settings are a 1-second poll interval, 60-second lease,
 batch size 10, 5-second initial retry delay, and 15-minute maximum retry delay.
 Delivered-event cleanup runs every minute with a batch size of 100 and a
-30-day retention period.
+30-day retention period. The retry-delay ceiling and delivered-event retention
+are separate policies; the 30-day ceiling is not an operational retry
+recommendation.
 
 Only delivered events older than the configured positive retention period may
 be deleted, in bounded batches. Pending, retrying, and leased-but-unfinalized
@@ -162,13 +166,19 @@ WATCH exposes low-cardinality telemetry for:
   event;
 - callback attempts grouped only by the bounded delivery outcome above;
 - bounded claim/finalization state needed to distinguish idle delivery from a
-  stuck or failing dispatcher.
+  stuck or failing dispatcher;
+- Spring scheduled-execution duration and success/failure for dispatch,
+  delivered-event cleanup, and backlog refresh. Cleanup and backlog refresh are
+  independent single-thread maintenance tasks, so either task continues to be
+  scheduled when the other fails.
 
 Raw callback URLs, hosts, resource references, event IDs, exception messages,
-and HTTP response content are never metric labels. Logs may use `eventId` as a
-correlation value but must not include the callback URL, bearer token, resource
-reference, response body, or raw exception message. Repository telemetry does
-not imply that an external monitoring stack or alert is deployed.
+and HTTP response content are never metric labels. Framework-supplied scheduled
+class/method and exception-class labels are allowed because they contain no
+request data. Logs may use `eventId` as a correlation value but must not include
+the callback URL, bearer token, resource reference, response body, or raw
+exception message. Repository telemetry does not imply that an external
+monitoring stack or alert is deployed.
 
 ## Acceptance criteria
 

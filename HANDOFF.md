@@ -7,7 +7,17 @@
 - GET /api/v1/system/status and authenticated PUT/GET
   /api/v1/resource-monitors/{resourceReference} are implemented.
 - Spring Security applies stateless service-token authentication to every
-  non-status `/api/v1/**` request with context-path-aware matching.
+  non-status `/api/v1/**` request with context-path-aware matching. After
+  authentication, Spring MVC 400/404/405/406/415 rejections use the stable
+  redacted Problem Details contract while preserving standard `Allow` and
+  `Accept` response headers. The strict HTTP firewall remains in front of that
+  authentication boundary; suspicious path forms fail closed with a fixed
+  redacted HTTP 400 Problem Details response while retaining Spring Security's
+  request-rejection observation.
+- Framework failures detected after an HTTP response is already committed do
+  not re-enter Spring's default exception writer, preventing its fallback WARN
+  log from restoring a raw exception message. Unexpected server failures still
+  log only their bounded exception class.
 - Application time comes from an injected UTC Clock.
 - PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
   current derived health, and durable health-change events with pending/delivered
@@ -20,6 +30,12 @@
   transactions and handles staleness and bounded attempt retention. Monitor
   synchronization and redirect hops share the same static `TargetUrl` policy;
   legacy unsafe encodings can be rehydrated but are rejected before DNS or I/O.
+- IPv6 destination approval fails closed against the IANA global-unicast
+  allocation registry snapshot dated 2025-10-10. Unlisted, reserved, and
+  carved-out special-purpose ranges are rejected before connection in both
+  target checks and callback delivery. Deployment-specific RFC 6052 NAT64
+  prefixes cannot be inferred from an address alone and remain subject to the
+  required infrastructure egress policy.
 - Target checks and event delivery share a neutral request-scoped Apache client,
   bounded deadline executor, pinned resolver, and bounded body discarder while
   retaining separate GET/redirect and POST/acknowledgement semantics.
@@ -37,12 +53,19 @@
   settings have hard implementation ceilings validated at bootstrap and again
   in the external adapter before resource allocation. Production check,
   delivery, and maintenance batch settings have separate bootstrap ceilings
-  enforced before lease arithmetic and service execution.
+  enforced before lease arithmetic and service execution. Bootstrap delegates
+  non-sensitive independent numeric bounds and nested-property presence to
+  Spring Boot configuration-properties Bean Validation, while secrets,
+  positive-duration checks, conditional rules, cross-field comparisons, and
+  overflow handling remain explicit redacted constructor checks.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
-  capped retries, and delivered-only retention. The sender boundary accepts
-  only immutable event payload data; lease and retry metadata stay internal.
+  capped retries with a 30-day hard configuration ceiling, and delivered-only
+  retention. The sender boundary accepts only immutable event payload data;
+  lease and retry metadata stay internal. A shared application retry policy
+  rejects larger delays before any event is claimed and owns the safely capped
+  exponential calculation.
 - A compatible BATON receiver with separate bearer authentication and an atomic
   immutable `eventId` inbox is implemented in the BATON repository. Its
   deployment and public WATCH-to-BATON integration are not yet verified.
@@ -53,7 +76,9 @@
   or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
   local and staging Compose grant the process 110 seconds before forced
   termination, covering the default 30-second web shutdown phase, scheduler
-  drain, and a bounded margin.
+  drain, and a bounded margin. Delivered-event cleanup and backlog refresh are
+  independent methods on the maintenance lane, so one failure does not prevent
+  the other task from remaining scheduled.
 - Adapter-owned persistence transactions have a five-second JDBC statement
   deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
   reject an existing outer Spring transaction before work starts, preserving
@@ -65,7 +90,13 @@
   scheduler, backlog, oldest-event-age, finalization, and delivery-outcome
   telemetry are configured; Compose does not publish the management port. No
   external alerting stack, frontend, broker, or production deployment is
-  present.
+  present. Scheduler errors use Spring's `tasks.scheduled.execution` timer;
+  failures reach that observation before a redacting handler logs only their
+  class and keeps the fixed-delay task scheduled. The redundant WATCH-owned
+  scheduler-failure counter has no repository consumer and is removed. The
+  management allowlist remains exactly `health,prometheus`; `scheduledtasks` is
+  not exposed because Spring's internal task diagnostics retain the original
+  exception.
 - The GitHub Actions `Verify` job uses SHA-pinned official checkout, Java, and
   Gradle actions, requires Docker, runs a clean uncached test/build, and parses
   fresh JUnit XML to require all six PostgreSQL suites plus the production-root
@@ -100,9 +131,10 @@
 
 ## Verification
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache`: 271 tests
-  passed with no skips, failures, or errors, including the Docker-backed
-  PostgreSQL Testcontainers suite.
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
+  and a 512 MiB Gradle heap: 367 tests passed with no skips,
+  failures, or errors, including the Docker-backed PostgreSQL Testcontainers
+  suite.
 - The real `BatonWatchApplication` root context started against a
   service-connected PostgreSQL 18.4 container with Flyway V1/V2, Spring
   Security, all three persistence adapters, outbound check and delivery
@@ -120,11 +152,14 @@
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
   `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
   `TransactionOperations` wiring all three persistence adapters.
-- Outbound checker and callback adapter suite: 169 tests passed without a
+- Outbound checker and callback adapter suite: 238 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
   no-drain response abort, header count/line classification, resource ceiling
-  boundaries, pinned-address TLS Host/SNI preservation, DNS SAN verification,
-  and trusted-certificate hostname-mismatch classification.
+  boundaries, every current IANA-allocated IPv6 range boundary, reserved and
+  unallocated IPv6 rejection before check or delivery transport,
+  named daemon platform-thread creation for bounded DNS and request executors,
+  pinned-address TLS Host/SNI preservation, DNS SAN verification, and
+  trusted-certificate hostname-mismatch classification.
 - PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
@@ -135,9 +170,16 @@
   transaction-deadline rollback, transaction-local setting restoration,
   bounded non-transactional projection and backlog reads, and outer-transaction
   rejection.
-- Named scheduler context tests verify independent single-thread execution,
-  owned thread prefixes, shutdown policies, and explicit routing of every
-  scheduled method.
+- Named scheduler tests verify independent single-thread execution, owned
+  thread prefixes, shutdown policies, explicit routing of all five scheduled
+  methods, `outcome=ERROR` framework observation, redacted failure logging, and
+  continued fixed-delay execution after a failure.
+- Delivery retry policy tests verify first, exponential, and maximum-attempt
+  delays plus the exact 30-day accepted and 30-day-plus-one-nanosecond rejected
+  configuration boundary before a persistence claim.
+- Configuration-properties binding tests verify that Spring rejects invalid
+  monitoring and delivery batch limits plus nested HTTP executor bounds with
+  field-specific validation failures.
 - Executable boot jar and clean Docker multi-stage build: passed.
 - Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
   applied, the application status and separate management health endpoints were
@@ -173,7 +215,11 @@
   a non-empty servlet context path. It verifies the Bearer challenge, exact 401
   problem fields,
   fail-closed `/api/v1/**` handling, statelessness, public status access, and
-  authenticated PUT without CSRF.
+  authenticated PUT without CSRF. The same server test verifies that strict
+  firewall rejection of semicolon and duplicate-slash paths returns a fixed
+  redacted HTTP 400 problem without exposing the rejected path or resource
+  reference. A focused exception-handler test proves that a committed response
+  cannot trigger Spring's raw exception-message fallback log.
 - Staging Compose artifacts are available as `compose.staging.yml`,
   `compose.staging-tunnel.yml`, and `ops/staging.env.example`. Their merged
   configuration is designed to require an immutable WATCH image, external

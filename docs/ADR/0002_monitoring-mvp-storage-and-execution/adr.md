@@ -74,11 +74,30 @@ Spring scheduling lives in bootstrap and invokes application use cases. Target
 checks, callback delivery, and database maintenance use independent named
 single-thread schedulers. One check and one delivery batch run at a time per
 process, while a slow callback cannot starve target checks or maintenance.
+Unexpected failures leave the scheduled method so Spring's built-in
+`tasks.scheduled.execution` observation records an error, then a shared
+redacting scheduler error handler logs only the exception class and suppresses
+the failure so the periodic task remains scheduled. Delivered-event cleanup and
+backlog refresh are separate methods on the same single-thread maintenance lane,
+which preserves their independence and gives each a bounded framework method
+identity without a WATCH-owned scheduler-failure counter.
+Because Spring retains the original task exception for internal scheduled-task
+diagnostics, the Actuator `scheduledtasks` endpoint remains outside the exposed
+management allowlist; only health and Prometheus are exposed.
 Batch size, lease, interval, timeouts, byte limit, staleness, retention, and
 cleanup batch size are bounded configuration values. Security- and
 allocation-sensitive byte, header, executor, queue, and batch settings also
 have immutable implementation ceilings that runtime configuration cannot
 exceed.
+
+Bootstrap binding delegates non-sensitive independent numeric bounds and
+nested-property presence to Spring Boot configuration-properties Bean
+Validation. Secret validation, positive-duration checks, conditional rules,
+cross-field comparisons, and overflow handling remain explicit constructor
+checks so failures stay redacted and invariants that span multiple values
+remain visible. External adapters still enforce allocation ceilings at the
+resource boundary even when bootstrap validation has already accepted the
+configuration.
 
 The internal monitor API uses one runtime-supplied bearer token. This is service
 authentication only; WATCH still does not make BATON authorization decisions.

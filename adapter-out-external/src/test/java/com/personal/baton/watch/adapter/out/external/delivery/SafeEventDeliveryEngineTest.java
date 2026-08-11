@@ -80,6 +80,18 @@ class SafeEventDeliveryEngineTest {
         assertNull(transport.lastRequest);
     }
 
+    @Test
+    void rejectsReservedIpv6BeforeCallbackDelivery() throws Exception {
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("3ffe::1")));
+        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+
+        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
+
+        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
+        assertNull(observation.httpStatusCode());
+        assertNull(transport.lastRequest);
+    }
+
     @ParameterizedTest
     @MethodSource("dnsFailures")
     void mapsDnsFailuresToBoundedOutcomes(

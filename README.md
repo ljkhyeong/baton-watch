@@ -20,8 +20,8 @@ The implemented service currently provides:
 - at-least-once delivery to one configured BATON HTTPS callback, with a fixed
   payload, event-ID idempotency, DNS pinning, no redirects, capped exponential
   retries, and delivered-event retention
-- low-cardinality check/scheduler counters plus event-delivery backlog,
-  oldest-age, finalization, and bounded-outcome metrics
+- low-cardinality check counters and Spring scheduled-execution timers plus
+  event-delivery backlog, oldest-age, finalization, and bounded-outcome metrics
 - a hexagonal six-module Gradle layout
 - focused domain, application, HTTP, outbound-policy, and PostgreSQL integration
   tests, plus a fail-closed GitHub Actions check that proves the PostgreSQL and

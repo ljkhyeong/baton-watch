@@ -1,13 +1,34 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+import jakarta.validation.ValidatorFactory;
 import java.time.Duration;
+import java.util.List;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 class WatchPropertiesTest {
+
+    private static ValidatorFactory validatorFactory;
+    private static Validator validator;
+
+    @BeforeAll
+    static void createValidator() {
+        validatorFactory = Validation.buildDefaultValidatorFactory();
+        validator = validatorFactory.getValidator();
+    }
+
+    @AfterAll
+    static void closeValidator() {
+        validatorFactory.close();
+    }
 
     @Test
     void acceptsAConfigurationWhoseLeaseCoversTheBoundedBatch() {
@@ -38,32 +59,29 @@ class WatchPropertiesTest {
 
     @Test
     void enforcesWorkerBatchHardCeilings() {
-        assertDoesNotThrow(() -> properties(
+        assertThat(validationFields(properties(
                 Duration.ofMinutes(10),
                 WatchProperties.MAX_CHECK_BATCH_SIZE,
-                WatchProperties.MAX_MAINTENANCE_BATCH_SIZE));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> properties(
-                        Duration.ofMinutes(10),
-                        WatchProperties.MAX_CHECK_BATCH_SIZE + 1,
-                        100));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> properties(
-                        Duration.ofSeconds(30),
-                        1,
-                        WatchProperties.MAX_MAINTENANCE_BATCH_SIZE + 1));
+                WatchProperties.MAX_MAINTENANCE_BATCH_SIZE))).isEmpty();
+        assertThat(validationFields(properties(
+                Duration.ofMinutes(10),
+                WatchProperties.MAX_CHECK_BATCH_SIZE + 1,
+                100))).containsExactly("checkBatchSize");
+        assertThat(validationFields(properties(
+                Duration.ofSeconds(30),
+                1,
+                WatchProperties.MAX_MAINTENANCE_BATCH_SIZE + 1)))
+                .containsExactly("maintenanceBatchSize");
     }
 
     @Test
     void rejectsOutboundResourceSettingsAboveTheirHardCeilings() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> http(OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES + 1, 8));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> http(65_536, OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY + 1));
+        assertThat(validationFields(http(
+                OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES + 1, 8)))
+                .containsExactly("maxResponseBytes");
+        assertThat(validationFields(http(
+                65_536, OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY + 1)))
+                .containsExactly("dnsQueueCapacity");
     }
 
     private static WatchProperties properties(Duration leaseDuration, int batchSize) {
@@ -104,5 +122,12 @@ class WatchPropertiesTest {
                 dnsQueueCapacity,
                 1,
                 1);
+    }
+
+    private static List<String> validationFields(Object value) {
+        return validator.validate(value).stream()
+                .map(violation -> violation.getPropertyPath().toString())
+                .sorted()
+                .toList();
     }
 }
