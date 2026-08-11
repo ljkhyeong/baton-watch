@@ -94,6 +94,19 @@ class ApacheHttpRequestExecutorTest {
     }
 
     @Test
+    void createsNamedDaemonPlatformThreads() throws Exception {
+        try (ApacheHttpRequestExecutor executor =
+                new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
+            Thread worker = executor.execute(
+                    Duration.ofSeconds(1), progress -> Thread.currentThread());
+
+            assertEquals("test-http-1", worker.getName());
+            assertTrue(worker.isDaemon());
+            assertFalse(worker.isVirtual());
+        }
+    }
+
+    @Test
     void preservesTheBoundedBlockingFailureTaxonomy() {
         assertBlockingFailure(
                 ApacheHttpFailure.Kind.TLS_FAILURE,

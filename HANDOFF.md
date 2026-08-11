@@ -124,8 +124,8 @@
 
 ## Verification
 
-- Gradle 9.2.1 `test :bootstrap:bootJar --rerun-tasks --no-build-cache` with
-  two workers and a 512 MiB Gradle heap: 361 tests passed with no skips,
+- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
+  and a 512 MiB Gradle heap: 363 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a
@@ -145,11 +145,12 @@
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
   `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
   `TransactionOperations` wiring all three persistence adapters.
-- Outbound checker and callback adapter suite: 236 tests passed without a
+- Outbound checker and callback adapter suite: 238 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
   no-drain response abort, header count/line classification, resource ceiling
   boundaries, every current IANA-allocated IPv6 range boundary, reserved and
   unallocated IPv6 rejection before check or delivery transport,
+  named daemon platform-thread creation for bounded DNS and request executors,
   pinned-address TLS Host/SNI preservation, DNS SAN verification, and
   trusted-certificate hostname-mismatch classification.
 - PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2

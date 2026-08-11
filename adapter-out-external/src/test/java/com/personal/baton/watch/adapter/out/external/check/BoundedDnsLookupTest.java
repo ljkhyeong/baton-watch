@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class BoundedDnsLookupTest {
@@ -68,5 +70,20 @@ class BoundedDnsLookupTest {
         } finally {
             lookup.close();
         }
+    }
+
+    @Test
+    void createsNamedDaemonPlatformThreads() throws Exception {
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        try (BoundedDnsLookup lookup = new BoundedDnsLookup(1, 1, hostname -> {
+            worker.set(Thread.currentThread());
+            return new InetAddress[] {InetAddress.getByName("8.8.8.8")};
+        })) {
+            lookup.resolve("public.example", Duration.ofSeconds(1));
+        }
+
+        assertEquals("watch-dns-1", worker.get().getName());
+        assertTrue(worker.get().isDaemon());
+        assertFalse(worker.get().isVirtual());
     }
 }
