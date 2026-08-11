@@ -126,6 +126,10 @@ HTTPS callback. BATON can still read the current projection over HTTP.
 - Logs may include attempt correlation and bounded outcome/status values, but
   never raw URLs, hosts, queries, resource references, resolved addresses,
   response bodies, or exception messages.
+- Apache HTTP header, wire, implementation, and TLS diagnostic logger
+  categories remain disabled even when a broader application or Apache logger
+  is configured at DEBUG. Operators must not override those protected logger
+  categories.
 - Unexpected scheduler failures propagate through Spring's scheduled-task
   observation before a redacting error handler suppresses them so the next
   fixed-delay execution remains scheduled. The handler logs only the exception

@@ -39,6 +39,10 @@
 - Target checks and event delivery share a neutral request-scoped Apache client,
   bounded deadline executor, pinned resolver, and bounded body discarder while
   retaining separate GET/redirect and POST/acknowledgement semantics.
+- Apache HttpClient raw header, wire, implementation, and TLS diagnostic logger
+  categories are fixed at `OFF`. Those child levels remain protective when root
+  or the broader Apache HTTP package is raised to `DEBUG`; operators must not
+  override the protected child categories.
 - A real local TLS handshake verifies that the shared client connects only to
   the approved pinned address while preserving the original HTTP Host and TLS
   SNI. A certificate trusted by the test client succeeds only for its DNS SAN;
@@ -132,7 +136,7 @@
 ## Verification
 
 - Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
-  and a 512 MiB Gradle heap: 367 tests passed with no skips,
+  and a 512 MiB Gradle heap: 368 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a
@@ -160,6 +164,11 @@
   named daemon platform-thread creation for bounded DNS and request executors,
   pinned-address TLS Host/SNI preservation, DNS SAN verification, and
   trusted-certificate hostname-mismatch classification.
+- Bootstrap logging regression loads the production configuration through
+  Spring Boot's ConfigData and final log-level application path without
+  mutating the test JVM's logger state. With root and the broader Apache HTTP
+  package forced to `DEBUG`, raw header/wire and representative
+  implementation/TLS loggers remain `OFF`.
 - PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2
   migration, revision races, deterministic locked-row skipping for check and
   delivery claims, disjoint concurrent claims, concurrent finalization
