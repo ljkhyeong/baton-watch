@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import io.micrometer.core.instrument.Gauge;
@@ -8,7 +9,6 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 
@@ -59,8 +59,11 @@ final class MonitoringMetrics {
         increment(DELIVERY_ATTEMPTS, "outcome", outcome.name().toLowerCase(Locale.ROOT), 1);
     }
 
-    void recordMonitoringMaintenance(int staleProjections, int purgedAttempts) {
+    void recordStaleProjections(int staleProjections) {
         increment(MAINTENANCE_ITEMS, "operation", "stale_projection", staleProjections);
+    }
+
+    void recordPurgedAttempts(int purgedAttempts) {
         increment(MAINTENANCE_ITEMS, "operation", "attempt_purged", purgedAttempts);
     }
 
@@ -68,14 +71,11 @@ final class MonitoringMetrics {
         increment(MAINTENANCE_ITEMS, "operation", "delivered_event_purged", purgedEvents);
     }
 
-    void updateEventDeliveryBacklog(long pendingCount, Optional<Duration> oldestAge) {
-        if (pendingCount < 0) {
-            throw new IllegalArgumentException("pendingCount must be non-negative");
-        }
-        eventDeliveryBacklog.set(pendingCount);
-        oldestEventAgeSeconds.set(oldestAge
+    void updateEventDeliveryBacklog(EventDeliveryBacklog backlog) {
+        Objects.requireNonNull(backlog, "backlog");
+        eventDeliveryBacklog.set(backlog.pendingCount());
+        oldestEventAgeSeconds.set(backlog.oldestEventAge()
                 .map(Duration::toSeconds)
-                .map(age -> Math.max(0L, age))
                 .orElse(0L));
     }
 

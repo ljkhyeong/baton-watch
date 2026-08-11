@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
+import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -13,35 +14,27 @@ class ApacheHealthChangeEventSenderTest {
     void validatesTheEndpointAndBearerTokenBeforeCreatingAProductionSender() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new ApacheHealthChangeEventSender(
+                () -> sender(
                         URI.create("http://events.example.com/callback"),
-                        "0123456789abcdef0123456789abcdef",
-                        EventDeliveryLimits.DEFAULTS,
-                        new ObjectMapper()));
+                        "0123456789abcdef0123456789abcdef"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new ApacheHealthChangeEventSender(
+                () -> sender(
                         URI.create("https://127.0.0.1/callback"),
-                        "0123456789abcdef0123456789abcdef",
-                        EventDeliveryLimits.DEFAULTS,
-                        new ObjectMapper()));
+                        "0123456789abcdef0123456789abcdef"));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new ApacheHealthChangeEventSender(
+                () -> sender(
                         URI.create("https://events.example.com/callback"),
-                        "unsafe token 0123456789abcdef0123456789abcdef",
-                        EventDeliveryLimits.DEFAULTS,
-                        new ObjectMapper()));
+                        "unsafe token 0123456789abcdef0123456789abcdef"));
     }
 
     @Test
     void closesOwnedBoundedExecutors() {
         assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = new ApacheHealthChangeEventSender(
+            try (ApacheHealthChangeEventSender ignored = sender(
                     URI.create("https://events.example.com/callback"),
-                    "0123456789abcdef0123456789abcdef",
-                    EventDeliveryLimits.DEFAULTS,
-                    new ObjectMapper())) {
+                    "0123456789abcdef0123456789abcdef")) {
                 // Construction and close are the lifecycle contract exercised here.
             }
         });
@@ -56,10 +49,22 @@ class ApacheHealthChangeEventSenderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHealthChangeEventSender(
-                        endpoint, token, EventDeliveryLimits.DEFAULTS, 0, 8, 1, 1, objectMapper));
+                        endpoint, token, DEFAULT_LIMITS, 0, 8, 1, 1, objectMapper));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHealthChangeEventSender(
-                        endpoint, token, EventDeliveryLimits.DEFAULTS, 2, 8, 0, 1, objectMapper));
+                        endpoint, token, DEFAULT_LIMITS, 2, 8, 0, 1, objectMapper));
+    }
+
+    private static ApacheHealthChangeEventSender sender(URI endpoint, String bearerToken) {
+        return new ApacheHealthChangeEventSender(
+                endpoint,
+                bearerToken,
+                DEFAULT_LIMITS,
+                2,
+                8,
+                1,
+                1,
+                new ObjectMapper());
     }
 }

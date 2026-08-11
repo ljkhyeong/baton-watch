@@ -79,6 +79,23 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @Test
+    void springBearerResolverHandlesTheSchemeAndRejectsMalformedCredentials() throws Exception {
+        HttpResponse<String> lowercase = getWithAuthorization(
+                "/api/v1/resource-monitors/resource-1", "bearer " + API_TOKEN);
+        HttpResponse<String> invalidCharacters = getWithAuthorization(
+                "/api/v1/resource-monitors/resource-1",
+                "Bearer monitor:api:token:0123456789:abcdef");
+        HttpResponse<String> combinedCredentials = getWithAuthorization(
+                "/api/v1/resource-monitors/resource-1", "Bearer " + API_TOKEN + ", other");
+
+        assertThat(lowercase.statusCode()).isEqualTo(200);
+        assertUnauthorized(invalidCharacters);
+        assertUnauthorized(combinedCredentials);
+        assertThat(invalidCharacters.body()).doesNotContain("monitor:api:token");
+        assertThat(combinedCredentials.body()).doesNotContain(API_TOKEN);
+    }
+
+    @Test
     void exactSystemStatusGetRemainsPublicEvenWithAnInvalidBearerHeader() throws Exception {
         HttpResponse<String> response = get("/api/v1/system/status", "wrong-token");
 
@@ -215,6 +232,14 @@ class MonitorApiSecurityIntegrationTest {
 
     private HttpResponse<String> get(String path, String token, String accept) throws Exception {
         return send(HttpRequest.newBuilder(uri(path)).GET(), token, accept);
+    }
+
+    private HttpResponse<String> getWithAuthorization(String path, String authorization) throws Exception {
+        return send(
+                HttpRequest.newBuilder(uri(path))
+                        .header(HttpHeaders.AUTHORIZATION, authorization)
+                        .GET(),
+                null);
     }
 
     private HttpResponse<String> put(String path, String token, String body) throws Exception {

@@ -7,7 +7,10 @@
 - GET /api/v1/system/status and authenticated PUT/GET
   /api/v1/resource-monitors/{resourceReference} are implemented.
 - Spring Security applies stateless service-token authentication to every
-  non-status `/api/v1/**` request with context-path-aware matching. After
+  non-status `/api/v1/**` request with context-path-aware matching. Start-up
+  validation restricts the token to at least 32 non-padding RFC 6750 `token68`
+  characters,
+  and Spring Security's standard Bearer resolver parses the header. After
   authentication, Spring MVC 400/404/405/406/415 rejections use the stable
   redacted Problem Details contract while preserving standard `Allow` and
   `Accept` response headers. The strict HTTP firewall remains in front of that
@@ -28,8 +31,10 @@
   appending remain package-internal shared collaborators.
 - The worker performs SSRF-safe, DNS-pinned outbound checks outside database
   transactions and handles staleness and bounded attempt retention. Monitor
-  synchronization and redirect hops share the same static `TargetUrl` policy;
-  legacy unsafe encodings can be rehydrated but are rejected before DNS or I/O.
+  synchronization, redirect hops, and the configured callback endpoint share
+  the same static `TargetUrl` policy; callbacks add HTTPS and no-query rules,
+  while legacy unsafe encodings can be rehydrated but are rejected before DNS
+  or I/O.
 - IPv6 destination approval fails closed against the IANA global-unicast
   allocation registry snapshot dated 2025-10-10. Unlisted, reserved, and
   carved-out special-purpose ranges are rejected before connection in both
@@ -58,10 +63,10 @@
   in the external adapter before resource allocation. Production check,
   delivery, and maintenance batch settings have separate bootstrap ceilings
   enforced before lease arithmetic and service execution. Bootstrap delegates
-  non-sensitive independent numeric bounds and nested-property presence to
-  Spring Boot configuration-properties Bean Validation, while secrets,
-  positive-duration checks, conditional rules, cross-field comparisons, and
-  overflow handling remain explicit redacted constructor checks.
+  non-sensitive independent numeric and positive-duration bounds plus
+  nested-property presence to Spring Boot configuration-properties Bean
+  Validation, while secret syntax, conditional rules, cross-field comparisons,
+  and overflow handling remain explicit redacted checks.
 - PRD-0004 direct delivery is implemented for one operator-configured BATON
   HTTPS callback: exact payload and idempotency header, separate bearer service
   authentication, public-global DNS pinning, no redirects, bounded resources,
@@ -80,9 +85,10 @@
   or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
   local and staging Compose grant the process 110 seconds before forced
   termination, covering the default 30-second web shutdown phase, scheduler
-  drain, and a bounded margin. Delivered-event cleanup and backlog refresh are
-  independent methods on the maintenance lane, so one failure does not prevent
-  the other task from remaining scheduled.
+  drain, and a bounded margin. Stale-projection marking, attempt-history
+  retention, delivered-event cleanup, and backlog refresh are independent
+  methods on the maintenance lane, so one failure does not prevent another
+  task from remaining scheduled.
 - Adapter-owned persistence transactions have a five-second JDBC statement
   deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
   reject an existing outer Spring transaction before work starts, preserving
@@ -136,7 +142,7 @@
 ## Verification
 
 - Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
-  and a 512 MiB Gradle heap: 368 tests passed with no skips,
+  and a 512 MiB Gradle heap: 370 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a
@@ -156,7 +162,7 @@
   `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
   `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
   `TransactionOperations` wiring all three persistence adapters.
-- Outbound checker and callback adapter suite: 238 tests passed without a
+- Outbound checker and callback adapter suite: 239 tests passed without a
   live-internet dependency, including exact consumed-byte accounting,
   no-drain response abort, header count/line classification, resource ceiling
   boundaries, every current IANA-allocated IPv6 range boundary, reserved and
@@ -180,7 +186,7 @@
   bounded non-transactional projection and backlog reads, and outer-transaction
   rejection.
 - Named scheduler tests verify independent single-thread execution, owned
-  thread prefixes, shutdown policies, explicit routing of all five scheduled
+  thread prefixes, shutdown policies, explicit routing of all six scheduled
   methods, `outcome=ERROR` framework observation, redacted failure logging, and
   continued fixed-delay execution after a failure.
 - Delivery retry policy tests verify first, exponential, and maximum-attempt

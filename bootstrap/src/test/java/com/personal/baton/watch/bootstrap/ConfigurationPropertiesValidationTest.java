@@ -16,14 +16,15 @@ class ConfigurationPropertiesValidationTest {
     void rejectsInvalidWatchWorkerAndNestedHttpBoundsDuringBinding() {
         watchContext(
                         "watch.check-batch-size=101",
-                        "watch.http.dns-queue-capacity=65")
+                        "watch.http.dns-queue-capacity=65",
+                        "watch.poll-interval=0s")
                 .run(context -> {
                     assertThat(context).hasFailed();
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "checkBatchSize", "http.dnsQueueCapacity");
+                                    "checkBatchSize", "http.dnsQueueCapacity", "pollInterval");
                 });
     }
 
@@ -31,14 +32,15 @@ class ConfigurationPropertiesValidationTest {
     void rejectsInvalidDeliveryWorkerAndNestedHttpBoundsDuringBinding() {
         eventDeliveryContext(
                         "watch.event-delivery.batch-size=101",
-                        "watch.event-delivery.http.request-queue-capacity=17")
+                        "watch.event-delivery.http.request-queue-capacity=17",
+                        "watch.event-delivery.maintenance-interval=0s")
                 .run(context -> {
                     assertThat(context).hasFailed();
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "batchSize", "http.requestQueueCapacity");
+                                    "batchSize", "http.requestQueueCapacity", "maintenanceInterval");
                 });
     }
 

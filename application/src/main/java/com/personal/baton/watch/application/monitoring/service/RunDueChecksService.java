@@ -1,7 +1,7 @@
 package com.personal.baton.watch.application.monitoring.service;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
-import com.personal.baton.watch.application.monitoring.model.CheckFinalizationResult;
+import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
@@ -46,11 +46,10 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
     }
 
     @Override
-    public synchronized DueCheckBatchResult runDueChecks() {
+    public DueCheckBatchResult runDueChecks() {
         Instant claimedAt = clock.instant();
-        List<ClaimedCheck> claimedChecks = List.copyOf(Objects.requireNonNull(
-                persistence.claimDueChecks(claimedAt, claimedAt.plus(leaseDuration), batchSize),
-                "claimed checks"));
+        List<ClaimedCheck> claimedChecks = List.copyOf(
+                persistence.claimDueChecks(claimedAt, claimedAt.plus(leaseDuration), batchSize));
         if (claimedChecks.size() > batchSize) {
             throw new IllegalStateException("persistence returned more work than requested");
         }
@@ -59,7 +58,6 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int alreadyFinalized = 0;
         int staleClaims = 0;
         for (ClaimedCheck claimedCheck : claimedChecks) {
-            Objects.requireNonNull(claimedCheck, "claimed check");
             CheckObservation observation = check(claimedCheck);
             Instant completedAt = clock.instant();
             Duration interval = observation.outcome() == CheckOutcome.INTERNAL_FAILURE
@@ -73,9 +71,9 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     observation,
                     completedAt,
                     completedAt.plus(interval));
-            CheckFinalizationResult result = Objects.requireNonNull(
-                    persistence.finalizeCheck(finalization), "finalization result");
-            switch (result.status()) {
+            CheckFinalizationStatus status = Objects.requireNonNull(
+                    persistence.finalizeCheck(finalization), "finalization status");
+            switch (status) {
                 case APPLIED -> applied++;
                 case ALREADY_FINALIZED -> alreadyFinalized++;
                 case STALE_CLAIM -> staleClaims++;
@@ -94,7 +92,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
 
     private static Duration requirePositive(Duration duration, String name) {
         Objects.requireNonNull(duration, name);
-        if (duration.isZero() || duration.isNegative()) {
+        if (!duration.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return duration;

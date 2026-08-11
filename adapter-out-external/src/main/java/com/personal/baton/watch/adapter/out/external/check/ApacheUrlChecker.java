@@ -9,18 +9,9 @@ import java.util.Objects;
 /** Production checker facade. It owns bounded DNS and HTTP executors. */
 public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
 
-    private static final int DNS_THREADS = 2;
-    private static final int DNS_QUEUE_CAPACITY = 8;
-    private static final int HTTP_THREADS = 1;
-    private static final int HTTP_QUEUE_CAPACITY = 1;
-
     private final SafeUrlCheckEngine engine;
     private final AutoCloseable dnsLookup;
     private final AutoCloseable transport;
-
-    public ApacheUrlChecker(CheckerLimits limits) {
-        this(limits, DNS_THREADS, DNS_QUEUE_CAPACITY, HTTP_THREADS, HTTP_QUEUE_CAPACITY);
-    }
 
     public ApacheUrlChecker(
             CheckerLimits limits,
@@ -43,13 +34,6 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
                 System::nanoTime);
         this.dnsLookup = boundedDnsLookup;
         this.transport = apacheTransport;
-    }
-
-    ApacheUrlChecker(
-            SafeUrlCheckEngine engine, AutoCloseable dnsLookup, AutoCloseable transport) {
-        this.engine = Objects.requireNonNull(engine, "engine");
-        this.dnsLookup = Objects.requireNonNull(dnsLookup, "dnsLookup");
-        this.transport = Objects.requireNonNull(transport, "transport");
     }
 
     @Override

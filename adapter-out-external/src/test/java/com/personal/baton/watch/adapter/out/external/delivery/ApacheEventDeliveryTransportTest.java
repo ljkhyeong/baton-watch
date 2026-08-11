@@ -53,11 +53,10 @@ class ApacheEventDeliveryTransportTest {
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
-            DeliveryHttpResponse response = transport.execute(
+            int statusCode = transport.execute(
                     request("/callback", payload), Duration.ofSeconds(2));
 
-            assertEquals(204, response.statusCode());
-            assertEquals(0, response.responseBytes());
+            assertEquals(204, statusCode);
         }
         assertEquals("POST", method.get());
         assertEquals("Bearer 0123456789abcdef0123456789abcdef", authorization.get());
@@ -85,11 +84,11 @@ class ApacheEventDeliveryTransportTest {
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
-            DeliveryHttpResponse response = transport.execute(
+            int statusCode = transport.execute(
                     request("/start", "{}".getBytes(StandardCharsets.UTF_8)),
                     Duration.ofSeconds(2));
 
-            assertEquals(302, response.statusCode());
+            assertEquals(302, statusCode);
         }
         assertFalse(redirectedTargetCalled.get());
     }

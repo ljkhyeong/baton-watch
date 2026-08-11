@@ -123,6 +123,9 @@ HTTPS callback. BATON can still read the current projection over HTTP.
 - MVP attempt/result cleanup deletes bounded batches and never removes the
   current projection. PRD-0004 separately permits bounded retention cleanup of
   delivered health-change events only.
+- Stale-projection marking and attempt/result retention run as independent
+  maintenance tasks, so a failure in either operation does not prevent the
+  other from remaining scheduled.
 - Logs may include attempt correlation and bounded outcome/status values, but
   never raw URLs, hosts, queries, resource references, resolved addresses,
   response bodies, or exception messages.

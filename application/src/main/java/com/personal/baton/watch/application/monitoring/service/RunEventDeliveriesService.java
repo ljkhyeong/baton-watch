@@ -3,18 +3,15 @@ package com.personal.baton.watch.application.monitoring.service;
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationResult;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
 public final class RunEventDeliveriesService implements RunEventDeliveriesUseCase {
@@ -31,14 +28,13 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             HealthChangeEventSender sender,
             Clock clock,
             Duration leaseDuration,
-            Duration initialBackoff,
-            Duration maxBackoff,
+            EventDeliveryRetryPolicy retryPolicy,
             int batchSize) {
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.sender = Objects.requireNonNull(sender, "sender");
         this.clock = Objects.requireNonNull(clock, "clock");
         this.leaseDuration = requirePositive(leaseDuration, "leaseDuration");
-        this.retryPolicy = new EventDeliveryRetryPolicy(initialBackoff, maxBackoff);
+        this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -46,11 +42,10 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
     }
 
     @Override
-    public synchronized EventDeliveryBatchResult runEventDeliveries() {
+    public EventDeliveryBatchResult runEventDeliveries() {
         Instant claimedAt = clock.instant();
-        List<ClaimedHealthChangeEvent> claimedEvents = List.copyOf(Objects.requireNonNull(
-                persistence.claimPendingEvents(claimedAt, claimedAt.plus(leaseDuration), batchSize),
-                "claimed events"));
+        List<ClaimedHealthChangeEvent> claimedEvents = List.copyOf(
+                persistence.claimPendingEvents(claimedAt, claimedAt.plus(leaseDuration), batchSize));
         if (claimedEvents.size() > batchSize) {
             throw new IllegalStateException("persistence returned more events than requested");
         }
@@ -59,16 +54,13 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         int retryScheduled = 0;
         int alreadyDelivered = 0;
         int staleClaims = 0;
-        Map<EventDeliveryOutcome, Integer> outcomes = new EnumMap<>(EventDeliveryOutcome.class);
         for (ClaimedHealthChangeEvent event : claimedEvents) {
-            Objects.requireNonNull(event, "claimed event");
             EventDeliveryObservation observation = send(event);
-            outcomes.merge(observation.outcome(), 1, Integer::sum);
             Instant completedAt = clock.instant();
             Instant nextAttemptAt = observation.outcome().isDelivered()
                     ? null
                     : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt());
-            EventDeliveryFinalizationResult result = Objects.requireNonNull(
+            EventDeliveryFinalizationStatus status = Objects.requireNonNull(
                     persistence.finalizeDelivery(new EventDeliveryFinalization(
                             event.payload().eventId(),
                             event.leaseToken(),
@@ -76,8 +68,8 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
                             observation,
                             completedAt,
                             nextAttemptAt)),
-                    "delivery finalization result");
-            switch (result.status()) {
+                    "delivery finalization status");
+            switch (status) {
                 case APPLIED -> {
                     if (observation.outcome().isDelivered()) {
                         delivered++;
@@ -94,8 +86,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
                 delivered,
                 retryScheduled,
                 alreadyDelivered,
-                staleClaims,
-                outcomes);
+                staleClaims);
     }
 
     private EventDeliveryObservation send(ClaimedHealthChangeEvent event) {
@@ -108,7 +99,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
 
     private static Duration requirePositive(Duration duration, String name) {
         Objects.requireNonNull(duration, name);
-        if (duration.isZero() || duration.isNegative()) {
+        if (!duration.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return duration;

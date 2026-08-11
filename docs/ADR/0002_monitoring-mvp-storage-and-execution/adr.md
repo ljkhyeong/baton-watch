@@ -85,10 +85,11 @@ process, while a slow callback cannot starve target checks or maintenance.
 Unexpected failures leave the scheduled method so Spring's built-in
 `tasks.scheduled.execution` observation records an error, then a shared
 redacting scheduler error handler logs only the exception class and suppresses
-the failure so the periodic task remains scheduled. Delivered-event cleanup and
-backlog refresh are separate methods on the same single-thread maintenance lane,
-which preserves their independence and gives each a bounded framework method
-identity without a WATCH-owned scheduler-failure counter.
+the failure so the periodic task remains scheduled. Stale-projection marking,
+attempt-history retention, delivered-event cleanup, and backlog refresh are
+separate methods on the same single-thread maintenance lane. This preserves
+each operation's independence and gives it a bounded framework method identity
+without a WATCH-owned scheduler-failure counter.
 Because Spring retains the original task exception for internal scheduled-task
 diagnostics, the Actuator `scheduledtasks` endpoint remains outside the exposed
 management allowlist; only health and Prometheus are exposed.
@@ -98,17 +99,19 @@ allocation-sensitive byte, header, executor, queue, and batch settings also
 have immutable implementation ceilings that runtime configuration cannot
 exceed.
 
-Bootstrap binding delegates non-sensitive independent numeric bounds and
-nested-property presence to Spring Boot configuration-properties Bean
-Validation. Secret validation, positive-duration checks, conditional rules,
-cross-field comparisons, and overflow handling remain explicit constructor
-checks so failures stay redacted and invariants that span multiple values
-remain visible. External adapters still enforce allocation ceilings at the
-resource boundary even when bootstrap validation has already accepted the
-configuration.
+Bootstrap binding delegates non-sensitive independent numeric and
+positive-duration bounds plus nested-property presence to Spring Boot
+configuration-properties Bean Validation. Secret syntax, conditional rules,
+cross-field comparisons, and overflow handling remain explicit redacted checks
+so invariants that span multiple values stay visible. External adapters still
+enforce allocation ceilings at the resource boundary even when bootstrap
+validation has already accepted the configuration.
 
-The internal monitor API uses one runtime-supplied bearer token. This is service
-authentication only; WATCH still does not make BATON authorization decisions.
+The internal monitor API uses one runtime-supplied bearer token with at least
+32 non-padding RFC 6750 `token68` characters. Spring Security's standard Bearer resolver
+owns header parsing after the configuration is validated at startup. This is
+service authentication only; WATCH still does not make BATON authorization
+decisions.
 
 ## Consequences
 

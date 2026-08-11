@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
+import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -24,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -37,7 +39,7 @@ class SafeEventDeliveryEngineTest {
     void resolvesEveryAttemptAndPassesOnlyApprovedPinnedAddressesToTheTransport() throws Exception {
         RecordingDnsLookup dns = new RecordingDnsLookup(List.of(
                 address("8.8.8.8"), address("1.1.1.1")));
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
         SafeEventDeliveryEngine engine = engine(dns, transport, System::nanoTime);
 
         EventDeliveryObservation first = engine.send(event());
@@ -71,7 +73,7 @@ class SafeEventDeliveryEngineTest {
     void rejectsTheEntireDnsAnswerWhenOneAddressIsNotPublicGlobal() throws Exception {
         RecordingDnsLookup dns = new RecordingDnsLookup(List.of(
                 address("8.8.8.8"), address("127.0.0.1")));
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
 
         EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
 
@@ -83,7 +85,7 @@ class SafeEventDeliveryEngineTest {
     @Test
     void rejectsReservedIpv6BeforeCallbackDelivery() throws Exception {
         RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("3ffe::1")));
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
 
         EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
 
@@ -99,7 +101,7 @@ class SafeEventDeliveryEngineTest {
         DnsLookup dns = (hostname, timeout) -> {
             throw new DnsLookupException(reason);
         };
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
 
         EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
 
@@ -112,7 +114,7 @@ class SafeEventDeliveryEngineTest {
     @MethodSource("httpStatuses")
     void mapsFinalHttpStatusesWithoutFollowingRedirects(
             int status, EventDeliveryOutcome expected) throws Exception {
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(status, 0));
+        RecordingTransport transport = new RecordingTransport(status);
 
         EventDeliveryObservation observation = engine(
                         new RecordingDnsLookup(List.of(address("8.8.8.8"))),
@@ -126,7 +128,7 @@ class SafeEventDeliveryEngineTest {
 
     @Test
     void mapsUnsupportedFinalHttpMetadataToNetworkFailure() throws Exception {
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(101, 0));
+        RecordingTransport transport = new RecordingTransport(101);
 
         EventDeliveryObservation observation = engine(
                         new RecordingDnsLookup(List.of(address("8.8.8.8"))),
@@ -161,10 +163,10 @@ class SafeEventDeliveryEngineTest {
         MutableClock clock = new MutableClock();
         InetAddress publicAddress = address("8.8.8.8");
         DnsLookup dns = (hostname, timeout) -> {
-            clock.advance(EventDeliveryLimits.DEFAULTS.totalTimeout());
+            clock.advance(DEFAULT_LIMITS.totalTimeout());
             return List.of(publicAddress);
         };
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
 
         EventDeliveryObservation observation = engine(dns, transport, clock).send(event());
 
@@ -179,7 +181,7 @@ class SafeEventDeliveryEngineTest {
         };
 
         EventDeliveryObservation observation =
-                engine(dns, (request, remaining) -> null, System::nanoTime).send(event());
+                engine(dns, (request, remaining) -> 204, System::nanoTime).send(event());
 
         assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
@@ -188,7 +190,7 @@ class SafeEventDeliveryEngineTest {
     @Test
     void serializationFailureStopsBeforeDnsOrTransport() throws Exception {
         RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("8.8.8.8")));
-        RecordingTransport transport = new RecordingTransport(new DeliveryHttpResponse(204, 0));
+        RecordingTransport transport = new RecordingTransport(204);
         SafeEventDeliveryEngine engine = engine(
                 dns,
                 transport,
@@ -205,7 +207,7 @@ class SafeEventDeliveryEngineTest {
     }
 
     private static SafeEventDeliveryEngine engine(
-            DnsLookup dns, DeliveryTransport transport, DeliveryMonotonicClock clock) {
+            DnsLookup dns, DeliveryTransport transport, LongSupplier clock) {
         return engine(
                 dns,
                 transport,
@@ -216,14 +218,14 @@ class SafeEventDeliveryEngineTest {
     private static SafeEventDeliveryEngine engine(
             DnsLookup dns,
             DeliveryTransport transport,
-            DeliveryMonotonicClock clock,
+            LongSupplier clock,
             HealthChangeEventSerializer serializer) {
         return new SafeEventDeliveryEngine(
                 new ValidatedDeliveryEndpoint(
                         URI.create("https://events.example.com/api/v1/health-events"),
                         "events.example.com"),
                 "delivery-token",
-                EventDeliveryLimits.DEFAULTS,
+                DEFAULT_LIMITS,
                 dns,
                 new GlobalAddressPolicy(),
                 transport,
@@ -301,28 +303,28 @@ class SafeEventDeliveryEngineTest {
 
     private static final class RecordingTransport implements DeliveryTransport {
 
-        private final DeliveryHttpResponse response;
+        private final int statusCode;
         private final List<ApprovedDeliveryRequest> requests = new ArrayList<>();
         private ApprovedDeliveryRequest lastRequest;
 
-        private RecordingTransport(DeliveryHttpResponse response) {
-            this.response = response;
+        private RecordingTransport(int statusCode) {
+            this.statusCode = statusCode;
         }
 
         @Override
-        public DeliveryHttpResponse execute(ApprovedDeliveryRequest request, Duration remainingTime) {
+        public int execute(ApprovedDeliveryRequest request, Duration remainingTime) {
             requests.add(request);
             lastRequest = request;
-            return response;
+            return statusCode;
         }
     }
 
-    private static final class MutableClock implements DeliveryMonotonicClock {
+    private static final class MutableClock implements LongSupplier {
 
         private long nanos;
 
         @Override
-        public long nanoTime() {
+        public long getAsLong() {
             return nanos;
         }
 

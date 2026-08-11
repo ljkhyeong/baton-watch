@@ -95,8 +95,8 @@ delivery_token="$WATCH_EVENT_DELIVERY_TOKEN"
 require_https_origin WATCH_PUBLIC_BASE_URL "$watch_public_base_url"
 require_delivery_endpoint "$delivery_endpoint"
 
-if (( ${#monitor_api_token} < 32 )) || [[ "$monitor_api_token" =~ ^[[:space:]]+$ ]]; then
-    fail "WATCH_API_TOKEN must contain at least 32 characters"
+if [[ ! "$monitor_api_token" =~ ^[A-Za-z0-9._~+/-]{32,}=*$ ]]; then
+    fail "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters"
 fi
 if [[ ! "$delivery_token" =~ ^[A-Za-z0-9._~-]{32,200}$ ]]; then
     fail "WATCH_EVENT_DELIVERY_TOKEN must be 32 to 200 URL-safe characters"

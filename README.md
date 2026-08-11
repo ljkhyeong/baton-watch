@@ -67,6 +67,9 @@ docker compose up --build
 curl http://localhost:8080/api/v1/system/status
 ~~~
 
+`WATCH_API_TOKEN` must use the RFC 6750 `token68` character set with at least
+32 non-padding characters; a 32-byte hexadecimal random value is compatible.
+
 Compose starts WATCH and a private PostgreSQL 18.4 service. The database port
 and WATCH management port 8081 are not published; the latter serves Actuator
 health and Prometheus metrics inside the runtime network. To synchronize a

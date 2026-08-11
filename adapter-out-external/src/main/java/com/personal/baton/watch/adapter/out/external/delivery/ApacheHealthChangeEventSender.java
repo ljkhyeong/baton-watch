@@ -13,27 +13,9 @@ import tools.jackson.databind.ObjectMapper;
 /** Production sender for the fixed BATON health-change callback endpoint. */
 public final class ApacheHealthChangeEventSender implements HealthChangeEventSender, AutoCloseable {
 
-    private static final int DNS_THREADS = 2;
-    private static final int DNS_QUEUE_CAPACITY = 8;
-    private static final int HTTP_THREADS = 1;
-    private static final int HTTP_QUEUE_CAPACITY = 1;
-
     private final SafeEventDeliveryEngine engine;
     private final AutoCloseable dnsLookup;
     private final AutoCloseable transport;
-
-    public ApacheHealthChangeEventSender(
-            URI endpoint, String bearerToken, EventDeliveryLimits limits, ObjectMapper objectMapper) {
-        this(
-                endpoint,
-                bearerToken,
-                limits,
-                DNS_THREADS,
-                DNS_QUEUE_CAPACITY,
-                HTTP_THREADS,
-                HTTP_QUEUE_CAPACITY,
-                objectMapper);
-    }
 
     public ApacheHealthChangeEventSender(
             URI endpoint,
@@ -64,13 +46,6 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                 System::nanoTime);
         this.dnsLookup = boundedDnsLookup;
         this.transport = apacheTransport;
-    }
-
-    ApacheHealthChangeEventSender(
-            SafeEventDeliveryEngine engine, AutoCloseable dnsLookup, AutoCloseable transport) {
-        this.engine = Objects.requireNonNull(engine, "engine");
-        this.dnsLookup = Objects.requireNonNull(dnsLookup, "dnsLookup");
-        this.transport = Objects.requireNonNull(transport, "transport");
     }
 
     @Override

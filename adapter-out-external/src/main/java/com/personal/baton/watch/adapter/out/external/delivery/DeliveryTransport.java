@@ -5,6 +5,5 @@ import java.time.Duration;
 @FunctionalInterface
 interface DeliveryTransport {
 
-    DeliveryHttpResponse execute(ApprovedDeliveryRequest request, Duration remainingTime)
-            throws DeliveryTransportFailure;
+    int execute(ApprovedDeliveryRequest request, Duration remainingTime) throws DeliveryTransportFailure;
 }

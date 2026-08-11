@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongSupplier;
 
 final class SafeUrlCheckEngine {
 
@@ -18,7 +19,7 @@ final class SafeUrlCheckEngine {
     private final DnsLookup dnsLookup;
     private final GlobalAddressPolicy addressPolicy;
     private final HttpHopTransport transport;
-    private final MonotonicClock clock;
+    private final LongSupplier clock;
 
     SafeUrlCheckEngine(
             CheckerLimits limits,
@@ -26,7 +27,7 @@ final class SafeUrlCheckEngine {
             DnsLookup dnsLookup,
             GlobalAddressPolicy addressPolicy,
             HttpHopTransport transport,
-            MonotonicClock clock) {
+            LongSupplier clock) {
         this.limits = Objects.requireNonNull(limits, "limits");
         this.targetPolicy = Objects.requireNonNull(targetPolicy, "targetPolicy");
         this.dnsLookup = Objects.requireNonNull(dnsLookup, "dnsLookup");
@@ -36,7 +37,7 @@ final class SafeUrlCheckEngine {
     }
 
     CheckObservation check(TargetUrl targetUrl) {
-        long startedAt = clock.nanoTime();
+        long startedAt = clock.getAsLong();
         CheckState state = new CheckState();
         try {
             if (targetUrl == null) {
@@ -175,7 +176,7 @@ final class SafeUrlCheckEngine {
     }
 
     private long nonNegativeElapsed(long startedAt) {
-        return Math.max(0, clock.nanoTime() - startedAt);
+        return Math.max(0, clock.getAsLong() - startedAt);
     }
 
     private static boolean isRedirectStatus(int status) {

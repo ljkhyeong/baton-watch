@@ -6,7 +6,7 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChange
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationResult;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import java.time.Clock;
 import java.time.Duration;
@@ -59,7 +59,7 @@ class EventDeliveryMaintenanceServicesTest {
         }
 
         @Override
-        public EventDeliveryFinalizationResult finalizeDelivery(EventDeliveryFinalization finalization) {
+        public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
             throw new UnsupportedOperationException();
         }
 

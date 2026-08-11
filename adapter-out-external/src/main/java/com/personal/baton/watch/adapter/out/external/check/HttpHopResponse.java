@@ -10,12 +10,4 @@ record HttpHopResponse(int statusCode, List<String> locations, long responseByte
             throw new IllegalArgumentException("responseBytes must be non-negative");
         }
     }
-
-    static HttpHopResponse finalStatus(int statusCode, long responseBytes) {
-        return new HttpHopResponse(statusCode, List.of(), responseBytes);
-    }
-
-    static HttpHopResponse redirect(int statusCode, String location, long responseBytes) {
-        return new HttpHopResponse(statusCode, List.of(location), responseBytes);
-    }
 }

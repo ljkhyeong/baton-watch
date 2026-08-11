@@ -4,44 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 
-class MonitorApiAuthenticationComponentsTest {
+class MonitorBearerTokenAuthenticationManagerTest {
 
     private static final String EXPECTED_TOKEN = "monitor-api-token-0123456789-abcdef";
 
-    private final MonitorBearerTokenAuthenticationConverter converter =
-            new MonitorBearerTokenAuthenticationConverter();
     private final MonitorBearerTokenAuthenticationManager manager =
             new MonitorBearerTokenAuthenticationManager(EXPECTED_TOKEN);
-
-    @Test
-    void convertsOnlyBearerAuthorizationHeadersWithACaseInsensitiveScheme() {
-        MockHttpServletRequest valid = new MockHttpServletRequest();
-        valid.addHeader("Authorization", "Bearer " + EXPECTED_TOKEN);
-        MockHttpServletRequest basic = new MockHttpServletRequest();
-        basic.addHeader("Authorization", "Basic " + EXPECTED_TOKEN);
-        MockHttpServletRequest lowercase = new MockHttpServletRequest();
-        lowercase.addHeader("Authorization", "bearer " + EXPECTED_TOKEN);
-        MockHttpServletRequest blank = new MockHttpServletRequest();
-        blank.addHeader("Authorization", "Bearer    ");
-
-        assertThat(converter.convert(new MockHttpServletRequest())).isNull();
-        assertThat(converter.convert(basic)).isNull();
-        assertThat(converter.convert(blank)).isNull();
-        assertThat(converter.convert(valid))
-                .isInstanceOf(BearerTokenAuthenticationToken.class)
-                .extracting(Authentication::getCredentials)
-                .isEqualTo(EXPECTED_TOKEN);
-        assertThat(converter.convert(lowercase))
-                .isInstanceOf(BearerTokenAuthenticationToken.class)
-                .extracting(Authentication::getCredentials)
-                .isEqualTo(EXPECTED_TOKEN);
-    }
 
     @Test
     void authenticatesWithoutRetainingTheServiceToken() {

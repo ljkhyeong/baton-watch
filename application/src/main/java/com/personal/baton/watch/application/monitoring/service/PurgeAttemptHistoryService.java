@@ -37,7 +37,7 @@ public final class PurgeAttemptHistoryService implements PurgeAttemptHistoryUseC
 
     private Duration requirePositive(Duration duration) {
         Objects.requireNonNull(duration, "retention");
-        if (duration.isZero() || duration.isNegative()) {
+        if (!duration.isPositive()) {
             throw new IllegalArgumentException("retention must be positive");
         }
         return duration;

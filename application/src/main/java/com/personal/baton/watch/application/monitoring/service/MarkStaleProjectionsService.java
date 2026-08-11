@@ -34,7 +34,7 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
 
     private Duration requirePositive(Duration duration) {
         Objects.requireNonNull(duration, "stalenessThreshold");
-        if (duration.isZero() || duration.isNegative()) {
+        if (!duration.isPositive()) {
             throw new IllegalArgumentException("stalenessThreshold must be positive");
         }
         return duration;

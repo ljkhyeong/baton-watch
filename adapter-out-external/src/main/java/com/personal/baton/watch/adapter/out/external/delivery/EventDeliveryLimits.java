@@ -13,14 +13,6 @@ public record EventDeliveryLimits(
         int maxHeaderCount,
         int maxHeaderLineLength) {
 
-    public static final EventDeliveryLimits DEFAULTS = new EventDeliveryLimits(
-            Duration.ofSeconds(2),
-            Duration.ofSeconds(3),
-            Duration.ofSeconds(5),
-            8L * 1024L,
-            100,
-            8 * 1024);
-
     public EventDeliveryLimits {
         connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         responseTimeout = requirePositive(responseTimeout, "responseTimeout");
@@ -43,7 +35,7 @@ public record EventDeliveryLimits(
 
     private static Duration requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
-        if (value.isZero() || value.isNegative()) {
+        if (!value.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
         return value;

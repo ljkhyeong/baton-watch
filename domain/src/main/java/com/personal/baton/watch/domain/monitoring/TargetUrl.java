@@ -51,7 +51,7 @@ public record TargetUrl(String value) {
         }
         for (int index = 0; index < value.length(); ) {
             int codePoint = value.codePointAt(index);
-            if (codePoint == '\\' || Character.getType(codePoint) == Character.CONTROL) {
+            if (codePoint == '\\' || Character.isISOControl(codePoint)) {
                 throw invalid();
             }
             index += Character.charCount(codePoint);

@@ -69,14 +69,14 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         first,
                         CheckObservation.forHttpStatus(200),
                         BASE_TIME.plusSeconds(31),
-                        BASE_TIME.plusSeconds(91)))
-                .status()).isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
+                        BASE_TIME.plusSeconds(91))))
+                .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         recovered,
                         CheckObservation.forHttpStatus(200),
                         BASE_TIME.plusSeconds(32),
-                        BASE_TIME.plusSeconds(92)))
-                .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
+                        BASE_TIME.plusSeconds(92))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
         assertThat(count("watch_attempt")).isEqualTo(2);
         assertThat(count("watch_result")).isEqualTo(1);
     }
@@ -220,11 +220,11 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 valid.completedAt(),
                 valid.nextCheckAt());
 
-        assertThat(checkWorkPersistence.finalizeCheck(wrongToken).status())
+        assertThat(checkWorkPersistence.finalizeCheck(wrongToken))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
-        assertThat(checkWorkPersistence.finalizeCheck(valid).status())
+        assertThat(checkWorkPersistence.finalizeCheck(valid))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
-        assertThat(checkWorkPersistence.finalizeCheck(valid).status())
+        assertThat(checkWorkPersistence.finalizeCheck(valid))
                 .isEqualTo(CheckFinalizationStatus.ALREADY_FINALIZED);
 
         assertThat(count("watch_result")).isEqualTo(1);
@@ -360,7 +360,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return finalizingAdapter.finalizeCheck(finalization).status();
+        return finalizingAdapter.finalizeCheck(finalization);
     }
 
     private String lockLeadingDueMonitor(
@@ -390,7 +390,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         claimed,
                         CheckObservation.forHttpStatus(200),
                         completedAt,
-                        completedAt.plus(INTERVAL)))
-                .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
+                        completedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
     }
 }

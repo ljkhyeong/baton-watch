@@ -61,13 +61,12 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(recovered.deliveryAttempt()).isEqualTo(2);
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
 
-        assertThat(deliveryAdapter.finalizeDelivery(deliveredFinalization(first, dueAt.plusSeconds(31)))
-                        .status())
+        assertThat(deliveryAdapter.finalizeDelivery(deliveredFinalization(first, dueAt.plusSeconds(31))))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
         EventDeliveryFinalization delivered = deliveredFinalization(recovered, dueAt.plusSeconds(32));
-        assertThat(deliveryAdapter.finalizeDelivery(delivered).status())
+        assertThat(deliveryAdapter.finalizeDelivery(delivered))
                 .isEqualTo(EventDeliveryFinalizationStatus.APPLIED);
-        assertThat(deliveryAdapter.finalizeDelivery(delivered).status())
+        assertThat(deliveryAdapter.finalizeDelivery(delivered))
                 .isEqualTo(EventDeliveryFinalizationStatus.ALREADY_DELIVERED);
 
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isZero();
@@ -100,7 +99,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE),
                 completedAt,
                 retryAt);
-        assertThat(deliveryAdapter.finalizeDelivery(failed).status())
+        assertThat(deliveryAdapter.finalizeDelivery(failed))
                 .isEqualTo(EventDeliveryFinalizationStatus.APPLIED);
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
         assertThat(deliveryAdapter.getBacklogSnapshot().oldestChangedAt()).contains(dueAt);
@@ -215,9 +214,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 completedAt,
                 null);
 
-        assertThat(deliveryAdapter.finalizeDelivery(wrongToken).status())
+        assertThat(deliveryAdapter.finalizeDelivery(wrongToken))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
-        assertThat(deliveryAdapter.finalizeDelivery(wrongAttempt).status())
+        assertThat(deliveryAdapter.finalizeDelivery(wrongAttempt))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
 
         JdbcHealthChangeEventDeliveryAdapter anotherAdapter = newDeliveryAdapter();
@@ -352,8 +351,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                         check,
                         CheckObservation.forHttpStatus(200),
                         changedAt,
-                        changedAt.plus(INTERVAL)))
-                .status()).isEqualTo(CheckFinalizationStatus.APPLIED);
+                        changedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
         return jdbc.queryForObject("""
                 SELECT event_id
                 FROM watch_health_change_event
@@ -396,7 +395,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return finalizingAdapter.finalizeDelivery(finalization).status();
+        return finalizingAdapter.finalizeDelivery(finalization);
     }
 
     private UUID lockLeadingDueEvent(JdbcTemplate lockJdbc, Instant claimedAt) {

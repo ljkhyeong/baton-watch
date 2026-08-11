@@ -100,8 +100,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck first = claimOne(BASE_TIME);
         Instant completedAt = BASE_TIME.plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
-                        first, CheckObservation.forHttpStatus(204), completedAt, completedAt.plus(INTERVAL)))
-                .status())
+                        first, CheckObservation.forHttpStatus(204), completedAt, completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
 
         ClaimedCheck inFlight = claimOne(completedAt.plus(INTERVAL));
@@ -117,8 +116,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         inFlight,
                         CheckObservation.forHttpStatus(200),
                         changedAt.plusSeconds(1),
-                        changedAt.plus(INTERVAL)))
-                .status())
+                        changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
         assertThat(count("watch_result")).isEqualTo(1);
         assertThat(jdbc.queryForList("""
@@ -141,8 +139,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         claimed,
                         CheckObservation.forHttpStatus(200),
                         completedAt,
-                        completedAt.plus(INTERVAL)))
-                .status())
+                        completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
         MonitorProjection before = projection(reference);
         Instant updatedAt = jdbc.queryForObject(
@@ -232,8 +229,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         claimed,
                         CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT),
                         completedAt,
-                        completedAt.plus(INTERVAL)))
-                .status())
+                        completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
         MonitorProjection before = projection(reference);
         Instant updatedAt = jdbc.queryForObject(

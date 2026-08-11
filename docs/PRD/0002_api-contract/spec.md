@@ -29,7 +29,9 @@ The following routes are implemented under PRD-0003:
 - `GET /api/v1/resource-monitors/{resourceReference}` returns that projection
   or HTTP 404.
 
-Both require `Authorization: Bearer <token>`. PUT is idempotent by the tuple of
+Both require `Authorization: Bearer <token>`. The configured token contains at
+least 32 non-padding RFC 6750 `token68` characters and is parsed by Spring
+Security's standard Bearer resolver. PUT is idempotent by the tuple of
 `resourceReference` and `sourceRevision`, so it does not accept a separate
 idempotency key. The reference is 1-128 characters from `A-Z`, `a-z`, `0-9`,
 `.`, `_`, `:`, and `-`.

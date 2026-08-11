@@ -1,8 +1,8 @@
 package com.personal.baton.watch.bootstrap;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -29,7 +29,7 @@ class MonitoringSchedulerTest {
     }
 
     @Test
-    void propagatesStaleMaintenanceFailuresWithoutStartingAttemptRetention() {
+    void staleProjectionFailuresDoNotBlockAttemptRetention() {
         IllegalStateException failure = new IllegalStateException("sensitive maintenance detail");
         AtomicBoolean retentionInvoked = new AtomicBoolean();
         MonitoringScheduler scheduler = new MonitoringScheduler(
@@ -45,9 +45,34 @@ class MonitoringSchedulerTest {
 
         IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
-                scheduler::maintainMonitoringState);
+                scheduler::markStaleProjections);
+        scheduler.purgeAttemptHistory();
 
         assertSame(failure, thrown);
-        assertFalse(retentionInvoked.get());
+        assertTrue(retentionInvoked.get());
+    }
+
+    @Test
+    void attemptRetentionFailuresDoNotBlockStaleProjectionMaintenance() {
+        IllegalStateException failure = new IllegalStateException("sensitive retention detail");
+        AtomicBoolean staleMaintenanceInvoked = new AtomicBoolean();
+        MonitoringScheduler scheduler = new MonitoringScheduler(
+                () -> null,
+                () -> {
+                    staleMaintenanceInvoked.set(true);
+                    return 0;
+                },
+                () -> {
+                    throw failure;
+                },
+                new MonitoringMetrics(new SimpleMeterRegistry()));
+
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                scheduler::purgeAttemptHistory);
+        scheduler.markStaleProjections();
+
+        assertSame(failure, thrown);
+        assertTrue(staleMaintenanceInvoked.get());
     }
 }
