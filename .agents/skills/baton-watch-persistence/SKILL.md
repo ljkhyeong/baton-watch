@@ -1,42 +1,40 @@
 ---
 name: baton-watch-persistence
-description: Persistence and transaction workflow for BATON WATCH schedules, leases, attempts, results, derived health, and durable health-change events. Use for schema migrations, mappings, repositories, retention, concurrency, idempotency, transaction boundaries, or storage-related tests.
+description: BATON WATCH의 일정, 리스, 시도, 결과, 도출된 상태와 내구성 있는 상태 변경 이벤트를 위한 영속성 및 트랜잭션 작업 흐름. 스키마 마이그레이션, 매핑, 저장소, 보존, 동시성, 멱등성, 트랜잭션 경계 또는 저장소 관련 테스트에 사용한다.
 ---
 
-# BATON WATCH Persistence
+# BATON WATCH 영속성
 
-## Model durable ownership
+## 내구성 있는 소유권 모델링
 
-- Read PRD-0001 and ADR-0001 before selecting storage or schema.
-- Persist schedule/lease state, attempt metadata, bounded result history,
-  current derived health, and durable state-change events. For event delivery,
-  preserve immutable payload fields separately from mutable `PENDING` /
-  `DELIVERED`, attempt count, due time, lease, bounded outcome, HTTP status, and
-  delivery time.
-- Store UTC instants from an injected Clock. Never store response bodies, credentials, cookies, authorization headers, or BATON authorization state.
-- Keep immutable attempt/result history distinct from the current derived-health projection.
+- 저장소나 스키마를 선택하기 전에 PRD-0001과 ADR-0001을 읽는다.
+- 일정/리스 상태, 시도 메타데이터, 제한된 결과 이력, 현재 도출 상태와 내구성 있는
+  상태 변경 이벤트를 영속화한다. 이벤트 전달에서는 불변 페이로드 필드를 가변
+  `PENDING`/`DELIVERED`, 시도 횟수, 예정 시각, 리스, 제한된 결과, HTTP 상태와
+  전달 시각과 분리하여 보존한다.
+- 주입된 Clock에서 얻은 UTC 시각을 저장한다. 응답 본문, 자격 증명, 쿠키, 인가 헤더 또는 BATON 인가 상태는 절대로 저장하지 않는다.
+- 불변 시도/결과 이력을 현재 도출 상태 프로젝션과 구분한다.
 
-## Preserve failure boundaries
+## 실패 경계 보존
 
-1. Claim a bounded set of due items in a short transaction with an expiring lease or equivalent recovery.
-2. Commit before DNS or network I/O.
-3. Finalize one check idempotently in a short transaction.
-4. Update derived health and insert its durable change event atomically only when the state changes.
-5. Claim delivery in a short transaction, POST outside a transaction, and
-   finalize the matching lease idempotently in another short transaction.
-6. Use capped exponential retry and never discard an undelivered event because
-   of its attempt count.
+1. 짧은 트랜잭션에서 만료되는 리스나 동등한 복구 수단을 사용하여 처리 예정 항목을 제한된 수만큼 선점한다.
+2. DNS 또는 네트워크 I/O 전에 커밋한다.
+3. 짧은 트랜잭션에서 점검 하나를 멱등성 있게 확정한다.
+4. 상태가 변경될 때만 도출 상태 갱신과 내구성 있는 변경 이벤트 삽입을 원자적으로 수행한다.
+5. 짧은 트랜잭션에서 전달을 선점하고, 트랜잭션 밖에서 POST를 수행한 뒤, 다른
+   짧은 트랜잭션에서 일치하는 리스를 멱등성 있게 확정한다.
+6. 지연 상한이 있는 지수 백오프로 재시도하고 시도 횟수를 이유로 미전달 이벤트를
+   절대로 폐기하지 않는다.
 
-Use a new migration for each adopted schema change; never rewrite an applied
-migration. Match mappings, nullability, indexes, uniqueness, lease queries, and
-cleanup queries. Chunk retention work and avoid unbounded loads or deletes.
-Event cleanup may select only delivered rows older than the strict cutoff;
-pending or expired-leased rows remain durable.
+채택된 스키마 변경마다 새 마이그레이션을 사용하고, 이미 적용된 마이그레이션을 절대로
+다시 작성하지 않는다. 매핑, null 허용 여부, 인덱스, 고유성, 리스 쿼리와 정리
+쿼리를 일치시킨다. 보존 작업을 청크로 나누고 제한 없는 적재나 삭제를 피한다.
+이벤트 정리는 엄격한 기준 시각보다 오래된 전달 완료 행만 선택할 수 있으며,
+대기 중이거나 리스가 만료된 행은 내구성 있게 유지한다.
 
-## Verify
+## 검증
 
-- Test check and delivery claim races, lease recovery, duplicate/stale
-  finalization, state-change deduplication, capped retry boundaries,
-  delivered-only retention chunks, and before/at/after time boundaries.
-- Use the real adopted database for migration and concurrency integration tests.
-- Run the narrowest persistence test, then ./gradlew test for cross-module changes.
+- 점검 및 전달 선점 경합, 리스 복구, 중복 완료 처리와 만료되었거나 리스가 일치하지 않는 완료 처리, 상태 변경 중복 제거,
+  상한이 있는 재시도 경계, 전달 완료 이벤트만의 보존 청크와 기준 시각 전/정각/후를 테스트한다.
+- 마이그레이션 및 동시성 통합 테스트에는 실제로 채택한 데이터베이스를 사용한다.
+- 가장 좁은 영속성 테스트를 실행한 뒤, 모듈 간 변경에는 ./gradlew test를 실행한다.

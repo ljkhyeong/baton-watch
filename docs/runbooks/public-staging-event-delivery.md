@@ -1,45 +1,42 @@
-# Public Staging Health-Change Delivery Validation
+# 공개 스테이징 상태 변경 전달 검증
 
-Status: operator runbook; no live execution is implied
+상태: 운영자용 실행 절차서이며, 실제 실행 완료를 의미하지 않음
 
-Updated: 2026-08-08
+최종 수정일: 2026-08-08
 
-## Purpose
+## 목적
 
-Use a dedicated public staging environment to prove the implemented WATCH to
-BATON delivery boundary. The exercise verifies first delivery, an
-acknowledgement-loss replay with the same event ID, and backlog drain. It does
-not authorize production rollout.
+전용 공개 스테이징 환경에서 구현된 WATCH-BATON 전달 경계를 검증합니다. 이
+실습은 최초 전달, 동일한 이벤트 ID를 사용한 응답 유실 후 재전달, 백로그
+해소를 검증합니다. 운영 배포를 승인하는 절차는 아닙니다.
 
-## Required environment
+## 필수 환경
 
-- A deployed WATCH instance and a compatible BATON receiver at public DNS
-  names with valid HTTPS on port 443.
-- Delivery enabled in WATCH with the exact BATON callback and a URL-safe
-  32-to-200-character bearer token. The delivery token must be different from
-  the WATCH monitor API token and every BATON operator or workspace secret.
-- A dedicated staging source namespace shared by BATON and WATCH.
-- Operator-only access to WATCH PostgreSQL, BATON MySQL, the WATCH management
-  port, and both services' logs. The management port must remain private.
-- A controlled public check target that can return a stable successful
-  response.
-- A staging-only fault ingress in front of the BATON receiver. It must be able
-  to forward one request until BATON commits, then discard or delay only that
-  acknowledgement beyond WATCH's five-second total timeout. It must not retry
-  upstream requests, follow redirects, log request bodies or authorization,
-  or expose its control plane publicly without separate authentication.
+- 공개 DNS 이름과 443 포트의 유효한 HTTPS를 사용하는 배포된 WATCH 인스턴스와
+  호환되는 BATON 수신기
+- 정확한 BATON 콜백과 URL에 안전한 32~200자 Bearer 토큰을 사용해 전달이
+  활성화된 WATCH. 전달 토큰은 WATCH 모니터 API 토큰뿐 아니라 모든 BATON
+  운영자 또는 워크스페이스 비밀값과 달라야 합니다.
+- BATON과 WATCH가 공유하는 전용 스테이징 소스 네임스페이스
+- WATCH PostgreSQL, BATON MySQL, WATCH 관리 포트, 두 서비스의 로그에 대한
+  운영자 전용 접근 권한. 관리 포트는 비공개로 유지해야 합니다.
+- 안정적으로 성공 응답을 반환할 수 있는 통제된 공개 점검 대상
+- BATON 수신기 앞에 배치한 스테이징 전용 장애 주입 인그레스. 요청 하나를
+  BATON이 커밋할 때까지 전달한 뒤, 해당 응답만 버리거나 WATCH의 전체 제한
+  시간 5초를 넘도록 지연할 수 있어야 합니다. 업스트림 요청 재시도, 리다이렉트
+  추적, 요청 본문이나 인증 정보 기록을 해서는 안 되며, 별도 인증 없이 제어
+  영역을 공개해서도 안 됩니다.
 
-Do not use `/etc/hosts`, an IP literal, a private callback, a non-default HTTPS
-port, or a relaxed WATCH destination policy to make the exercise pass.
+실습을 통과시키기 위해 `/etc/hosts`, IP 리터럴, 비공개 콜백, 기본값이 아닌
+HTTPS 포트 또는 완화된 WATCH 대상 정책을 사용하지 마세요.
 
-## Safe preflight
+## 안전한 사전 점검
 
-`https://watch-staging.b4ton.com` is the selected WATCH public-staging base
-URL. Treat it only as the intended configuration value until its DNS record,
-valid HTTPS routing, deployed instance, and external status response have all
-been verified.
+`https://watch-staging.b4ton.com`은 선택된 WATCH 공개 스테이징 기본 URL입니다.
+DNS 레코드, 유효한 HTTPS 라우팅, 배포된 인스턴스, 외부 상태 응답이 모두
+검증되기 전까지는 의도한 설정값으로만 취급하세요.
 
-Load these values from the staging secret store without enabling shell tracing:
+셸 추적을 활성화하지 않은 상태에서 스테이징 비밀 저장소의 값을 불러옵니다.
 
 ~~~bash
 set +x
@@ -51,81 +48,77 @@ read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATC
 ./ops/staging-event-delivery-preflight.sh
 ~~~
 
-The preflight validates the compatible token shape and separation, checks the
-public WATCH status endpoint, and sends a deliberately malformed JSON callback
-request without credentials. The receiver must return `401`; a parser-level
-4xx instead fails the preflight because authentication did not demonstrably
-precede JSON deserialization. The script never sends either token and discards
-response bodies. Its executable test fixes the callback method, content type,
-malformed body, user-curl-configuration isolation, HTTPS-only protocol,
-no-proxy behavior, TLS floor, deadlines, and output discard. A passing preflight
-proves reachability and the externally observed receiver authentication
-boundary only. It does not prove valid-credential acceptance, the deployed
-WATCH configuration, or delivery behavior.
+사전 점검은 호환되는 토큰 형식과 토큰 간 분리를 검증하고, 공개 WATCH 상태
+엔드포인트를 확인하며, 인증 정보 없이 의도적으로 잘못된 JSON 콜백 요청을
+전송합니다. 수신기는 반드시 `401`을 반환해야 합니다. 대신 파서 수준의 4xx가
+반환되면 인증이 JSON 역직렬화보다 먼저 수행됐음을 입증하지 못했으므로 사전
+점검은 실패합니다. 스크립트는 두 토큰을 어느 것도 전송하지 않으며 응답 본문을
+버립니다. 실행 가능한 테스트는 콜백 메서드, 콘텐츠 유형, 잘못된 본문, 사용자
+curl 설정 격리, HTTPS 전용 프로토콜, 프록시 미사용 동작, TLS 최저 버전, 제한
+시간, 출력 폐기를 고정합니다. 사전 점검 통과는 도달 가능성과 외부에서 관찰한
+수신기 인증 경계만 입증합니다. 유효한 인증 정보의 수락, 배포된 WATCH 설정,
+전달 동작을 입증하지는 않습니다.
 
-## Evidence rules
+## 증거 수집 규칙
 
-Run the exercise in a dedicated environment with an initial delivery backlog
-of zero. Record only bounded counts, statuses, and timestamps in the retained
-report. Event IDs may be used transiently to correlate database rows, but do
-not retain target URLs, callback URLs, resource references, payloads, tokens,
-headers, exception messages, or raw logs as evidence.
+초기 전달 백로그가 0인 전용 환경에서 실습을 실행하세요. 보관 보고서에는
+범위가 제한된 개수, 상태, 타임스탬프만 기록합니다. 이벤트 ID는 데이터베이스
+행을 연관 짓기 위해 일시적으로 사용할 수 있지만, 대상 URL, 콜백 URL, 리소스
+참조, 페이로드, 토큰, 헤더, 예외 메시지 또는 원본 로그는 증거로 보관하지
+마세요.
 
-Prometheus names used below are:
+아래에서 사용하는 Prometheus 이름은 다음과 같습니다.
 
 - `baton_watch_event_delivery_backlog`
 - `baton_watch_event_delivery_attempts_total{outcome="..."}`
 - `baton_watch_event_delivery_finalizations_total{status="..."}`
 
-The backlog gauge is refreshed by the one-minute maintenance schedule, so the
-PostgreSQL row state is authoritative while waiting for the gauge to converge.
-An absent counter series means zero before its first increment.
+백로그 게이지는 1분 주기의 유지보수 일정에 따라 갱신되므로, 게이지가 수렴하기를
+기다리는 동안에는 PostgreSQL 행 상태를 기준으로 판단합니다. 카운터 시계열이
+없다면 최초 증가 전 값은 0을 의미합니다.
 
-The scheduler's `replayed` log field is not BATON inbox replay evidence. It
-counts WATCH finalizations that found an event already delivered.
+스케줄러의 `replayed` 로그 필드는 BATON 수신함 재전달 증거가 아닙니다. 이미
+전달된 이벤트를 발견한 WATCH 완료 처리 횟수를 셉니다.
 
-The fault ingress must compare the first and replayed BATON `202` receipt in
-memory and expose only bounded aggregate evidence: request count, unique event
-count, receiver insert/replay/conflict counts, dropped acknowledgement count,
-and a `sameReceipt` boolean. It must not retain or expose either raw receipt,
-event ID, resource reference, payload, or authorization value.
+장애 주입 인그레스는 최초 BATON `202` 수신 결과와 재전달 수신 결과를 메모리에서
+비교하고 다음과 같이 범위가 제한된 집계 증거만 노출해야 합니다. 요청 수, 고유
+이벤트 수, 수신기 삽입/재전달/충돌 수, 유실된 응답 수, `sameReceipt` 불리언 값.
+원본 수신 결과, 이벤트 ID, 리소스 참조, 페이로드 또는 인증 값을 보관하거나
+노출해서는 안 됩니다.
 
-## Phase 1: first delivery
+## 1단계: 최초 전달
 
-1. Put the staging fault ingress in pass-through mode and reset its bounded
-   counters.
-2. Create a unique canonical reference of the form
-   `baton-manager:<namespace>:role-resource:<uuid>` and synchronize an ACTIVE
-   monitor at source revision 1 to the controlled public target. Direct WATCH
-   synchronization is acceptable for this delivery-boundary exercise; use the
-   normal post-commit BATON synchronization path when validating the wider
-   integration.
-3. Wait for the monitor to move from UNKNOWN to HEALTHY and for the related
-   event to become DELIVERED.
-4. Confirm one callback request, one BATON inbox insert, no conflict, one WATCH
-   delivered finalization, and a return to the zero backlog baseline.
+1. 스테이징 장애 주입 인그레스를 그대로 전달하는 모드로 설정하고 제한된
+   카운터를 초기화합니다.
+2. `baton-manager:<namespace>:role-resource:<uuid>` 형식의 고유한 정규 참조를
+   만들고, 통제된 공개 대상을 향하는 소스 리비전 1의 ACTIVE 모니터를
+   동기화합니다. 이 전달 경계 실습에서는 WATCH 직접 동기화를 허용합니다.
+   더 넓은 통합을 검증할 때는 정상적인 BATON 커밋 후 동기화 경로를 사용하세요.
+3. 모니터가 UNKNOWN에서 HEALTHY로 바뀌고 관련 이벤트가 DELIVERED 상태가 될
+   때까지 기다립니다.
+4. 콜백 요청 1건, BATON 수신함 삽입 1건, 충돌 없음, WATCH 전달 완료 처리 1건,
+   백로그 기준값 0으로의 복귀를 확인합니다.
 
-## Phase 2: acknowledgement-loss replay
+## 2단계: 응답 유실 후 재전달
 
-1. Use a new canonical reference and arm the ingress for exactly one
-   `ACK_THEN_DROP` action. It must forward the request to BATON and observe the
-   receiver's 2xx response before dropping or delaying that response to WATCH.
-2. Synchronize another ACTIVE revision-1 monitor and wait for its first health
-   change.
-3. Before removing the fault, confirm BATON committed one inbox row while the
-   WATCH event remains PENDING with `delivery_attempt = 1`. The bounded WATCH
-   outcome may be CONNECT_TIMEOUT, READ_TIMEOUT, or NETWORK_FAILURE depending
-   on the transport phase in which the ingress loses the acknowledgement.
-4. Return the ingress to pass-through mode and wait for the durable retry.
-5. Confirm the ingress observed the same `Idempotency-Key` at least twice and
-   reports one receiver insert, one exact replay, no conflict, and
-   `sameReceipt = true`. Confirm the BATON inbox still has exactly one row,
-   WATCH reports `delivery_attempt >= 2` and DELIVERED, and the backlog returns
-   to zero. Any conflict, a second inbox row, or unequal receipt fails the
-   exercise.
+1. 새로운 정규 참조를 사용하고 정확히 한 번의 `ACK_THEN_DROP` 동작이 수행되도록
+   인그레스를 준비합니다. 요청을 BATON으로 전달하고 수신기의 2xx 응답을 관찰한
+   뒤 해당 응답을 WATCH에 전달하지 않거나 지연해야 합니다.
+2. 소스 리비전 1의 다른 ACTIVE 모니터를 동기화하고 최초 상태 변경을 기다립니다.
+3. 장애를 제거하기 전에 BATON이 수신함 행 하나를 커밋했지만 WATCH 이벤트는
+   `delivery_attempt = 1`인 PENDING 상태임을 확인합니다. WATCH의 범위가 제한된 결과 코드는
+   인그레스가 응답을 유실한 전송 단계에 따라 CONNECT_TIMEOUT, READ_TIMEOUT 또는
+   NETWORK_FAILURE일 수 있습니다.
+4. 인그레스를 그대로 전달하는 모드로 되돌리고 영속 재시도를 기다립니다.
+5. 인그레스가 동일한 `Idempotency-Key`를 최소 두 번 관찰했고, 수신기 삽입 1건,
+   정확한 재전달 1건, 충돌 없음, `sameReceipt = true`를 보고하는지 확인합니다.
+   BATON 수신함에 여전히 정확히 한 행만 있고, WATCH가
+   `delivery_attempt >= 2`와 DELIVERED를 보고하며, 백로그가 0으로 돌아오는지
+   확인합니다. 충돌, 두 번째 수신함 행, 서로 다른 수신 결과 중 하나라도 있으면
+   실습은 실패합니다.
 
-Useful WATCH evidence query, executed through an operator-only PostgreSQL
-session:
+운영자 전용 PostgreSQL 세션에서 실행할 수 있는 WATCH 증거 조회 쿼리는 다음과
+같습니다.
 
 ~~~sql
 SELECT event_id,
@@ -142,7 +135,7 @@ ORDER BY changed_at DESC, event_id DESC
 LIMIT 1;
 ~~~
 
-Use the returned event ID only in a protected BATON MySQL session:
+반환된 이벤트 ID는 보호된 BATON MySQL 세션에서만 사용하세요.
 
 ~~~sql
 SELECT COUNT(*) AS inbox_rows
@@ -150,39 +143,37 @@ FROM watch_health_event_inbox
 WHERE event_id = UUID_TO_BIN(?);
 ~~~
 
-The single-row query proves durable deduplication, not replay by itself. The
-ingress's two upstream observations and `sameReceipt` comparison provide the
-replay evidence.
+단일 행 조회만으로는 재전달 자체가 아니라 영속 중복 제거만 입증됩니다. 인그레스의
+두 차례 업스트림 관찰과 `sameReceipt` 비교가 재전달 증거를 제공합니다.
 
-## Phase 3: backlog drain
+## 3단계: 백로그 해소
 
-1. Put the fault ingress in a mode that returns `503` without forwarding.
-2. Create three more unique ACTIVE monitors and wait until PostgreSQL contains
-   three PENDING events and the HTTP_SERVER_ERROR attempt counter increases.
-3. Restore pass-through mode. Confirm all three events become DELIVERED, BATON
-   gains exactly three unique inbox rows, and both PostgreSQL and the delayed
-   Prometheus gauge return to the zero baseline.
-4. Never delete, rewrite, or force-deliver a pending event to make the backlog
-   appear healthy.
+1. 장애 주입 인그레스가 전달하지 않고 `503`을 반환하는 모드로 설정합니다.
+2. 고유한 ACTIVE 모니터를 세 개 더 만들고 PostgreSQL에 PENDING 이벤트 3개가
+   생기며 HTTP_SERVER_ERROR 시도 카운터가 증가할 때까지 기다립니다.
+3. 그대로 전달하는 모드를 복원합니다. 이벤트 세 개가 모두 DELIVERED가 되고,
+   BATON에 정확히 세 개의 고유 수신함 행이 추가되며, PostgreSQL과 지연된
+   Prometheus 게이지가 모두 기준값 0으로 돌아오는지 확인합니다.
+4. 백로그가 정상으로 보이게 하려고 보류 중인 이벤트를 삭제하거나 다시 쓰거나
+   강제로 전달하지 마세요.
 
-## Log and secret audit
+## 로그 및 비밀값 감사
 
-Collect logs only into a mode-0600 temporary directory. Search both services
-and the ingress for the delivery token, monitor API token, callback URL,
-resource references, and request payload fields. Treat any match as a failure,
-but do not print the matched line or upload raw logs. The ingress may retain
-only bounded aggregate evidence such as request count, unique event count,
-receiver insert/replay/conflict counts, dropped acknowledgement count, and
-whether duplicate receipts matched.
+로그는 권한 모드 `0600` 임시 디렉터리에만 수집하세요. 두 서비스와 인그레스에서 전달
+토큰, 모니터 API 토큰, 콜백 URL, 리소스 참조, 요청 페이로드 필드를 검색합니다.
+일치 항목이 하나라도 있으면 실패로 처리하되, 일치한 줄을 출력하거나 원본 로그를
+업로드하지 마세요. 인그레스는 요청 수, 고유 이벤트 수, 수신기
+삽입/재전달/충돌 수, 유실된 응답 수, 중복 수신 결과의 일치 여부처럼 범위가
+제한된 집계 증거만 보관할 수 있습니다.
 
-## Cleanup and rollback
+## 정리 및 롤백
 
-Always restore the fault ingress to pass-through mode. Synchronize every
-temporary monitor to a higher INACTIVE revision and wait for any resulting
-event to drain. If the receiver or ingress remains unhealthy, disable new
-delivery claims and retain the pending rows; do not delete them. Rotate any
-secret that appeared in a terminal transcript or log.
+장애 주입 인그레스는 항상 그대로 전달하는 모드로 복원하세요. 모든 임시 모니터를
+더 높은 INACTIVE 리비전으로 동기화하고, 그로 인해 생성된 이벤트가 모두 처리될
+때까지 기다립니다. 수신기나 인그레스가 계속 비정상이면 새로운 전달 작업 선점을
+비활성화하고 보류 중인 행을 유지하세요. 삭제해서는 안 됩니다. 터미널 기록이나
+로그에 나타난 비밀값은 모두 교체하세요.
 
-The exercise passes only when first delivery, same-event replay, single-row
-BATON deduplication, backlog drain, and the log/secret audit all pass. Record
-the execution date and bounded results in HANDOFF.md only after the live run.
+최초 전달, 동일 이벤트 재전달, BATON 단일 행 중복 제거, 백로그 해소, 로그/비밀값
+감사가 모두 통과해야만 실습에 성공합니다. 실제 실행 후에만 실행 날짜와 범위가
+제한된 결과를 HANDOFF.md에 기록하세요.

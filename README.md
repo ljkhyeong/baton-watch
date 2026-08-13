@@ -1,65 +1,45 @@
 # BATON WATCH
 
-BATON WATCH is an independent Java/Spring service for asynchronous health checks
-of BATON RoleResource URL snapshots.
+BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검하는 독립 Java/Spring 서비스입니다.
 
-## Current implementation
+## 현재 구현
 
-The implemented service currently provides:
+현재 구현된 서비스는 다음 기능을 제공합니다.
 
-- GET /api/v1/system/status
-- authenticated PUT and GET /api/v1/resource-monitors/{resourceReference}
-- revision-safe ACTIVE/INACTIVE monitor synchronization
-- PostgreSQL schedules, leases, immutable attempts/results, current health, and
-  durable health-change events with delivery leases and retry state
-- isolated single-thread lanes for target checks, callback delivery, and
-  maintenance, plus bounded JDBC statement and transactional row-lock waits
-- a background checker with DNS pinning, SSRF and redirect defenses, bounded
-  time/headers/bytes, hard-capped runtime resource settings, stale projection
-  handling, and bounded retention
-- at-least-once delivery to one configured BATON HTTPS callback, with a fixed
-  payload, event-ID idempotency, DNS pinning, no redirects, capped exponential
-  retries, and delivered-event retention
-- low-cardinality check counters and Spring scheduled-execution timers plus
-  event-delivery backlog, oldest-age, finalization, and bounded-outcome metrics
-- a hexagonal six-module Gradle layout
-- focused domain, application, HTTP, outbound-policy, and PostgreSQL integration
-  tests, plus a fail-closed GitHub Actions check that proves the PostgreSQL and
-  full production-context suites actually executed
+- `GET /api/v1/system/status`
+- 인증된 `PUT` 및 `GET /api/v1/resource-monitors/{resourceReference}`
+- 리비전 안전성을 보장하는 `ACTIVE`/`INACTIVE` 모니터 동기화
+- PostgreSQL 기반 일정, 리스, 불변 시도·결과, 현재 상태, 전달 리스와 재시도 상태를 포함한 내구성 있는 상태 변경 이벤트
+- 대상 점검, 콜백 전달, 유지보수를 위한 격리된 단일 스레드 실행 레인과 제한된 JDBC 구문·트랜잭션 행 잠금 대기
+- DNS 고정, SSRF·리다이렉트 방어, 시간·헤더·바이트 제한, 강제 상한이 있는 런타임 리소스 설정, 오래된 프로젝션 처리, 제한된 보존 기간을 갖춘 백그라운드 점검기
+- 고정 페이로드, 이벤트 ID 멱등성, DNS 고정, 리다이렉트 금지, 지연 상한이 있는 지수 백오프 재시도, 전달 완료 이벤트 보존을 적용한 하나의 BATON HTTPS 콜백 최소 한 번 전달
+- 낮은 카디널리티의 점검 카운터와 Spring 예약 실행 타이머, 이벤트 전달 백로그·가장 오래된 미전달 이벤트의 경과 시간·완료 처리·제한된 결과 메트릭
+- 헥사고날 구조의 Gradle 6개 모듈 구성
+- 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 PostgreSQL 및 전체 운영 컨텍스트 테스트 모음이 실제로 실행됐음을 증명하는 실패 폐쇄형 GitHub Actions 검사
 
-Delivery is disabled until an operator supplies the callback and its separate
-service token. Pending events remain durable while delivery is disabled or the
-callback is unavailable. WATCH has no frontend or broker, and repository
-artifacts are not evidence of a production deployment or external alerts.
+운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다.
 
-## Technology and modules
+## 기술과 모듈
 
 - Java 21
 - Spring Boot 4.1.0
 - Gradle 9.2.1
 
-Production dependencies point inward:
+운영 코드의 의존성은 안쪽을 향합니다.
 
 bootstrap -> adapters -> application -> domain
 
-The modules are domain, application, adapter-in-web, adapter-out-persistence, adapter-out-external, and bootstrap.
+모듈은 `domain`, `application`, `adapter-in-web`, `adapter-out-persistence`, `adapter-out-external`, `bootstrap`입니다.
 
-## Build and run
+## 빌드와 실행
 
-The repository includes a Gradle wrapper pinned to 9.2.1. Docker must be
-available for the full test task; PostgreSQL integration tests are intentionally
-not allowed to pass by being skipped.
-`SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT` may override the five-second shared JDBC
-statement deadline and must remain a whole-second duration of at least one
-second.
+저장소에는 9.2.1로 고정된 Gradle Wrapper가 포함되어 있습니다. 전체 테스트 작업에는 Docker가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT`으로 공통 JDBC 구문 제한 시간 5초를 재정의할 수 있으며, 1초 이상의 정수 초 단위 기간이어야 합니다.
 
 ~~~bash
 ./gradlew clean test :bootstrap:bootJar --no-build-cache
 ~~~
 
-For the recommended local container run, copy the environment template and
-replace the database and monitor-API placeholder secrets before starting.
-Replace the separate delivery token as well when enabling its callback:
+권장 로컬 컨테이너 실행을 위해 환경 템플릿을 복사하고, 시작 전에 데이터베이스와 모니터 API의 자리표시자 비밀값을 교체합니다. 콜백을 활성화할 때는 별도의 전달 토큰도 교체합니다.
 
 ~~~bash
 cp .env.example .env
@@ -67,13 +47,9 @@ docker compose up --build
 curl http://localhost:8080/api/v1/system/status
 ~~~
 
-`WATCH_API_TOKEN` must use the RFC 6750 `token68` character set with at least
-32 non-padding characters; a 32-byte hexadecimal random value is compatible.
+`WATCH_API_TOKEN`은 RFC 6750 `token68` 문자 집합을 사용하고 패딩을 제외한 문자가 최소 32개여야 합니다. 32바이트 16진수 난수 값은 이 조건과 호환됩니다.
 
-Compose starts WATCH and a private PostgreSQL 18.4 service. The database port
-and WATCH management port 8081 are not published; the latter serves Actuator
-health and Prometheus metrics inside the runtime network. To synchronize a
-monitor:
+Compose는 WATCH와 비공개 PostgreSQL 18.4 서비스를 시작합니다. 데이터베이스 포트와 WATCH 관리 포트 `8081`은 공개되지 않으며, 관리 포트는 런타임 네트워크 내부에서 Actuator 상태와 Prometheus 메트릭을 제공합니다. 모니터를 동기화하려면 다음 명령을 사용합니다.
 
 ~~~bash
 curl -X PUT http://localhost:8080/api/v1/resource-monitors/role-resource-123 \
@@ -82,12 +58,9 @@ curl -X PUT http://localhost:8080/api/v1/resource-monitors/role-resource-123 \
   -d '{"sourceRevision":1,"monitoringState":"ACTIVE","targetUrl":"https://example.com/"}'
 ~~~
 
-BATON must call synchronization only after its own transaction commits. A later
-revision may use `INACTIVE` with no `targetUrl` to stop future checks while
-retaining bounded history.
+BATON은 자체 트랜잭션이 커밋된 뒤에만 동기화를 호출해야 합니다. 이후 리비전은 `targetUrl` 없이 `INACTIVE`를 사용하여 제한된 이력을 유지하면서 향후 점검을 중단할 수 있습니다.
 
-To activate health-change delivery, set these values in `.env` before starting
-Compose:
+상태 변경 전달을 활성화하려면 Compose를 시작하기 전에 `.env`에 다음 값을 설정합니다.
 
 ~~~dotenv
 WATCH_EVENT_DELIVERY_ENABLED=true
@@ -95,23 +68,17 @@ WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.example.com/api/v1/internal/resource
 WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 ~~~
 
-The endpoint must be an absolute public-global HTTPS URL on port 443, without
-user-info, query, fragment, or an IP-literal host. BATON must authenticate the
-bearer token and durably deduplicate the `Idempotency-Key`/`eventId` before
-acknowledging with 2xx. See the delivery contract for the exact payload and
-retry behavior.
+엔드포인트는 포트 `443`의 절대 공개 글로벌 HTTPS URL이어야 하며 사용자 정보, 쿼리, 프래그먼트, IP 리터럴 호스트를 포함할 수 없습니다. BATON은 Bearer 토큰을 인증하고 `2xx`로 응답하기 전에 `Idempotency-Key`/`eventId`를 내구성 있게 중복 제거해야 합니다. 정확한 페이로드와 재시도 동작은 전달 계약을 참고합니다.
 
-## Maintained documents
+## 유지 문서
 
-- [Product baseline](docs/PRD/0001_product-baseline/spec.md)
-- [API contract](docs/PRD/0002_api-contract/spec.md)
-- [Monitoring MVP](docs/PRD/0003_monitoring-mvp/spec.md)
-- [Health-change event delivery](docs/PRD/0004_health-change-event-delivery/spec.md)
-- [Microservice boundary ADR](docs/ADR/0001_microservice-boundary/adr.md)
-- [MVP storage and execution ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
-- [Direct HTTPS event delivery ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
-- [Cloudflare Tunnel staging deployment runbook](docs/runbooks/staging-deployment.md)
-  — the included staging artifacts are not evidence of a live, authenticated,
-  or externally verified deployment
-- [Public staging delivery validation runbook](docs/runbooks/public-staging-event-delivery.md)
-- [Active handoff](HANDOFF.md)
+- [제품 기준선](docs/PRD/0001_product-baseline/spec.md)
+- [API 계약](docs/PRD/0002_api-contract/spec.md)
+- [모니터링 MVP](docs/PRD/0003_monitoring-mvp/spec.md)
+- [상태 변경 이벤트 전달](docs/PRD/0004_health-change-event-delivery/spec.md)
+- [마이크로서비스 경계 ADR](docs/ADR/0001_microservice-boundary/adr.md)
+- [MVP 저장소 및 실행 ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
+- [직접 HTTPS 이벤트 전달 ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
+- [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
+- [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
+- [현재 인계 문서](HANDOFF.md)

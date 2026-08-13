@@ -1,40 +1,48 @@
-# ADR-0001: BATON WATCH Microservice Boundary
+# ADR-0001: BATON WATCH 마이크로서비스 경계
 
-Status: accepted
+상태: 채택됨
 
-Date: 2026-08-01
+날짜: 2026-08-01
 
-## Context
+## 배경
 
-Checking arbitrary external URLs has variable latency, failure modes, and SSRF risk. Performing those checks inside BATON would couple resource commands and projections to untrusted networks.
+임의의 외부 URL을 점검하면 지연 시간과 실패 유형이 일정하지 않고 SSRF 위험이
+발생한다. 이 점검을 BATON 안에서 수행하면 리소스 명령과 프로젝션이 신뢰할 수
+없는 네트워크에 결합된다.
 
-## Decision
+## 결정
 
-Create BATON WATCH as an independent Java 21 / Spring Boot 4.1.0 service. Keep its production dependency direction bootstrap -> adapters -> application -> domain across six Gradle modules under com.personal.baton.watch.
+BATON WATCH를 독립적인 Java 21 / Spring Boot 4.1.0 서비스로 만든다.
+`com.personal.baton.watch` 아래의 여섯 Gradle 모듈에서 운영 의존성 방향을
+`bootstrap -> adapters -> application -> domain`으로 유지한다.
 
-WATCH owns asynchronous schedules, check attempts/results, derived
-UNKNOWN/HEALTHY/DEGRADED/BROKEN status, and durable health-change events. BATON
-retains RoleResource truth and authorization. BATON must submit or synchronize
-monitoring work only after its own transaction commits, and its transactions and
-projections must never wait for WATCH.
+WATCH는 비동기 일정, 점검 시도/결과, 파생된
+`UNKNOWN`/`HEALTHY`/`DEGRADED`/`BROKEN` 상태와 내구성 상태 변경 이벤트를
+소유한다. BATON은 RoleResource의 원본 데이터와 인가 권한을 유지한다. BATON은
+자체 트랜잭션이 커밋된 뒤에만 모니터링 작업을 제출하거나 동기화해야 하며,
+BATON의 트랜잭션과 프로젝션은 WATCH를 절대 기다려서는 안 된다.
 
-Network I/O must not run inside a database transaction. Workers use a short claim transaction, an external check with strict SSRF, DNS-rebinding, redirect, time, and byte defenses, and a short finalize transaction. Finalization stores metadata only, never response bodies, and atomically records a durable event when derived health changes. Time is supplied through Clock. Observability uses low-cardinality outcome labels and never raw URLs.
+네트워크 I/O는 데이터베이스 트랜잭션 안에서 실행해서는 안 된다. 작업자는 짧은
+선점 트랜잭션, 엄격한 SSRF·DNS 리바인딩·리다이렉트·시간·바이트 방어가 적용된
+외부 점검, 짧은 확정 트랜잭션을 차례로 사용한다. 확정 작업은 응답 본문이 아닌
+메타데이터만 저장하며, 파생 상태가 변경되면 내구성 이벤트를 원자적으로 기록한다.
+시간은 `Clock`을 통해 공급한다. 관측 가능성에는 낮은 카디널리티의 결과 레이블만
+사용하고 원본 URL은 절대 사용하지 않는다.
 
-No frontend or broker is part of this baseline. PRD-0004 and ADR-0003 adopt
-direct delivery to one fixed BATON HTTPS callback; a broker, fan-out, private
-destination policy, or different event transport requires a later adopted
-decision.
+이 기준선에는 프런트엔드나 브로커가 포함되지 않는다. PRD-0004와 ADR-0003은
+하나의 고정된 BATON HTTPS 콜백으로 직접 전달하는 방식을 채택한다. 브로커,
+팬아웃, 비공개 목적지 정책 또는 다른 이벤트 전송 방식에는 향후 별도로 채택된
+결정이 필요하다.
 
-## Consequences
+## 결과
 
-BATON remains responsive when targets or the callback are slow or hostile, and
-WATCH can scale and fail independently. Results and notifications are
-eventually consistent and may be unknown, stale, duplicated, or delayed. The
-service therefore requires explicit synchronization, lease recovery,
-idempotent check finalization, event-ID deduplication at BATON,
-outbound-network controls, retention, and operational monitoring.
+대상이나 콜백이 느리거나 적대적이어도 BATON은 응답성을 유지하며, WATCH는
+독립적으로 확장하고 실패할 수 있다. 결과와 알림은 최종 일관성을 따르므로 상태를
+알 수 없거나 오래되거나 중복되거나 지연될 수 있다. 따라서 서비스에는 명시적
+동기화, 임대 복구, 멱등적인 점검 확정, BATON의 이벤트 ID 중복 제거,
+아웃바운드 네트워크 제어, 보존 정책과 운영 모니터링이 필요하다.
 
-## Current implementation note
+## 현재 구현 참고 사항
 
-The PRD-0003 monitoring MVP, ADR-0002 PostgreSQL/checker design, and PRD-0004 /
-ADR-0003 direct event delivery are implemented. Production deployment is not.
+PRD-0003 모니터링 MVP, ADR-0002 PostgreSQL/점검기 설계와 PRD-0004 /
+ADR-0003 직접 이벤트 전달이 구현되어 있다. 운영 배포는 구현되지 않았다.

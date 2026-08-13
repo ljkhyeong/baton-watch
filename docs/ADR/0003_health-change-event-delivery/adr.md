@@ -1,100 +1,93 @@
-# ADR-0003: Direct HTTPS Health-Change Event Delivery
+# ADR-0003: HTTPS 직접 상태 변경 이벤트 전달
 
-Status: accepted
+상태: 채택됨
 
-Date: 2026-08-02
+날짜: 2026-08-02
 
-## Context
+## 배경
 
-PRD-0003 and ADR-0002 establish a PostgreSQL outbox whose events are inserted
-atomically with derived-health changes. Recording alone does not notify BATON,
-and deleting or posting an event inside the health-finalization transaction
-would either lose changes or make database work wait on a remote service.
+PRD-0003과 ADR-0002는 파생 상태 변경과 원자적으로 이벤트를 삽입하는
+PostgreSQL 아웃박스를 정의한다. 기록만으로는 BATON에 알릴 수 없으며, 상태
+확정 트랜잭션 안에서 이벤트를 삭제하거나 전송하면 변경을 잃거나 데이터베이스
+작업이 원격 서비스를 기다리게 된다.
 
-The first consumer is one BATON service. The repository has no adopted need for
-fan-out, replay by multiple consumers, or broker operations. Delivery still
-needs durable retries, crash recovery, outbound-request safety, idempotency,
-bounded resource use, retention, and operator visibility.
+첫 소비자는 하나의 BATON 서비스다. 저장소에는 팬아웃, 여러 소비자의 재생 또는
+브로커 운영에 관한 채택된 요구사항이 없다. 그럼에도 전달에는 내구성 재시도, 장애
+복구, 아웃바운드 요청 안전성, 멱등성, 제한된 리소스 사용, 보존 정책과 운영자
+가시성이 필요하다.
 
-## Decision
+## 결정
 
-Deliver each health-change event directly to one operator-configured BATON
-callback using HTTPS `POST`. Do not introduce a message broker or an inbound
-WATCH webhook route.
+각 상태 변경 이벤트를 운영자가 설정한 하나의 BATON 콜백에 HTTPS `POST`로
+직접 전달한다. 메시지 브로커나 WATCH 수신 웹훅 경로는 도입하지 않는다.
 
-The callback uses a static bearer service token distinct from the monitor API
-token, an `Idempotency-Key` header, and the exact, versioned JSON shape in
-PRD-0004. The header and JSON `eventId` contain the same UUID. Any 2xx response
-is an acknowledgement; redirects and every other outcome are delivery
-failures. The guarantee is at least once, so BATON must make durable event-ID
-deduplication atomic with its event effect. No delivery-order guarantee is
-added.
+콜백에는 모니터 API 토큰과 구별되는 정적 Bearer 서비스 토큰,
+`Idempotency-Key` 헤더와 PRD-0004의 정확하고 버전이 지정된 JSON 형태를
+사용한다. 헤더와 JSON의 `eventId`에는 같은 UUID가 들어간다. 모든 2xx 응답은
+응답 확인으로 간주하며 리다이렉트와 그 밖의 모든 결과는 전달 실패다. 최소 1회
+전달을 보장하므로 BATON은 내구성 이벤트 ID 중복 제거와 이벤트 효과를 원자적으로
+처리해야 한다. 전달 순서는 보장하지 않는다.
 
-The application separates the immutable health-change payload from mutable
-delivery claim metadata. The sender port receives only the payload, while the
-lease token and delivery-attempt count remain in the claim/finalization path.
-The external adapter maps that payload to a dedicated callback DTO and uses the
-Boot-managed Jackson mapper to serialize only the adopted JSON fields.
+애플리케이션은 불변 상태 변경 페이로드와 가변 전달 선점 메타데이터를 분리한다.
+전송자 포트에는 페이로드만 전달하며 임대 토큰과 전달 시도 횟수는 선점/확정
+경로에 남긴다. 외부 어댑터는 해당 페이로드를 전용 콜백 DTO로 매핑하고 Boot가
+관리하는 Jackson 매퍼를 사용해 채택된 JSON 필드만 직렬화한다.
 
-The destination is a fixed absolute HTTPS URL on port 443 with a DNS hostname.
-For every attempt, WATCH resolves the hostname, rejects the complete answer if
-any address is not public-global, and pins the approved resolution while
-preserving Host, SNI, and TLS hostname verification. Redirects, automatic
-client retries, cookies, proxy discovery, and decompression are disabled.
-Connection, read, total time, response headers and bytes, DNS work, HTTP
-concurrency, and queues are bounded. Response content and raw exception text
-are neither persisted nor exposed as metric dimensions. Byte- or header-limit
-failures abort the response immediately rather than allowing connection-reuse
-draining; an unknown-length body that reaches the byte allowance is rejected
-without a probe beyond it. Allocation-sensitive resource settings have
-immutable implementation ceilings that runtime configuration cannot exceed.
+목적지는 DNS 호스트 이름을 사용하고 포트 443으로 고정된 절대 HTTPS URL이다.
+WATCH는 매 시도마다 호스트 이름을 해석하고 주소 중 하나라도 공개 전역 주소가
+아니면 전체 응답을 거부하며, Host, SNI와 TLS 호스트 이름 검증을 유지하면서
+승인된 해석 결과에 연결을 고정한다. 리다이렉트, 자동 클라이언트 재시도, 쿠키,
+프록시 탐색과 압축 해제를 비활성화한다. 연결·읽기·전체 시간, 응답 헤더와 바이트,
+DNS 작업, HTTP 동시성과 큐를 제한한다. 응답 콘텐츠와 원본 예외 문자열은 저장하지
+않고 메트릭 차원에도 노출하지 않는다. 바이트 또는 헤더 제한 실패 시 연결 재사용을
+위해 응답을 비우지 않고 즉시 중단하며, 길이를 알 수 없는 본문이 바이트 허용량에
+도달하면 제한 너머를 탐색하지 않고 거부한다. 메모리 할당에 민감한 리소스 설정에는
+런타임 설정이 넘을 수 없는 불변 구현 상한을 적용한다.
 
-Extend the durable outbox with mutable delivery lifecycle state. A dispatcher:
+내구성 아웃박스를 가변 전달 생명주기 상태로 확장한다. 디스패처는 다음과 같이
+동작한다.
 
-1. claims a bounded set of due, undelivered events in a short PostgreSQL
-   transaction and assigns expiring leases;
-2. commits before performing DNS or HTTP work;
-3. finalizes each matching lease in another short transaction, marking a 2xx
-   attempt delivered or persisting a bounded failure outcome and next retry.
+1. 짧은 PostgreSQL 트랜잭션에서 전달 예정이며 아직 전달되지 않은 이벤트를
+   제한된 수만큼 선점하고 만료되는 임대를 할당한다.
+2. DNS 또는 HTTP 작업 전에 커밋한다.
+3. 별도의 짧은 트랜잭션에서 일치하는 각 임대를 확정하여 2xx 시도를 전달 완료로
+   표시하거나 제한된 실패 결과와 다음 재시도를 저장한다.
 
-Finalization is idempotent, and an expired claimant cannot overwrite a newer
-lease. Failures use a bounded exponential backoff. There is no retry-count
-discard threshold: undelivered events remain durable. Cleanup deletes bounded
-batches of delivered events only after a configured retention period.
+확정은 멱등적이며 만료된 선점자는 더 새로운 임대를 덮어쓸 수 없다. 실패에는
+제한된 지수 백오프를 적용한다. 재시도 횟수에 따른 폐기 임계값은 없으며 미전달
+이벤트는 내구성 있게 유지한다. 정리는 설정된 보존 기간이 지난 전달 완료 이벤트만
+제한된 배치로 삭제한다.
 
-Export low-cardinality backlog, oldest-undelivered lag, and delivery-outcome
-telemetry. Do not label metrics with callback URLs, hosts, resource references,
-event IDs, exception messages, or response content.
+낮은 카디널리티의 백로그, 가장 오래된 미전달 이벤트 지연과 전달 결과
+텔레메트리를 내보낸다. 콜백 URL, 호스트, 리소스 참조, 이벤트 ID, 예외 메시지나
+응답 콘텐츠를 메트릭 레이블로 사용하지 않는다.
 
-## Consequences
+## 결과
 
-The design closes the single-consumer delivery loop without operating a broker
-and preserves the existing short-transaction boundary. It also makes callback
-availability and correctness an explicit integration dependency. A prolonged
-outage or bad token grows the retained backlog rather than losing events, so
-operators must monitor lag and storage growth.
+이 설계는 브로커 운영 없이 단일 소비자 전달 흐름을 완성하며 기존의 짧은 트랜잭션
+경계를 보존한다. 또한 콜백 가용성과 정확성을 명시적인 통합 의존성으로 만든다.
+장기간 장애가 발생하거나 토큰이 잘못되면 이벤트를 잃는 대신 보존되는 백로그가
+증가하므로 운영자는 지연과 저장소 증가를 모니터링해야 한다.
 
-At-least-once delivery permits duplicates when acknowledgement is uncertain,
-and bounded concurrency and retries may reorder events. BATON must deduplicate
-and tolerate reordering; consumers needing the current value can reconcile
-through WATCH's current projection.
+응답 확인이 불확실하면 최소 1회 전달로 인해 중복이 발생할 수 있으며, 제한된
+동시성과 재시도로 이벤트 순서가 바뀔 수 있다. BATON은 중복을 제거하고 순서
+변경을 허용해야 한다. 현재 값이 필요한 소비자는 WATCH의 현재 프로젝션을 통해
+조정할 수 있다.
 
-The public-global destination rule means a private-only BATON endpoint is not a
-valid callback. That is a deliberate SSRF and DNS-rebinding boundary, not an
-operator bypass. Fan-out, broker-based delivery, private-network destinations,
-payload expansion, or a different authentication mechanism requires another
-adopted decision.
+공개 전역 목적지 규칙에 따라 비공개 전용 BATON 엔드포인트는 유효한 콜백이
+아니다. 이는 의도적인 SSRF와 DNS 리바인딩 경계이며 운영자가 우회할 수 있는
+규칙이 아니다. 팬아웃, 브로커 기반 전달, 비공개 네트워크 목적지, 페이로드 확장
+또는 다른 인증 방식에는 별도로 채택된 결정이 필요하다.
 
-This architecture and its local implementation do not establish production
-deployment, external alerts, secret rotation automation, or a frontend.
+이 아키텍처와 로컬 구현만으로 운영 배포, 외부 알림, 비밀값 순환 자동화 또는
+프런트엔드가 구축되었다고 볼 수 없다.
 
-## Rejected alternatives
+## 기각한 대안
 
-- Posting during health finalization was rejected because remote latency and
-  failure would extend or roll back the database transaction.
-- Marking before posting was rejected because a process stop could lose an
-  event; marking only after acknowledgement is what creates at-least-once
-  behavior.
-- Polling alone was rejected because it leaves durable changes undispatched.
-- A broker was deferred because the adopted requirement has one consumer and
-  does not yet justify broker lifecycle and fan-out complexity.
+- 상태 확정 중 전송하면 원격 지연과 실패가 데이터베이스 트랜잭션을 연장하거나
+  롤백하므로 기각했다.
+- 전송 전에 완료 표시를 하면 프로세스 중단 시 이벤트를 잃을 수 있으므로
+  기각했다. 응답 확인 뒤에만 표시해야 최소 1회 동작을 만들 수 있다.
+- 폴링만 사용하면 내구성 변경이 전달되지 않은 채 남으므로 기각했다.
+- 채택된 요구사항의 소비자는 하나이며 아직 브로커 생명주기와 팬아웃의 복잡성을
+  정당화하지 못하므로 브로커 도입은 보류했다.

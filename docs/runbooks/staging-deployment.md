@@ -1,103 +1,103 @@
-# Cloudflare Tunnel Staging Deployment
+# Cloudflare Tunnel 스테이징 배포
 
-Status: operator runbook; repository artifacts are not proof of a live deployment
+상태: 운영자용 실행 절차서이며, 저장소 산출물은 실제 배포의 증거가 아님
 
-Updated: 2026-08-08
+최종 수정일: 2026-08-08
 
-## Purpose and current boundary
+## 목적과 현재 경계
 
-This runbook prepares the current Mac as a single staging origin for
-`https://watch-staging.b4ton.com`. The intended edge path is a remotely managed
-Cloudflare Tunnel into the Docker `watch-edge` network. The origin publishes no
-host port when the tunnel overlay is used.
+이 실행 절차서는 현재 Mac을 `https://watch-staging.b4ton.com`의 단일 스테이징
+오리진으로 준비합니다. 의도한 엣지 경로는 원격 관리형 Cloudflare Tunnel에서
+Docker `watch-edge` 네트워크로 연결됩니다. 터널 오버레이를 사용하면 오리진은
+호스트 포트를 공개하지 않습니다.
 
-The repository contains the staging Compose definitions and this procedure,
-but the Cloudflare account has not been authenticated from the origin, no
-tunnel token has been installed, and no live deployment or public HTTPS smoke
-has been verified. The Mac must remain powered, awake, connected, and running
-Docker for the staging origin to be available. This is not a production or
-high-availability topology.
+저장소에는 스테이징 Compose 정의와 이 절차가 들어 있지만, 아직 오리진에서
+Cloudflare 계정 인증을 완료하지 않았고 터널 토큰도 설치하지 않았으며 실제
+배포나 공개 HTTPS 스모크 테스트도 검증하지 않았습니다. 스테이징 오리진을
+사용하려면 Mac의 전원이 켜져 있고, 절전 상태가 아니며, 네트워크에 연결된 채
+Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지가 아닙니다.
 
-The deployment uses:
+배포에는 다음 항목을 사용합니다.
 
-- [compose.staging.yml](../../compose.staging.yml) for PostgreSQL and WATCH;
-- [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml) to add
-  `cloudflared` without changing the no-host-port boundary;
-- [ops/staging.env.example](../../ops/staging.env.example) as a non-secret
-  environment template;
-- one locally built, immutable `baton-watch:<full-git-sha>` image;
-- one operator-created external PostgreSQL volume; and
-- three mode-0600 secret files mounted as Compose secrets.
+- PostgreSQL과 WATCH용 [compose.staging.yml](../../compose.staging.yml)
+- 호스트 포트를 공개하지 않는 경계를 유지하면서 `cloudflared`를 추가하는
+  [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
+- 비밀값이 없는 환경 템플릿인
+  [ops/staging.env.example](../../ops/staging.env.example)
+- 로컬에서 빌드한 불변 `baton-watch:<full-git-sha>` 이미지 한 개
+- 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
+- Compose 비밀값으로 마운트하는 권한 모드 `0600` 비밀 파일 세 개
 
-Health-change delivery stays disabled in this staging slice. The Compose file
-fixes `WATCH_EVENT_DELIVERY_ENABLED=false`; do not add a BATON callback or
-delivery token while following this runbook. Use the separate
-[public staging delivery validation runbook](public-staging-event-delivery.md)
-only after a compatible BATON receiver has been provisioned.
+이 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다. Compose
+파일은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정합니다. 이 실행 절차서를
+따르는 동안 BATON 콜백이나 전달 토큰을 추가하지 마세요. 호환되는 BATON
+수신기를 준비한 뒤에만 별도의
+[공개 스테이징 전달 검증 실행 절차서](public-staging-event-delivery.md)를
+사용하세요.
 
-## Network and persistence invariants
+## 네트워크 및 영속성 불변 조건
 
-With both Compose files applied:
+두 Compose 파일을 모두 적용하면 다음 조건을 충족해야 합니다.
 
-- PostgreSQL has no host port and joins only the internal `watch-db` network.
-- WATCH has no host port, joins `watch-db` and `watch-edge`, and exposes only
-  port 8080 to containers on those networks.
-- The management server remains bound to `127.0.0.1:8081` inside the WATCH
-  container and is not reachable through the tunnel.
-- `cloudflared` joins only `watch-edge`, has no host port, and reaches WATCH at
-  `http://watch:8080`.
-- The Mac needs no inbound firewall or router port forwarding. Permit outbound
-  UDP 7844 for QUIC and TCP 7844 for the tunnel fallback. WATCH separately
-  needs the already intended DNS and public HTTP/HTTPS egress for target checks.
-- PostgreSQL data resides in the external volume named by
-  `WATCH_POSTGRES_VOLUME_NAME`. Routine shutdown and rollback must not delete
-  that volume.
+- PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
+  참여합니다.
+- WATCH는 호스트 포트를 공개하지 않고 `watch-db`와 `watch-edge`에 참여하며,
+  해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
+- 관리 서버는 WATCH 컨테이너 내부의 `127.0.0.1:8081`에 계속 바인딩되며,
+  터널을 통해 접근할 수 없습니다.
+- `cloudflared`는 `watch-edge`에만 참여하고 호스트 포트를 공개하지 않으며,
+  `http://watch:8080`으로 WATCH에 접근합니다.
+- Mac에는 인바운드 방화벽이나 라우터 포트 포워딩이 필요하지 않습니다. QUIC용
+  아웃바운드 UDP 7844와 터널 대체 연결용 TCP 7844를 허용하세요. WATCH에는
+  대상 점검을 위해 기존에 의도한 DNS 및 공개 HTTP/HTTPS 아웃바운드 접근도
+  별도로 필요합니다.
+- PostgreSQL 데이터는 `WATCH_POSTGRES_VOLUME_NAME`으로 지정한 외부 볼륨에
+  저장합니다. 일상적인 종료 및 롤백 과정에서 해당 볼륨을 삭제해서는 안 됩니다.
 
-The base staging Compose file also publishes no host ports. Internal diagnostics
-use `docker compose exec` or a one-off container on `watch-edge`. A public
-staging deployment must always use both files because the base file alone has
-no public ingress.
+기본 스테이징 Compose 파일도 호스트 포트를 공개하지 않습니다. 내부 진단에는
+`docker compose exec` 또는 `watch-edge`의 일회성 컨테이너를 사용합니다. 기본
+파일만으로는 공개 인그레스가 없으므로, 공개 스테이징 배포에는 항상 두 파일을
+모두 사용해야 합니다.
 
-## One-time Cloudflare setup
+## 최초 1회 Cloudflare 설정
 
-Use a remotely managed tunnel. The Cloudflare dashboard/API is the source of
-truth for ingress; do not add an origin certificate, tunnel credentials JSON,
-or a local ingress configuration file to this repository.
+원격 관리형 터널을 사용합니다. 인그레스의 신뢰할 수 있는 기준은 Cloudflare
+대시보드/API입니다. 오리진 인증서, 터널 인증 정보 JSON 또는 로컬 인그레스
+설정 파일을 이 저장소에 추가하지 마세요.
 
-1. Authenticate an operator account that can manage the `b4ton.com` zone.
-2. Create a dedicated staging tunnel and obtain its connector token. Store
-   only that token in the secret file described below.
-3. Configure these ordered ingress rules:
+1. `b4ton.com` 영역을 관리할 수 있는 운영자 계정으로 인증합니다.
+2. 전용 스테이징 터널을 생성하고 커넥터 토큰을 발급받습니다. 아래에 설명한
+   비밀 파일에는 해당 토큰만 저장하세요.
+3. 다음 순서대로 인그레스 규칙을 설정합니다.
 
-   | Order | Hostname | Path | Service |
+   | 순서 | 호스트 이름 | 경로 | 서비스 |
    | --- | --- | --- | --- |
    | 1 | `watch-staging.b4ton.com` | `^/api/v1/system/status$` | `http://watch:8080` |
    | 2 | `watch-staging.b4ton.com` | `^/api/v1/resource-monitors/.*$` | `http://watch:8080` |
-   | 3 | catch-all | catch-all | `http_status:404` |
+   | 3 | 기타 모든 요청 | 기타 모든 요청 | `http_status:404` |
 
-   Keep the catch-all last. Do not route `/actuator`, the management port, or
-   an unrestricted hostname to WATCH.
-4. Ensure the public hostname creates a proxied DNS route to the tunnel. It
-   must not expose the Mac's address.
-5. Add a Cloudflare cache rule that bypasses cache for
-   `watch-staging.b4ton.com`. Status and authenticated monitor responses must
-   never be served from an edge cache.
-6. Confirm the edge certificate for `watch-staging.b4ton.com` is Active before
-   deployment. The public smoke below must complete normal hostname and trust
-   verification; never use `curl -k` or disable TLS verification.
+   기타 모든 요청을 처리하는 규칙은 마지막에 두세요. `/actuator`, 관리 포트
+   또는 제한 없는 호스트 이름을 WATCH로 라우팅하지 마세요.
+4. 공개 호스트 이름이 터널을 향하는 프록시 DNS 경로를 생성하는지 확인합니다.
+   Mac의 주소가 노출되어서는 안 됩니다.
+5. `watch-staging.b4ton.com`의 캐시를 우회하는 Cloudflare 캐시 규칙을
+   추가합니다. 상태 응답과 인증된 모니터 응답이 엣지 캐시에서 제공되어서는
+   안 됩니다.
+6. 배포 전에 `watch-staging.b4ton.com`의 엣지 인증서 상태가 Active인지
+   확인합니다. 아래 공개 스모크 테스트는 정상적인 호스트 이름 및 신뢰 검증을
+   완료해야 합니다. `curl -k`를 사용하거나 TLS 검증을 비활성화하지 마세요.
 
-Do not add Cloudflare Access in front of these routes. WATCH's status endpoint
-is intentionally public, and monitor routes use the BATON-to-WATCH bearer
-contract. A separate edge authentication flow would change their observable
-HTTP contract.
+이 경로 앞에 Cloudflare Access를 추가하지 마세요. WATCH 상태 엔드포인트는
+의도적으로 공개되어 있고 모니터 경로는 BATON-WATCH Bearer 계약을 사용합니다.
+별도의 엣지 인증 흐름을 추가하면 외부에서 관찰되는 HTTP 계약이 달라집니다.
 
-Cloudflare configuration, DNS, and an Active certificate still do not prove
-that the origin is running. Retain both internal and external smoke evidence.
+Cloudflare 설정, DNS, Active 인증서만으로는 오리진이 실행 중임을 입증할 수
+없습니다. 내부 및 외부 스모크 테스트 증거를 모두 보관하세요.
 
-## Prepare the Mac
+## Mac 준비
 
-Run from a clean checkout of the exact commit to deploy. Keep shell tracing
-disabled throughout secret handling.
+배포할 정확한 커밋을 깨끗하게 체크아웃한 상태에서 실행합니다. 비밀값을 다루는
+동안 셸 추적을 계속 비활성화하세요.
 
 ~~~bash
 set -euo pipefail
@@ -114,13 +114,13 @@ export STAGING_ENV_FILE="${STAGING_CONFIG_DIR}/staging.env"
 export STAGING_STATE_FILE="${STAGING_CONFIG_DIR}/staging-state.env"
 ~~~
 
-Install the non-secret environment file and create the secret directory. Keep
-all five files outside the repository. The separate state file retains the
-currently active PostgreSQL volume across operator shells and repository
-updates. Populate the three secret files from an operator-controlled secret
-manager without echoing their values or enabling shell history expansion. The
-WATCH API token must contain at least 32 non-padding RFC 6750 `token68`
-characters; the database password and tunnel token must be independent values.
+비밀값이 없는 환경 파일을 설치하고 비밀 디렉터리를 생성합니다. 다섯 파일을
+모두 저장소 밖에 두세요. 별도의 상태 파일은 운영자 셸이 바뀌거나 저장소가
+업데이트되어도 현재 활성 PostgreSQL 볼륨을 유지합니다. 값을 출력하거나 셸
+히스토리 확장을 활성화하지 말고, 운영자가 통제하는 비밀 관리 시스템에서 비밀
+파일 세 개의 값을 채우세요. WATCH API 토큰은 패딩이 아닌 RFC 6750 `token68`
+문자를 32자 이상 포함해야 하며, 데이터베이스 비밀번호와 터널 토큰은 서로
+독립적인 값이어야 합니다.
 
 ~~~bash
 install -d -m 0700 "$STAGING_CONFIG_DIR"
@@ -143,13 +143,13 @@ test -e "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token" || \
   install -m 0600 /dev/null "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 ~~~
 
-These guards create missing placeholders but never truncate an existing
-secret. Rotate the PostgreSQL password only through a separate procedure that
-updates the database role and file as one controlled change; replacing the file
-alone breaks authentication for an initialized volume.
+이 보호 절차는 없는 자리 표시자만 만들며 기존 비밀값을 절대 잘라내지 않습니다.
+PostgreSQL 비밀번호는 데이터베이스 역할과 파일을 하나의 통제된 변경으로 함께
+갱신하는 별도 절차를 통해서만 교체하세요. 파일만 바꾸면 초기화된 볼륨의 인증이
+실패합니다.
 
-After the secret manager has written each value with one final newline, verify
-metadata and non-empty files without printing contents:
+비밀 관리 시스템이 각 값을 마지막 개행 문자 하나와 함께 기록한 뒤, 내용을
+출력하지 않고 메타데이터와 파일이 비어 있지 않은지 검증합니다.
 
 ~~~bash
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-password"
@@ -175,11 +175,11 @@ stat -f '%Lp %N' "$STAGING_ENV_FILE"
 stat -f '%Lp %N' "$STAGING_STATE_FILE"
 ~~~
 
-Each `stat` line must start with `600`. The template environment file
-intentionally contains only the image revision, file paths, database
-identifiers, and bounded application timeout settings. The state file must
-contain exactly one non-secret active-volume assignment. Load and validate that
-value without sourcing either file:
+각 `stat` 출력 줄은 `600`으로 시작해야 합니다. 환경 템플릿 파일에는
+의도적으로 이미지 리비전, 파일 경로, 데이터베이스 식별자, 제한이 설정된
+애플리케이션 제한 시간 설정만 들어 있습니다. 상태 파일에는 비밀값이 아닌 활성
+볼륨 할당 하나만 정확히 들어 있어야 합니다. 두 파일 중 어느 것도 셸에서
+실행하지 않고 해당 값을 읽어 검증합니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -190,22 +190,21 @@ export WATCH_POSTGRES_VOLUME_NAME
 unset STATE_CONTENT
 ~~~
 
-The shell's `WATCH_IMAGE_REVISION` selects the clean commit being deployed;
-the state file selects the durable database volume without storing either in
-Git.
+셸의 `WATCH_IMAGE_REVISION`은 배포할 깨끗한 커밋을 선택하고, 상태 파일은 Git에
+저장하지 않은 영속 데이터베이스 볼륨을 선택합니다.
 
-Create the external database volume once, then inspect it before every deploy:
+외부 데이터베이스 볼륨은 한 번만 생성하고, 이후 매 배포 전에 검사합니다.
 
 ~~~bash
 docker volume create "$WATCH_POSTGRES_VOLUME_NAME"
 docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 ~~~
 
-## Build the exact local revision
+## 정확한 로컬 리비전 빌드
 
-Pull the two digest-pinned runtime dependencies explicitly. WATCH alone uses
-`pull_policy: never`, so deployment cannot silently substitute its locally
-built SHA-tagged image from a registry.
+다이제스트로 고정된 두 런타임 의존성을 명시적으로 가져옵니다. WATCH만
+`pull_policy: never`를 사용하므로 배포 중에 로컬에서 빌드한 SHA 태그 이미지를
+레지스트리 이미지로 몰래 대체할 수 없습니다.
 
 ~~~bash
 VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
@@ -224,11 +223,11 @@ BUILT_IMAGE_REVISION="$(docker image inspect "$WATCH_IMAGE" \
 test "$BUILT_IMAGE_REVISION" = "$DEPLOY_SHA"
 ~~~
 
-The exact SHA must have a successful GitHub `Verify` workflow and pass the full
-local test task before the image is built. Do not deploy a dirty worktree,
-`latest`, a shortened SHA, or an image built for a different revision.
+이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `Verify` 워크플로가 성공했고
+전체 로컬 테스트 작업도 통과해야 합니다. 변경 사항이 남아 있는 작업 트리,
+`latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
 
-Define one helper so every operation uses the tunnel overlay:
+모든 작업에서 터널 오버레이를 사용하도록 헬퍼 하나를 정의합니다.
 
 ~~~bash
 staging_compose() {
@@ -240,23 +239,24 @@ staging_compose() {
 }
 ~~~
 
-Validate the merged model before starting anything:
+어떤 항목도 시작하기 전에 병합된 모델을 검증합니다.
 
 ~~~bash
 staging_compose config --quiet
 staging_compose config
 ~~~
 
-Inspect the rendered `postgres`, `watch`, and `cloudflared` services. None may
-contain a `ports` entry. The rendered WATCH environment must keep
-`WATCH_EVENT_DELIVERY_ENABLED: "false"`; secret contents must not appear.
+렌더링된 `postgres`, `watch`, `cloudflared` 서비스를 검사합니다. 어느 서비스에도
+`ports` 항목이 있어서는 안 됩니다. 렌더링된 WATCH 환경은
+`WATCH_EVENT_DELIVERY_ENABLED: "false"`를 유지해야 하며, 비밀값 내용이
+나타나서는 안 됩니다.
 
-## Backup before an update
+## 업데이트 전 백업
 
-The first empty deployment has nothing to back up. Before every later update,
-create a mode-0600 logical backup while the existing database is healthy. The
-command reads PostgreSQL credentials inside the container and does not put the
-password on the command line.
+최초 빈 배포에는 백업할 내용이 없습니다. 이후 모든 업데이트 전에는 기존
+데이터베이스가 정상인 동안 권한 모드 `0600` 논리 백업을 생성합니다. 이 명령은
+컨테이너 내부에서 PostgreSQL 인증 정보를 읽으므로 명령줄에 비밀번호를 넣지
+않습니다.
 
 ~~~bash
 umask 077
@@ -308,24 +308,24 @@ verify_backup_restore
 unset -f verify_backup_restore
 ~~~
 
-Copy the backup to the operator's protected backup location and record only its
-timestamp, size, checksum, deployed SHA, and restore-test result. A dump that
-has not been restored into an isolated database is not a verified backup.
+백업을 운영자의 보호된 백업 위치로 복사하고 타임스탬프, 크기, 체크섬, 배포된
+SHA, 복원 테스트 결과만 기록합니다. 격리된 데이터베이스에 복원해 보지 않은
+덤프는 검증된 백업이 아닙니다.
 
-## Deploy
+## 배포
 
-Start the complete stack and require all three health checks to pass:
+전체 스택을 시작하고 세 상태 점검이 모두 통과하도록 요구합니다.
 
 ~~~bash
 staging_compose up -d --no-build --wait --wait-timeout 180
 staging_compose ps
 ~~~
 
-If the command fails, inspect bounded logs without enabling debug logging. Do
-not bypass an unhealthy PostgreSQL, WATCH, or tunnel dependency.
+명령이 실패하면 디버그 로깅을 활성화하지 말고 범위가 제한된 로그를 검사합니다.
+비정상인 PostgreSQL, WATCH 또는 터널 의존성을 우회하지 마세요.
 
-Verify application and database health from inside WATCH; port 8081 must remain
-inaccessible from the host and tunnel:
+WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합니다. 8081 포트는
+호스트와 터널에서 계속 접근할 수 없어야 합니다.
 
 ~~~bash
 staging_compose exec -T watch \
@@ -334,13 +334,13 @@ staging_compose exec -T watch sh -c \
   'test "$WATCH_EVENT_DELIVERY_ENABLED" = false'
 ~~~
 
-The health response must be `UP`, including the database indicator, and the
-delivery assertion must exit zero.
+데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달 상태 검증
+명령은 종료 코드 0으로 끝나야 합니다.
 
-## External HTTPS smoke
+## 외부 HTTPS 스모크 테스트
 
-Run this from a network outside the origin Mac when possible. These requests do
-not contain a token or any real resource reference.
+가능하면 오리진 Mac 외부 네트워크에서 실행합니다. 이 요청에는 토큰이나 실제
+리소스 참조가 들어 있지 않습니다.
 
 ~~~bash
 PUBLIC_BASE_URL=https://watch-staging.b4ton.com
@@ -365,31 +365,31 @@ CATCH_ALL_STATUS="$(curl --proto '=https' --tlsv1.2 --noproxy '*' \
 test "$CATCH_ALL_STATUS" = 404
 ~~~
 
-The status JSON must identify `baton-watch` as `UP`. The malformed,
-unauthenticated monitor request must return `401`, proving that the public
-route reaches WATCH and fails closed before parsing. The unrouted `/api/v1/**`
-sentinel must return the tunnel's catch-all `404`; unrestricted routing to
-WATCH would instead encounter its fail-closed authentication boundary and
-return `401`.
+상태 JSON은 `baton-watch`를 `UP`으로 식별해야 합니다. 인증하지 않고 잘못된
+형식으로 보낸 모니터 요청은 `401`을 반환해야 합니다. 이 결과는 공개 경로가
+WATCH에 도달하고 파싱 전에 안전하게 차단된다는 점을 입증합니다. 라우팅되지
+않은 `/api/v1/**` 확인용 경로는 터널의 기타 모든 요청 처리 규칙에서 `404`를
+반환해야 합니다. WATCH로 제한 없이 라우팅됐다면 안전하게 차단하는 인증 경계를
+만나 `401`이 반환됩니다.
 
-Repeat the status request while retaining response headers only. Confirm the
-certificate is valid for `watch-staging.b4ton.com`, no redirect changes the
-hostname or scheme, and `CF-Cache-Status` is never `HIT`. An absent tunnel,
-Cloudflare edge error, cached response, or response from another service fails
-the smoke.
+응답 헤더만 보관하면서 상태 요청을 반복합니다. 인증서가
+`watch-staging.b4ton.com`에 유효하고, 어떤 리다이렉트도 호스트 이름이나
+스킴을 바꾸지 않으며, `CF-Cache-Status`가 절대 `HIT`가 아닌지 확인합니다.
+터널 없음, Cloudflare 엣지 오류, 캐시된 응답 또는 다른 서비스의 응답이
+발생하면 스모크 테스트는 실패합니다.
 
-## Log redaction audit
+## 로그 비식별화 감사
 
-Compose bounds each JSON log to three 10 MiB files by default. Keep
-`cloudflared` at `info`; debug or request-header logging is not permitted.
+Compose는 기본적으로 각 JSON 로그를 10 MiB 파일 세 개로 제한합니다.
+`cloudflared` 로그 수준은 `info`로 유지하세요. 디버그 또는 요청 헤더 로깅은
+허용하지 않습니다.
 
-Collect a short audit snapshot in a mode-0700 temporary directory with a
-mode-0600 log file. Search it locally for the three exact secret values,
-`Authorization`, bearer values,
-target URLs, resource references, callback URLs, and request payloads. A
-scanner must report only the category and pass/fail result, never the matching
-line or secret. Any match fails deployment and requires token rotation when a
-secret may have escaped.
+권한 모드 `0700` 임시 디렉터리와 권한 모드 `0600` 로그 파일에 짧은 감사 스냅샷을
+수집합니다. 정확한 비밀값 세 개, `Authorization`, Bearer 값, 대상 URL,
+리소스 참조, 콜백 URL, 요청 페이로드를 로컬에서 검색합니다. 스캐너는 범주와
+통과/실패 결과만 보고해야 하며, 일치한 줄이나 비밀값은 절대 보고해서는 안
+됩니다. 하나라도 일치하면 배포 실패이며, 비밀값이 노출됐을 가능성이 있으면
+토큰을 교체해야 합니다.
 
 ~~~bash
 umask 077
@@ -398,8 +398,8 @@ staging_compose logs --no-color --since 15m > "$AUDIT_DIR/compose.log"
 chmod 0600 "$AUDIT_DIR/compose.log"
 ~~~
 
-Do not upload the raw log. After recording bounded results, remove the file and
-then its now-empty directory:
+원본 로그를 업로드하지 마세요. 범위가 제한된 결과를 기록한 뒤 파일을 삭제하고,
+그다음 비어 있는 디렉터리를 삭제합니다.
 
 ~~~bash
 rm "$AUDIT_DIR/compose.log"
@@ -407,11 +407,10 @@ rmdir "$AUDIT_DIR"
 unset AUDIT_DIR
 ~~~
 
-## Rollback
+## 롤백
 
-For an application-only rollback, select the previous verified full commit
-SHA and its retained local image. Do not rebuild that old tag from a different
-worktree.
+애플리케이션만 롤백하려면 이전에 검증된 전체 커밋 SHA와 보관 중인 로컬 이미지를
+선택합니다. 다른 작업 트리에서 이전 태그를 다시 빌드하지 마세요.
 
 ~~~bash
 export PREVIOUS_SHA=replace-with-previous-verified-40-character-sha
@@ -424,12 +423,12 @@ test "$ROLLBACK_IMAGE_REVISION" = "$PREVIOUS_SHA"
 staging_compose up -d --no-build --wait --wait-timeout 180
 ~~~
 
-Repeat internal health, external status/401/404, cache, TLS, and log audits.
-The external PostgreSQL volume remains attached, and delivery remains disabled.
+내부 상태, 외부 상태/401/404, 캐시, TLS, 로그 감사를 반복합니다. 외부
+PostgreSQL 볼륨은 계속 연결되어 있고 전달은 비활성화 상태로 유지됩니다.
 
-If the new release applied a schema that the previous image cannot read, do not
-rewrite the active external volume in place. Select the last backup that passed
-the restore test above, then restore it into a new explicitly named volume:
+새 릴리스가 이전 이미지에서 읽을 수 없는 스키마를 적용했다면 활성 외부 볼륨을
+제자리에서 다시 쓰지 마세요. 위의 복원 테스트를 통과한 마지막 백업을 선택해
+명시적으로 이름을 지정한 새 볼륨에 복원합니다.
 
 ~~~bash
 export BACKUP_FILE=replace-with-last-verified-backup-file
@@ -470,28 +469,27 @@ grep -Fxq \
   "$STAGING_STATE_FILE"
 ~~~
 
-Repeat every health and external smoke before accepting the rollback. Record
-both volume names so recovery can be reversed. Delete neither volume until the
-restored service and backup have been independently verified. If restore or
-startup fails, stop the new stack and preserve both volumes for diagnosis.
+롤백을 승인하기 전에 모든 상태 점검과 외부 스모크 테스트를 반복합니다. 복구를
+되돌릴 수 있도록 두 볼륨 이름을 모두 기록합니다. 복원된 서비스와 백업을 각각
+독립적으로 검증할 때까지 어느 볼륨도 삭제하지 마세요. 복원이나 시작이 실패하면
+새 스택을 중지하고 진단을 위해 두 볼륨을 모두 보존합니다.
 
-## Shutdown and decommission cleanup
+## 종료 및 폐기 정리
 
-A routine staging shutdown removes containers and the project networks but
-preserves the external database volume and local images:
+일상적인 스테이징 종료는 컨테이너와 프로젝트 네트워크를 제거하지만 외부
+데이터베이스 볼륨과 로컬 이미지는 보존합니다.
 
 ~~~bash
 staging_compose down --remove-orphans
 docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 ~~~
 
-Never add `--volumes` to routine shutdown. Remove an old SHA-tagged image only
-after the rollback window closes, naming that exact tag rather than running a
-broad image prune.
+일상적인 종료 명령에는 절대 `--volumes`를 추가하지 마세요. 롤백 가능 기간이
+끝난 뒤에만 이전 SHA 태그 이미지를 제거하며, 광범위한 이미지 정리 명령을
+실행하지 말고 정확한 태그를 지정하세요.
 
-For permanent decommission, first disable the public hostname, delete or
-disable the remotely managed tunnel, and revoke its connector token in
-Cloudflare. Then remove the exact token file. Remove the API/database secret
-files and external PostgreSQL volume only after a final verified backup and an
-explicit data-retention decision. Repository cleanup alone does not disable a
-live tunnel or DNS route.
+영구 폐기할 때는 먼저 공개 호스트 이름을 비활성화하고 원격 관리형 터널을
+삭제하거나 비활성화한 뒤 Cloudflare에서 커넥터 토큰을 폐기합니다. 그런 다음
+해당 토큰 파일을 삭제합니다. API/데이터베이스 비밀 파일과 외부 PostgreSQL
+볼륨은 최종 검증 백업과 명시적인 데이터 보존 결정을 마친 뒤에만 제거하세요.
+저장소 정리만으로는 실행 중인 터널이나 DNS 경로가 비활성화되지 않습니다.

@@ -1,13 +1,13 @@
-# PRD-0002: BATON WATCH API Contract
+# PRD-0002: BATON WATCH API 계약
 
-Status: maintained contract
+상태: 유지 관리 계약
 
-Updated: 2026-08-11
+수정일: 2026-08-11
 
-## System status
+## 시스템 상태
 
-`GET /api/v1/system/status` is unauthenticated and returns HTTP 200 with
-`application/json`:
+`GET /api/v1/system/status`는 인증 없이 접근할 수 있으며 HTTP 200과
+`application/json`을 반환한다.
 
 ~~~json
 {
@@ -17,35 +17,35 @@ Updated: 2026-08-11
 }
 ~~~
 
-`observedAt` is a server-generated UTC instant serialized as ISO 8601. The route
-exposes no resource data.
+`observedAt`은 서버가 생성한 UTC 시각이며 ISO 8601 형식으로 직렬화된다.
+이 경로는 리소스 데이터를 노출하지 않는다.
 
-## Adopted monitoring routes
+## 채택된 모니터링 경로
 
-The following routes are implemented under PRD-0003:
+다음 경로는 PRD-0003에 따라 구현되어 있다.
 
-- `PUT /api/v1/resource-monitors/{resourceReference}` synchronizes a snapshot
-  and returns HTTP 200 with the current projection;
-- `GET /api/v1/resource-monitors/{resourceReference}` returns that projection
-  or HTTP 404.
+- `PUT /api/v1/resource-monitors/{resourceReference}`는 스냅샷을 동기화하고
+  현재 프로젝션과 함께 HTTP 200을 반환한다.
+- `GET /api/v1/resource-monitors/{resourceReference}`는 해당 프로젝션을
+  반환하며, 없으면 HTTP 404를 반환한다.
 
-Both require `Authorization: Bearer <token>`. The configured token contains at
-least 32 non-padding RFC 6750 `token68` characters and is parsed by Spring
-Security's standard Bearer resolver. PUT is idempotent by the tuple of
-`resourceReference` and `sourceRevision`, so it does not accept a separate
-idempotency key. The reference is 1-128 characters from `A-Z`, `a-z`, `0-9`,
-`.`, `_`, `:`, and `-`.
+두 경로 모두 `Authorization: Bearer <token>`이 필요하다. 구성된 토큰은
+패딩이 아닌 RFC 6750 `token68` 문자 32개 이상을 포함하며 Spring Security의
+표준 Bearer 리졸버가 이를 파싱한다. PUT은 `resourceReference`와
+`sourceRevision`의 조합으로 멱등성을 보장하므로 별도의 멱등성 키를 받지
+않는다. 참조는 `A-Z`, `a-z`, `0-9`, `.`, `_`, `:` 및 `-`로 구성된
+1~128자 문자열이다.
 
-The Bearer authentication scheme is matched case-insensitively as required by
-HTTP authentication semantics. A credential failure returns a
-`WWW-Authenticate` Bearer challenge with the HTTP 401 problem response.
+Bearer 인증 스킴은 HTTP 인증 의미에 따라 대소문자를 구분하지 않고 일치시킨다.
+자격 증명 검증에 실패하면 HTTP 401 문제 응답과 함께
+`WWW-Authenticate` Bearer 챌린지를 반환한다.
 
-Only the exact system-status GET is public. Every other syntactically accepted
-request under `/api/v1/**` crosses the stateless service-authentication boundary
-before routing. The boundary is relative to the servlet context, so deploying
-WATCH under a context path cannot expose a monitoring route.
+정확히 일치하는 시스템 상태 GET 경로만 공개된다. `/api/v1/**` 아래에서
+문법적으로 허용되는 그 밖의 모든 요청은 라우팅 전에 무상태 서비스 인증 경계를
+통과한다. 이 경계는 서블릿 컨텍스트를 기준으로 적용되므로 WATCH를 컨텍스트
+경로 아래에 배포하더라도 모니터링 경로가 노출되지 않는다.
 
-PUT accepts `application/json`. An active snapshot is:
+PUT은 `application/json`을 받는다. 활성 스냅샷은 다음과 같다.
 
 ~~~json
 {
@@ -55,10 +55,10 @@ PUT accepts `application/json`. An active snapshot is:
 }
 ~~~
 
-An inactive snapshot uses `"monitoringState": "INACTIVE"` and must omit or set
-`targetUrl` to null.
+비활성 스냅샷은 `"monitoringState": "INACTIVE"`를 사용하며 `targetUrl`을
+생략하거나 null로 설정해야 한다.
 
-PUT and GET return `application/json`:
+PUT과 GET은 `application/json`을 반환한다.
 
 ~~~json
 {
@@ -73,56 +73,55 @@ PUT and GET return `application/json`:
 }
 ~~~
 
-Validation failures return HTTP 400, stale revisions or equal-revision payload
-conflicts return HTTP 409, invalid target policy returns HTTP 422, missing
-monitors return HTTP 404, missing or invalid credentials return HTTP 401, and an
-unexpected safe server failure returns HTTP 500. Errors use
-`application/problem+json` with stable `type`, `title`, `status`, and `code`
-fields. They never include a target URL, resolved address, credential, response
-body, raw exception, or BATON authorization decision.
+검증 실패는 HTTP 400, 오래된 리비전 또는 같은 리비전의 페이로드 충돌은
+HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 존재하지 않는 모니터는
+HTTP 404, 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
+안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 오류는 안정적인 `type`,
+`title`, `status`, `code` 필드를 포함하는 `application/problem+json`을
+사용한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
+인가 결정을 포함해서는 안 된다.
 
-After successful authentication, Spring MVC request rejections use the same
-stable problem contract:
+인증에 성공한 뒤 Spring MVC가 요청을 거부할 때도 다음과 같이 동일한 안정적
+문제 계약을 사용한다.
 
-- malformed JSON or request validation: HTTP 400,
-  `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`;
-- an unknown `/api/v1/**` route: HTTP 404,
-  `urn:baton-watch:problem:route-not-found`, `ROUTE_NOT_FOUND`;
-- an unsupported method: HTTP 405,
-  `urn:baton-watch:problem:method-not-allowed`, `METHOD_NOT_ALLOWED`;
-- an unacceptable response media type: HTTP 406,
-  `urn:baton-watch:problem:not-acceptable`, `NOT_ACCEPTABLE`;
-- an unsupported request media type: HTTP 415,
+- 잘못된 JSON 또는 요청 검증 실패: HTTP 400,
+  `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`
+- 알 수 없는 `/api/v1/**` 경로: HTTP 404,
+  `urn:baton-watch:problem:route-not-found`, `ROUTE_NOT_FOUND`
+- 지원하지 않는 메서드: HTTP 405,
+  `urn:baton-watch:problem:method-not-allowed`, `METHOD_NOT_ALLOWED`
+- 허용할 수 없는 응답 미디어 타입: HTTP 406,
+  `urn:baton-watch:problem:not-acceptable`, `NOT_ACCEPTABLE`
+- 지원하지 않는 요청 미디어 타입: HTTP 415,
   `urn:baton-watch:problem:unsupported-media-type`,
-  `UNSUPPORTED_MEDIA_TYPE`.
+  `UNSUPPORTED_MEDIA_TYPE`
 
-Any other Spring MVC client rejection preserves its HTTP 4xx status and uses
-`urn:baton-watch:problem:request-rejected` with `REQUEST_REJECTED`. Unclassified
-framework failures are reduced to the same safe HTTP 500 `INTERNAL_ERROR`
-contract as application failures; framework-generated details and rejected
-values are not returned. This reduction applies before response commitment. If
-a framework failure is reported after status and body bytes are committed,
-WATCH preserves that response, writes no second problem body, and logs only the
-exception class without its message or stack trace.
+그 밖의 Spring MVC 클라이언트 요청 거부는 HTTP 4xx 상태를 그대로 유지하고
+`urn:baton-watch:problem:request-rejected`와 `REQUEST_REJECTED`를 사용한다.
+분류되지 않은 프레임워크 실패는 애플리케이션 실패와 같은 안전한 HTTP 500
+`INTERNAL_ERROR` 계약으로 축소하며, 프레임워크가 생성한 상세 정보와 거부된
+값은 반환하지 않는다. 이 축소는 응답이 확정되기 전에 적용한다. 상태와 본문
+바이트가 이미 확정된 뒤 프레임워크 실패가 보고되면 WATCH는 해당 응답을
+유지하고 두 번째 문제 본문을 작성하지 않으며, 메시지나 스택 트레이스 없이
+예외 클래스만 기록한다.
 
-Authentication still precedes all of these routing, body, and media-type
-decisions, so a missing or invalid credential returns the existing HTTP 401
-problem instead. HTTP-defined capability headers such as `Allow` and `Accept`
-are preserved. The problem `instance`, when present, is the fixed redacted URN
-`urn:baton-watch:request`, never the raw request path.
+이러한 라우팅, 본문 및 미디어 타입 판단보다 인증이 계속 먼저 수행되므로
+자격 증명이 없거나 유효하지 않으면 기존 HTTP 401 문제를 반환한다. `Allow`와
+`Accept`처럼 HTTP가 정의한 기능 헤더는 보존한다. 문제 응답의 `instance`가
+있다면 원시 요청 경로가 아니라 고정된 비식별 URN
+`urn:baton-watch:request`를 사용한다.
 
-Requests that Spring Security's strict HTTP firewall rejects before path
-matching are outside that authentication-first sequence. Ambiguous separators,
-matrix syntax, and other suspicious path forms fail closed before authentication
-with HTTP 400, `application/problem+json`,
-`urn:baton-watch:problem:request-rejected`, and `REQUEST_REJECTED`. This response
-uses the same fixed redacted `instance` and never includes the raw path,
-resource reference, or firewall exception. The firewall policy is not relaxed.
+Spring Security의 엄격한 HTTP 방화벽이 경로 일치 전에 거부한 요청은 이러한
+인증 우선 순서의 바깥에 있다. 모호한 구분자, 매트릭스 구문 및 그 밖의 의심스러운
+경로 형식은 인증 전에 안전한 방향으로 거부되며 HTTP 400,
+`application/problem+json`, `urn:baton-watch:problem:request-rejected` 및
+`REQUEST_REJECTED`를 반환한다. 이 응답은 동일한 고정 비식별 `instance`를
+사용하며 원시 경로, 리소스 참조 또는 방화벽 예외를 절대로 포함하지 않는다.
+방화벽 정책은 완화하지 않는다.
 
-No attempt-history, manual-check, inbound webhook, or event-delivery route is
-adopted. PRD-0004 direct delivery is an outbound WATCH callback and does not
-change these inbound routes.
-A later query route must define cursor pagination before implementation.
+시도 이력, 수동 검사, 인바운드 웹훅 또는 이벤트 전달 경로는 채택하지 않았다.
+PRD-0004의 직접 전달은 WATCH의 아웃바운드 콜백이며 이러한 인바운드 경로를
+변경하지 않는다. 이후 조회 경로는 구현 전에 커서 페이지네이션을 정의해야 한다.
 
-All application routes remain under `/api/v1`, use named transport DTOs, and
-delegate to an inbound application port.
+모든 애플리케이션 경로는 `/api/v1` 아래에 유지하고 이름이 있는 전송 DTO를
+사용하며 인바운드 애플리케이션 포트에 위임한다.

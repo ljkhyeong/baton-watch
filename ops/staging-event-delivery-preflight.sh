@@ -105,8 +105,8 @@ if [[ "$monitor_api_token" == "$delivery_token" ]]; then
     fail "monitor API and event delivery tokens must be distinct"
 fi
 
-# The public checks below intentionally use no credentials. Do not let runtime
-# secrets reach curl through its inherited environment.
+# 아래 공개 검사는 의도적으로 자격 증명을 사용하지 않습니다. 상속된 환경을 통해
+# 런타임 비밀값이 curl에 전달되지 않도록 합니다.
 unset \
     WATCH_PUBLIC_BASE_URL \
     WATCH_EVENT_DELIVERY_ENABLED \
@@ -145,8 +145,8 @@ if [[ "$watch_status" != "200" ]]; then
     fail "WATCH public status returned unexpected HTTP status $watch_status"
 fi
 
-# The body is deliberately malformed. HTTP 401 externally demonstrates that
-# the receiver rejected it before a JSON deserialization error surfaced.
+# 본문은 의도적으로 잘못된 형식입니다. HTTP 401은 JSON 역직렬화 오류가 드러나기
+# 전에 수신기가 요청을 거부했음을 외부에서 증명합니다.
 if ! receiver_status="$(curl_status \
         "$delivery_endpoint" \
         --request POST \

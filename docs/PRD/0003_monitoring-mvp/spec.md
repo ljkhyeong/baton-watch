@@ -1,160 +1,142 @@
-# PRD-0003: URL Monitoring MVP
+# PRD-0003: URL 모니터링 MVP
 
-Status: accepted
+상태: 채택됨
 
-Date: 2026-08-01
+날짜: 2026-08-01
 
-Implementation: complete; event delivery is implemented separately by PRD-0004
+구현 상태: 완료; 이벤트 전달은 PRD-0004에서 별도로 구현됨
 
-## Goal
+## 목표
 
-The MVP closes one operational loop: BATON can synchronize a URL snapshot for
-a RoleResource after BATON commits, WATCH checks it asynchronously, and BATON
-can read the latest derived health without waiting for the target network.
+이 MVP는 하나의 운영 흐름을 완성한다. BATON은 자체 트랜잭션을 커밋한 뒤
+RoleResource의 URL 스냅샷을 동기화하고, WATCH는 이를 비동기식으로 검사하며,
+BATON은 대상 네트워크를 기다리지 않고 최신 도출 상태를 조회할 수 있다.
 
-This contract does not make WATCH authoritative for RoleResource content or
-authorization.
+이 계약으로 WATCH가 RoleResource 내용이나 인가의 권위 있는 원본이 되지는 않는다.
 
-## Monitor synchronization
+## 모니터 동기화
 
-- A monitor is identified by an opaque `resourceReference` supplied by BATON.
-- Every synchronization includes a non-negative, monotonically increasing
-  `sourceRevision` owned by BATON.
-- A higher revision replaces the current snapshot. A lower revision is rejected
-  as stale. Repeating an equal revision with an equal payload is idempotent;
-  reusing it for a different payload is a conflict.
-- `ACTIVE` requires a target URL. A new monitor, or a monitor whose target
-  changed, starts as `UNKNOWN` and is due immediately.
-- `INACTIVE` has no target URL, stops future checks, invalidates any lease, and
-  retains bounded history. A higher-revision `ACTIVE` synchronization enables
-  it again.
-- The current projection never exposes the target URL, response body, resolved
-  address, or internal exception text.
+- 모니터는 BATON이 제공하고 WATCH가 의미를 해석하지 않는 `resourceReference`로 식별한다.
+- 모든 동기화에는 BATON이 소유하는 음이 아닌 단조 증가 `sourceRevision`이 포함된다.
+- 더 높은 리비전은 현재 스냅샷을 교체한다. 더 낮은 리비전은 오래된 것으로
+  거부한다. 동일한 리비전을 동일한 페이로드로 반복하면 멱등성을 보장하며,
+  이를 다른 페이로드에 재사용하면 충돌이다.
+- `ACTIVE`에는 대상 URL이 필요하다. 새 모니터나 대상이 변경된 모니터는
+  `UNKNOWN`으로 시작하며 즉시 검사 대상이 된다.
+- `INACTIVE`에는 대상 URL이 없고 향후 검사를 중단하며 모든 리스를 무효화하지만
+  제한된 이력은 보존한다. 더 높은 리비전의 `ACTIVE` 동기화로 다시 활성화할 수 있다.
+- 현재 프로젝션은 대상 URL, 응답 본문, 조회된 주소 또는 내부 예외 내용을
+  절대로 노출하지 않는다.
 
-Monitor routes use a static bearer token supplied through runtime
-configuration. The system status route remains unauthenticated. Token rotation,
-per-workspace authorization, and end-user access are outside this MVP.
+모니터 경로는 런타임 구성을 통해 제공된 고정 Bearer 토큰을 사용한다. 시스템
+상태 경로는 계속 인증 없이 접근할 수 있다. 토큰 교체, 워크스페이스별 인가 및
+최종 사용자 접근은 이 MVP의 범위에 포함되지 않는다.
 
-## Scheduling and execution
+## 일정 및 실행
 
-- The normal check interval is a runtime-wide duration, initially 60 seconds.
-- New and changed active monitors are due immediately.
-- A worker claims at most a configured batch of due monitors in a short
-  transaction using a 30-second lease.
-- Claim creates an immutable attempt snapshot containing the source revision and
-  target at that moment, then commits before DNS or HTTP work begins.
-- Finalization occurs in another short transaction and is idempotent by attempt
-  identifier.
-- An expired lease is eligible for another worker. A stale worker cannot update
-  current health after a newer claim or source revision replaced its lease.
-- MVP execution is intentionally single-check-per-process. Database locking and
-  leases still allow multiple processes to claim disjoint work.
-- A monitor without a conclusive result for 10 minutes becomes `UNKNOWN` in a
-  bounded background sweep.
+- 일반 검사 간격은 전체 런타임에 적용되는 기간이며 초기값은 60초다.
+- 새 활성 모니터와 변경된 활성 모니터는 즉시 검사 대상이 된다.
+- 워커는 30초 리스를 사용하여 짧은 트랜잭션 안에서 처리 시점이 된 모니터를
+  구성된 배치 크기만큼만 선점한다.
+- 선점 시점의 소스 리비전과 대상을 담은 불변 시도 스냅샷을 생성한 뒤 DNS 또는
+  HTTP 작업을 시작하기 전에 커밋한다.
+- 확정은 별도의 짧은 트랜잭션에서 수행하며 시도 식별자를 기준으로 멱등성을 보장한다.
+- 만료된 리스는 다른 워커가 처리할 수 있다. 오래된 워커는 이후의 선점이나 소스
+  리비전이 자신의 리스를 교체한 뒤 현재 상태를 갱신할 수 없다.
+- MVP 실행은 의도적으로 프로세스당 한 번에 하나의 검사만 수행한다. 데이터베이스
+  잠금과 리스를 사용하므로 여러 프로세스도 서로 겹치지 않는 작업을 선점할 수 있다.
+- 10분 동안 확정적인 결과가 없는 모니터는 제한된 백그라운드 순회 작업에서
+  `UNKNOWN`이 된다.
 
-## Target and request policy
+## 대상 및 요청 정책
 
-- Only absolute `http` and `https` URLs are accepted.
-- Only their default ports, 80 and 443, are allowed.
-- URL user-info, fragments, IP-literal hosts, ambiguous authorities, control
-  characters, and backslashes are rejected. Query strings may be checked but
-  must not be logged or exposed by the API.
-- Synchronization and every redirect use the same static target syntax policy,
-  including rejection of percent-encoded ASCII control octets, DEL, and
-  backslashes. Redirect references are checked before URI resolution and again
-  after resolution as absolute targets.
-- Before each connection, WATCH resolves the DNS hostname, rejects the complete
-  answer if any address is non-global, and pins the connection to the approved
-  resolution while retaining the original host for HTTP and TLS verification.
-- Redirects are handled explicitly. Every target is revalidated, HTTPS-to-HTTP
-  downgrade is rejected, redirect loops are rejected, and the chain is limited
-  to three redirects.
-- Automatic retries, cookies, authentication caching, proxy discovery, and
-  response decompression are disabled.
-- Connection time, response time, total check time, response headers, and
-  consumed response bytes are bounded. A declared oversized body is rejected
-  before consumption. An unknown-length body that reaches the remaining byte
-  limit is rejected without reading a probe byte beyond that limit, and the
-  failed response is aborted rather than drained. Header-limit violations are
-  classified as `RESPONSE_TOO_LARGE`. Response bodies are discarded and never
-  persisted.
+- 절대 `http` 및 `https` URL만 허용한다.
+- 각각의 기본 포트인 80과 443만 허용한다.
+- URL 사용자 정보, 프래그먼트, IP 리터럴 호스트, 모호한 권한부, 제어 문자 및
+  백슬래시는 거부한다. 쿼리 문자열은 검사할 수 있지만 로그에 기록하거나 API로
+  노출해서는 안 된다.
+- 동기화와 모든 리디렉션은 퍼센트 인코딩된 ASCII 제어 옥텟, DEL 및 백슬래시
+  거부를 포함하는 동일한 정적 대상 구문 정책을 사용한다. 리디렉션 참조는 URI
+  해석 전에 검사하고 해석 후 절대 대상으로 다시 검사한다.
+- WATCH는 연결할 때마다 DNS 호스트 이름을 조회하고, 주소가 하나라도 전역 주소가
+  아니면 DNS 조회 결과 전체를 거부한다. HTTP 및 TLS 검증을 위해 원래 호스트는 유지하면서
+  승인된 조회 결과에 연결을 고정한다.
+- 리디렉션은 명시적으로 처리한다. 모든 대상을 다시 검증하고 HTTPS에서 HTTP로의
+  하향 이동과 리디렉션 순환을 거부하며 리디렉션 연결은 세 번으로 제한한다.
+- 자동 재시도, 쿠키, 인증 캐싱, 프록시 탐색 및 응답 압축 해제는 비활성화한다.
+- 연결 시간, 응답 시간, 전체 검사 시간, 응답 헤더 및 소비한 응답 바이트를
+  제한한다. 선언된 본문 크기가 제한을 초과하면 소비하기 전에 거부한다. 길이를
+  알 수 없는 본문이 남은 바이트 제한에 도달하면 제한을 넘어 확인용 바이트를
+  읽지 않고 거부하며, 실패한 응답은 비우지 않고 중단한다. 헤더 제한 위반은
+  `RESPONSE_TOO_LARGE`로 분류한다. 응답 본문은 폐기하고 절대로 영속화하지 않는다.
 
-The default limits are a 2-second connection timeout, 3-second response
-timeout, 5-second total timeout, 64 KiB consumed response limit, at most 100
-response headers of at most 8 KiB per line, two DNS threads with eight queued
-lookups, and one HTTP request thread with one queued request. Runtime settings
-may not exceed 1 MiB of response bytes, 200 response headers, 16 KiB per header
-line, eight DNS threads with 64 queued lookups, or four HTTP request threads
-with 16 queued requests. Check claims are capped at 100 items and maintenance
-batches at 1,000 items. These limits may not be disabled. DNS resolution runs
-in a bounded executor because the JVM resolver has no per-call cancellation
-contract.
+기본 제한은 연결 타임아웃 2초, 응답 타임아웃 3초, 전체 타임아웃 5초, 소비한
+응답 크기 64 KiB, 각각 한 줄당 최대 8 KiB인 응답 헤더 최대 100개, 대기 중인
+조회가 최대 8개인 DNS 스레드 2개, 대기 중인 요청이 최대 1개인 HTTP 요청 스레드
+1개다. 런타임 설정은 응답 크기 1 MiB, 응답 헤더 200개, 헤더 한 줄당 16 KiB,
+대기 중인 조회가 최대 64개인 DNS 스레드 8개, 대기 중인 요청이 최대 16개인
+HTTP 요청 스레드 4개를 초과할 수 없다. 검사 선점은 100개, 유지 관리 배치는
+1,000개로 제한한다. 이 제한을 비활성화할 수 없다. JVM 리졸버에는 호출별 취소
+계약이 없으므로 DNS 조회는 제한된 실행기에서 수행한다.
 
-## Outcomes and health
+## 결과 및 상태
 
-The persisted outcome taxonomy is bounded:
+영속화하는 결과 분류는 다음으로 제한한다.
 
-- `SUCCESS`: a final HTTP response in the 200-399 range;
-- `HTTP_CLIENT_ERROR`: a final 400-499 response;
-- `HTTP_SERVER_ERROR`: a final 500-599 response;
+- `SUCCESS`: 200~399 범위의 최종 HTTP 응답
+- `HTTP_CLIENT_ERROR`: 400~499 범위의 최종 응답
+- `HTTP_SERVER_ERROR`: 500~599 범위의 최종 응답
 - `DESTINATION_REJECTED`, `DNS_FAILURE`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`,
   `TLS_FAILURE`, `REDIRECT_REJECTED`, `TOO_MANY_REDIRECTS`,
-  `RESPONSE_TOO_LARGE`, `NETWORK_FAILURE`, or `INTERNAL_FAILURE`.
+  `RESPONSE_TOO_LARGE`, `NETWORK_FAILURE` 또는 `INTERNAL_FAILURE`
 
-Health is derived from consecutive conclusive outcomes:
+상태는 연속된 확정적 결과로부터 다음과 같이 도출한다.
 
-- no current conclusive check, or a stale projection: `UNKNOWN`;
-- a successful check: `HEALTHY` and the failure counter resets;
-- one or two consecutive target failures: `DEGRADED`;
-- three or more consecutive target failures: `BROKEN`.
+- 현재 확정적인 검사가 없거나 프로젝션이 오래된 경우: `UNKNOWN`
+- 검사 성공: `HEALTHY`, 실패 카운터 초기화
+- 대상 검사에 한 번 또는 두 번 연속 실패: `DEGRADED`
+- 대상 검사에 세 번 이상 연속 실패: `BROKEN`
 
-`INTERNAL_FAILURE` does not blame the target or change health; it schedules a
-retry after 30 seconds. All other failures are conclusive target outcomes.
+`INTERNAL_FAILURE`는 대상의 책임으로 간주하지 않고 상태를 변경하지 않으며
+30초 뒤 재시도를 예약한다. 그 밖의 모든 실패는 확정적인 대상 검사 결과다.
 
-Every claim and completed result is immutable. Finalization updates current
-health and inserts a durable health-change event atomically only when derived
-health changes. The stale sweep follows the same rule. Event transport is not
-part of this MVP; PRD-0004 separately adopts and implements the direct BATON
-HTTPS callback. BATON can still read the current projection over HTTP.
+모든 선점과 완료 결과는 불변이다. 확정은 도출된 상태가 변경될 때만 현재 상태를
+갱신하고 내구성 있는 상태 변경 이벤트를 원자적으로 삽입한다. 오래된 프로젝션
+순회도 같은 규칙을 따른다. 이벤트 전송은 이 MVP의 일부가 아니다. PRD-0004가
+직접 BATON HTTPS 콜백을 별도로 채택하고 구현한다. BATON은 계속 HTTP를 통해
+현재 프로젝션을 조회할 수 있다.
 
-## Retention and observability
+## 보존 및 관측성
 
-- Attempts and results are retained for 30 days by default.
-- MVP attempt/result cleanup deletes bounded batches and never removes the
-  current projection. PRD-0004 separately permits bounded retention cleanup of
-  delivered health-change events only.
-- Stale-projection marking and attempt/result retention run as independent
-  maintenance tasks, so a failure in either operation does not prevent the
-  other from remaining scheduled.
-- Logs may include attempt correlation and bounded outcome/status values, but
-  never raw URLs, hosts, queries, resource references, resolved addresses,
-  response bodies, or exception messages.
-- Apache HTTP header, wire, implementation, and TLS diagnostic logger
-  categories remain disabled even when a broader application or Apache logger
-  is configured at DEBUG. Operators must not override those protected logger
-  categories.
-- Unexpected scheduler failures propagate through Spring's scheduled-task
-  observation before a redacting error handler suppresses them so the next
-  fixed-delay execution remains scheduled. The handler logs only the exception
-  class, never its message or stack trace.
-- Metrics use only bounded outcome, protocol, health, scheduled class/method,
-  and exception-class labels. They never use request data or exception messages.
-- The Actuator `scheduledtasks` endpoint is not exposed. Runtime task diagnostics
-  may retain the original exception for internal bookkeeping, while the adopted
-  management surface remains limited to redacted health and Prometheus output.
+- 시도와 결과는 기본적으로 30일 동안 보존한다.
+- MVP 시도/결과 정리는 제한된 배치로 삭제하며 현재 프로젝션은 절대로 제거하지
+  않는다. PRD-0004는 전달 완료된 상태 변경 이벤트에 한해 제한된 보존 정리를
+  별도로 허용한다.
+- 오래된 프로젝션 표시와 시도/결과 보존은 서로 독립적인 유지 관리 작업으로
+  실행하므로 한 작업의 실패로 다른 작업의 예약이 중단되지 않는다.
+- 로그에는 시도 상관관계와 제한된 결과/상태 값을 포함할 수 있지만 원시 URL,
+  호스트, 쿼리, 리소스 참조, 조회된 주소, 응답 본문 또는 예외 메시지는 절대로
+  포함하지 않는다.
+- 더 넓은 애플리케이션 또는 Apache 로거를 DEBUG로 구성해도 Apache HTTP 헤더,
+  와이어, 구현 및 TLS 진단 로거 범주는 비활성 상태를 유지한다. 운영자는 보호된
+  해당 로거 범주를 재정의해서는 안 된다.
+- 예기치 않은 스케줄러 실패는 먼저 Spring의 예약 작업 관측으로 전파된 다음,
+  민감정보 제거 오류 처리기가 이를 억제하여 다음 고정 지연 실행이 계속 예약되게 한다.
+  처리기는 메시지나 스택 트레이스 없이 예외 클래스만 기록한다.
+- 메트릭에는 제한된 결과, 프로토콜, 상태, 예약 클래스/메서드 및 예외 클래스
+  레이블만 사용한다. 요청 데이터나 예외 메시지를 사용해서는 안 된다.
+- Actuator `scheduledtasks` 엔드포인트는 노출하지 않는다. 런타임 작업 진단은
+  내부 기록을 위해 원래 예외를 보존할 수 있지만, 채택된 관리 인터페이스는
+  민감정보가 제거된 상태 정보와 Prometheus 출력으로 제한한다.
 
-## Acceptance criteria
+## 인수 기준
 
-1. Synchronizing a valid active monitor returns its `UNKNOWN` projection and
-   makes it due.
-2. Stale revisions and equal-revision conflicts cannot overwrite current state.
-3. A background worker claims without holding a transaction during network I/O.
-4. A successful final response produces immutable attempt/result records and
-   `HEALTHY`.
-5. Three consecutive failures produce `DEGRADED`, then `BROKEN`.
-6. A health change and its durable event commit atomically.
-7. Non-global or ambiguous destinations are rejected before connection,
-   including after redirects.
-8. Repeating finalization or losing a lease does not duplicate results or
-   overwrite a newer projection.
-9. The authenticated query route exposes only the documented projection.
+1. 유효한 활성 모니터를 동기화하면 `UNKNOWN` 프로젝션을 반환하고 즉시 검사 대상이 된다.
+2. 오래된 리비전과 같은 리비전의 충돌이 현재 상태를 덮어쓸 수 없다.
+3. 백그라운드 워커는 네트워크 I/O 중에 트랜잭션을 유지하지 않고 작업을 선점한다.
+4. 성공한 최종 응답은 불변 시도/결과 레코드와 `HEALTHY`를 생성한다.
+5. 연속된 세 번의 실패는 `DEGRADED`를 거쳐 `BROKEN`을 생성한다.
+6. 상태 변경과 그에 따른 내구성 있는 이벤트는 원자적으로 커밋된다.
+7. 전역 주소가 아니거나 모호한 목적지는 리디렉션 이후를 포함하여 연결 전에 거부된다.
+8. 확정을 반복하거나 리스를 잃어도 결과가 중복되거나 더 최신 프로젝션을 덮어쓰지 않는다.
+9. 인증된 조회 경로는 문서화된 프로젝션만 노출한다.
