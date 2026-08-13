@@ -1,45 +1,46 @@
-# PRD-0004: Health-Change Event Delivery
+# PRD-0004: 상태 변경 이벤트 전달
 
-Status: accepted
+상태: 채택됨
 
-Date: 2026-08-02
+날짜: 2026-08-02
 
-Implementation: complete; production deployment remains out of scope
+구현 상태: 완료됨. 운영 배포는 범위에 포함되지 않음
 
-## Goal
+## 목표
 
-WATCH delivers each durable health-change event to one operator-configured
-BATON HTTPS callback. Delivery is asynchronous, at least once, and independent
-of BATON commands, projections, and end-user authorization.
+WATCH는 내구성 있게 저장된 각 상태 변경 이벤트를 운영자가 설정한 하나의
+BATON HTTPS 콜백으로 전달한다. 전달은 비동기이며 최소 1회 보장되고, BATON의
+명령·프로젝션·최종 사용자 인가와 독립적이다.
 
-This contract adds no inbound WATCH route, frontend, or message broker. It does
-not make WATCH authoritative for RoleResource content or authorization.
+이 계약은 WATCH에 수신 경로, 프런트엔드 또는 메시지 브로커를 추가하지 않는다.
+또한 WATCH에 RoleResource 콘텐츠나 인가에 관한 최종 권한을 부여하지 않는다.
 
-## Activation and destination
+## 활성화와 목적지
 
-- Delivery is active only when the operator enables it and supplies one
-  callback URL and one bearer service token. When it is inactive, durable
-  events remain pending and no callback is attempted.
-- The callback is one fixed, absolute `https` URL with a DNS hostname and
-  default port 443. An explicit `:443` is allowed.
-- User-info, query, fragment, IP-literal hosts, ambiguous authorities, control
-  characters, and backslashes are rejected.
-- The token is a runtime secret. It must not appear in the URL, persisted event
-  state, logs, metrics, or repository defaults. While delivery is enabled it
-  contains at least 32 printable, non-whitespace ASCII characters and must not
-  equal the monitor API token.
+- 운영자가 전달을 활성화하고 콜백 URL 하나와 Bearer 서비스 토큰 하나를 제공한
+  경우에만 전달이 동작한다. 비활성 상태에서는 내구성 이벤트가 대기 상태로
+  유지되며 콜백을 시도하지 않는다.
+- 콜백은 DNS 호스트 이름과 기본 포트 443을 사용하는 하나의 고정된 절대
+  `https` URL이다. 명시적인 `:443`도 허용한다.
+- 사용자 정보, 쿼리, 프래그먼트, IP 리터럴 호스트, 모호한 권한부, 제어 문자와
+  백슬래시는 거부한다.
+- 토큰은 런타임 비밀값이다. URL, 영속 이벤트 상태, 로그, 메트릭 또는 저장소
+  기본값에 포함해서는 안 된다. 전달이 활성화되어 있을 때 토큰은 공백이 아닌
+  출력 가능한 ASCII 문자로 32자 이상이어야 하며 모니터 API 토큰과 같아서는
+  안 된다.
 
-The callback must resolve through public-global DNS under the outbound policy
-below. An operator who needs a private BATON endpoint must provide a compliant
-public ingress or adopt a different transport contract; this implementation
-does not weaken destination validation for private networks.
+콜백은 아래의 아웃바운드 정책에 따라 공개 전역 DNS로 해석되어야 한다. 비공개
+BATON 엔드포인트가 필요한 운영자는 규정을 준수하는 공개 인그레스를 제공하거나
+다른 전송 계약을 채택해야 한다. 이 구현은 비공개 네트워크를 위해 목적지 검증을
+완화하지 않는다.
 
-## Callback request
+## 콜백 요청
 
-WATCH sends `POST` with `Content-Type: application/json`,
-`Authorization: Bearer <configured-service-token>`, and
-`Idempotency-Key: <eventId>`. The `Idempotency-Key` value is the same UUID as
-the JSON `eventId`. The JSON object contains exactly these fields:
+WATCH는 `Content-Type: application/json`,
+`Authorization: Bearer <configured-service-token>`,
+`Idempotency-Key: <eventId>` 헤더와 함께 `POST`를 보낸다.
+`Idempotency-Key` 값은 JSON의 `eventId`와 동일한 UUID다. JSON 객체에는 정확히
+다음 필드만 포함한다.
 
 ~~~json
 {
@@ -54,151 +55,144 @@ the JSON `eventId`. The JSON object contains exactly these fields:
 }
 ~~~
 
-- `eventId` is the immutable event UUID and idempotency key. BATON rejects a
-  request whose `Idempotency-Key` header does not match this field.
-- `eventType` is always `RESOURCE_HEALTH_CHANGED` in this contract.
-- `resourceReference` is BATON's opaque reference; it conveys no WATCH
-  authorization decision.
-- `sourceRevision` is the non-negative BATON revision attached to the monitor
-  snapshot that produced the event.
-- `attemptId` is present only when a completed check produced the change. It is
-  omitted for changes such as staleness or monitor resynchronization.
-- `previousHealth` and `currentHealth` are distinct values from `UNKNOWN`,
-  `HEALTHY`, `DEGRADED`, and `BROKEN`.
-- `changedAt` is the event's UTC instant in RFC 3339 form.
+- `eventId`는 불변 이벤트 UUID이자 멱등성 키다. BATON은
+  `Idempotency-Key` 헤더가 이 필드와 일치하지 않는 요청을 거부한다.
+- 이 계약에서 `eventType`은 항상 `RESOURCE_HEALTH_CHANGED`다.
+- `resourceReference`는 BATON의 불투명 참조값이며 WATCH의 인가 결정을
+  나타내지 않는다.
+- `sourceRevision`은 이벤트를 생성한 모니터 스냅샷에 연결된 0 이상의 BATON
+  리비전이다.
+- `attemptId`는 완료된 점검이 변경을 일으킨 경우에만 존재한다. 오래됨 또는
+  모니터 재동기화와 같은 변경에서는 생략한다.
+- `previousHealth`와 `currentHealth`는 서로 다른 값이며 `UNKNOWN`, `HEALTHY`,
+  `DEGRADED`, `BROKEN` 중 하나다.
+- `changedAt`은 RFC 3339 형식의 이벤트 UTC 시각이다.
 
-The payload never contains a target URL, response body, resolved address,
-check outcome, exception, credential, cookie, authorization header, lease
-token, or delivery-attempt metadata.
+페이로드에는 대상 URL, 응답 본문, 해석된 주소, 점검 결과, 예외, 자격 증명,
+쿠키, 인가 헤더, 임대 토큰 또는 전달 시도 메타데이터를 절대 포함하지 않는다.
 
-## Acknowledgement and idempotency
+## 응답 확인과 멱등성
 
-- Any final HTTP 2xx response acknowledges the event. WATCH then marks it
-  delivered in a short transaction.
-- A 3xx response is never followed. Every non-2xx response, policy rejection,
-  timeout, DNS/TLS/network failure, size violation, or internal failure leaves
-  the event undelivered and schedules another attempt.
-- BATON must durably deduplicate by `eventId` before returning 2xx and make the
-  deduplication record atomic with any effect it applies.
-- WATCH can send the same event more than once, including when BATON accepted a
-  request but WATCH lost the response or stopped before finalizing delivery.
-- Delivery order is not a correctness guarantee. A consumer that projects
-  current health must tolerate reordering and may reconcile through WATCH's
-  authenticated current-projection route.
+- 최종 HTTP 2xx 응답은 모두 이벤트를 확인한 것으로 간주한다. 이후 WATCH는
+  짧은 트랜잭션에서 이벤트를 전달 완료로 표시한다.
+- 3xx 응답은 절대 따라가지 않는다. 2xx가 아닌 모든 응답, 정책 거부, 타임아웃,
+  DNS/TLS/네트워크 실패, 크기 위반 또는 내부 실패는 이벤트를 미전달 상태로
+  남기고 다음 시도를 예약한다.
+- BATON은 2xx를 반환하기 전에 `eventId`로 내구성 있게 중복을 제거해야 하며,
+  중복 제거 기록과 적용하는 모든 효과를 원자적으로 처리해야 한다.
+- BATON이 요청을 수락했지만 WATCH가 응답을 잃었거나 전달 확정 전에 중단된
+  경우를 포함하여 WATCH는 같은 이벤트를 두 번 이상 보낼 수 있다.
+- 전달 순서는 정확성 보장에 포함되지 않는다. 현재 상태를 프로젝션하는 소비자는
+  순서 변경을 허용해야 하며 WATCH의 인증된 현재 프로젝션 경로를 통해 조정할 수
+  있다.
 
-The application does not apply an independent automatic HTTP-client retry. All
-retries pass through the durable delivery state.
+애플리케이션은 별도의 자동 HTTP 클라이언트 재시도를 적용하지 않는다. 모든
+재시도는 내구성 전달 상태를 거친다.
 
-## Destination and request safety
+## 목적지와 요청 안전성
 
-Before every connection, WATCH must:
+WATCH는 매 연결 전에 다음을 수행해야 한다.
 
-1. validate the fixed callback URI against the HTTPS and port policy;
-2. resolve its hostname in a bounded DNS executor;
-3. reject the entire answer when any address is loopback, link-local, private,
-   multicast, unspecified, metadata, or otherwise non-global;
-4. pin the connection to the approved resolution while preserving the original
-   hostname for HTTP Host, SNI, and TLS hostname verification;
-5. disable redirects, cookies, proxy discovery, response decompression, and
-   transport-level retries;
-6. bound connection, response, and total time, response headers and bytes, DNS
-   work, request concurrency, and queued work.
+1. 고정 콜백 URI가 HTTPS와 포트 정책을 준수하는지 검증한다.
+2. 제한된 DNS 실행기에서 호스트 이름을 해석한다.
+3. 주소 중 하나라도 루프백, 링크 로컬, 비공개, 멀티캐스트, 미지정, 메타데이터
+   또는 그 밖의 비전역 주소라면 전체 응답을 거부한다.
+4. HTTP Host, SNI와 TLS 호스트 이름 검증에 원래 호스트 이름을 유지하면서
+   승인된 해석 결과에 연결을 고정한다.
+5. 리다이렉트, 쿠키, 프록시 탐색, 응답 압축 해제와 전송 계층 재시도를
+   비활성화한다.
+6. 연결·응답·전체 시간, 응답 헤더와 바이트, DNS 작업, 요청 동시성과 대기
+   작업을 제한한다.
 
-A declared oversized body is rejected before consumption. An unknown-length
-body that reaches the remaining byte limit is rejected without reading a probe
-byte beyond that limit, and the failed response is aborted rather than drained.
-Header-limit violations are classified as `RESPONSE_TOO_LARGE`.
+선언된 크기가 제한을 초과하는 본문은 소비하기 전에 거부한다. 길이를 알 수 없는
+본문이 남은 바이트 제한에 도달하면 제한 너머의 탐색 바이트를 읽지 않고 거부하며,
+실패한 응답은 비우지 않고 중단한다. 헤더 제한 위반은
+`RESPONSE_TOO_LARGE`로 분류한다.
 
-The initial per-process limits are a 2-second connection timeout, 3-second
-response timeout, 5-second total timeout, 8 KiB consumed response limit, at
-most 100 response headers of at most 8 KiB per line, two DNS threads with eight
-queued lookups, and one HTTP request thread with one queued request. Runtime
-settings may not exceed 64 KiB of response bytes, 200 response headers, 16 KiB
-per header line, eight DNS threads with 64 queued lookups, or four HTTP request
-threads with 16 queued requests. Delivery claims are capped at 100 events and
-maintenance batches at 1,000 events. These limits may not be disabled while
-delivery is active. Response bodies are discarded and never persisted.
+프로세스별 초기 제한은 연결 타임아웃 2초, 응답 타임아웃 3초, 전체 타임아웃
+5초, 소비된 응답 8 KiB, 응답 헤더 최대 100개와 헤더 한 줄당 최대 8 KiB,
+스레드 2개와 대기 조회 8개를 사용하는 DNS 실행기, 요청 스레드 1개와 대기 요청
+1개를 사용하는 HTTP 실행기다. 런타임 설정은 응답 바이트 64 KiB, 응답 헤더
+200개, 헤더 한 줄당 16 KiB, DNS 스레드 8개와 대기 조회 64개, HTTP 요청
+스레드 4개와 대기 요청 16개를 초과할 수 없다. 전달 선점은 이벤트 100개,
+유지보수 배치는 이벤트 1,000개로 제한한다. 전달이 활성화되어 있는 동안 이
+제한을 비활성화할 수 없다. 응답 본문은 폐기하며 절대 저장하지 않는다.
 
-## Durable delivery lifecycle
+## 내구성 전달 생명주기
 
-- The event payload is immutable. A new event starts `PENDING`, due at its
-  `changedAt` instant. Mutable delivery state records `PENDING` or `DELIVERED`,
-  the attempt count, next-attempt time, expiring lease, and a bounded last
-  outcome without storing response content or exception text.
-- A dispatcher claims a bounded batch of due, undelivered events in a short
-  transaction and assigns an expiring lease. The callback POST runs only after
-  that transaction commits.
-- Success or failure is finalized in another short transaction. Finalization
-  verifies the event and lease token, is idempotent, and cannot let an expired
-  worker overwrite a newer claim.
-- An expired lease becomes claimable again. Disabling delivery stops new claims
-  but does not delete or rewrite pending events.
-- Failure schedules `min(initialDelay * 2^(attemptCount - 1), maxDelay)` using a
-  safely capped exponent. The configuration must satisfy
-  `0 < initialDelay <= maxDelay <= 30 days`; values above the implementation
-  ceiling fail startup before any event is claimed. Retry count is not used to
-  discard an event.
+- 이벤트 페이로드는 불변이다. 새 이벤트는 `changedAt` 시각을 예정 시각으로
+  삼아 `PENDING` 상태로 시작한다. 가변 전달 상태에는 응답 콘텐츠나 예외
+  문자열을 저장하지 않고 `PENDING` 또는 `DELIVERED`, 시도 횟수, 다음 시도
+  시각, 만료되는 임대와 제한된 마지막 결과를 기록한다.
+- 디스패처는 짧은 트랜잭션에서 전달 예정이며 아직 전달되지 않은 이벤트를 제한된
+  배치로 선점하고 만료되는 임대를 할당한다. 콜백 `POST`는 해당 트랜잭션이
+  커밋된 뒤에만 실행한다.
+- 성공 또는 실패는 별도의 짧은 트랜잭션에서 확정한다. 확정 작업은 이벤트와 임대
+  토큰을 검증하고 멱등성을 보장하며, 만료된 작업자가 더 새로운 선점을 덮어쓸 수
+  없게 한다.
+- 만료된 임대는 다시 선점할 수 있다. 전달을 비활성화하면 새로운 선점은 중단되지만
+  대기 이벤트를 삭제하거나 다시 쓰지 않는다.
+- 실패하면 안전하게 제한한 지수를 사용하여
+  `min(initialDelay * 2^(attemptCount - 1), maxDelay)`를 예약한다. 설정은
+  `0 < initialDelay <= maxDelay <= 30 days`를 만족해야 한다. 구현 상한을 넘는
+  값은 이벤트를 선점하기 전에 시작을 실패시킨다. 재시도 횟수로 이벤트를
+  폐기하지 않는다.
 
-The persisted and metric outcome taxonomy is bounded to `DELIVERED`,
-`HTTP_CLIENT_ERROR` for 3xx-4xx, `HTTP_SERVER_ERROR` for 5xx,
-`DESTINATION_REJECTED`, `DNS_FAILURE`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`,
-`TLS_FAILURE`, `RESPONSE_TOO_LARGE`, `NETWORK_FAILURE`, and
-`INTERNAL_FAILURE`. An HTTP status is retained only for the first three outcome
-classes; response headers, bodies, and exception text are not retained.
+저장 및 메트릭 결과 분류는 3xx~4xx의 `HTTP_CLIENT_ERROR`, 5xx의
+`HTTP_SERVER_ERROR`, 그리고 `DELIVERED`, `DESTINATION_REJECTED`,
+`DNS_FAILURE`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`, `TLS_FAILURE`,
+`RESPONSE_TOO_LARGE`, `NETWORK_FAILURE`, `INTERNAL_FAILURE`로 제한한다.
+HTTP 상태는 앞의 세 결과 분류에만 저장하며 응답 헤더, 본문과 예외 문자열은
+저장하지 않는다.
 
-The initial dispatcher settings are a 1-second poll interval, 60-second lease,
-batch size 10, 5-second initial retry delay, and 15-minute maximum retry delay.
-Delivered-event cleanup runs every minute with a batch size of 100 and a
-30-day retention period. The retry-delay ceiling and delivered-event retention
-are separate policies; the 30-day ceiling is not an operational retry
-recommendation.
+디스패처 초기 설정은 폴링 간격 1초, 임대 60초, 배치 크기 10, 최초 재시도 지연
+5초, 최대 재시도 지연 15분이다. 전달 완료 이벤트 정리는 매분 실행하며 배치
+크기는 100, 보존 기간은 30일이다. 재시도 지연 상한과 전달 완료 이벤트 보존은
+서로 다른 정책이다. 30일 상한은 운영상 권장하는 재시도 값이 아니다.
 
-Only delivered events older than the configured positive retention period may
-be deleted, in bounded batches. Pending, retrying, and leased-but-unfinalized
-events are retained. Cleanup therefore cannot turn a prolonged callback outage
-or configuration error into silent event loss.
+설정된 양의 보존 기간보다 오래된 전달 완료 이벤트만 제한된 배치로 삭제할 수
+있다. 대기 중이거나 재시도 중이거나 임대되었지만 확정되지 않은 이벤트는 보존한다.
+따라서 정리 작업으로 인해 장기간의 콜백 장애나 설정 오류가 조용한 이벤트 손실로
+이어질 수 없다.
 
-## Observability
+## 관측 가능성
 
-WATCH exposes low-cardinality telemetry for:
+WATCH는 다음과 같은 낮은 카디널리티의 텔레메트리를 제공한다.
 
-- the count of undelivered events and the age or lag of the oldest undelivered
-  event;
-- callback attempts grouped only by the bounded delivery outcome above;
-- bounded claim/finalization state needed to distinguish idle delivery from a
-  stuck or failing dispatcher;
-- Spring scheduled-execution duration and success/failure for dispatch,
-  delivered-event cleanup, and backlog refresh. Cleanup and backlog refresh are
-  independent single-thread maintenance tasks, so either task continues to be
-  scheduled when the other fails.
+- 미전달 이벤트 수와 가장 오래된 미전달 이벤트의 경과 시간 또는 지연
+- 위에서 정의한 제한된 전달 결과만을 기준으로 묶은 콜백 시도
+- 전달 유휴 상태와 디스패처 정지 또는 실패를 구분하는 데 필요한 제한된
+  선점/확정 상태
+- 디스패치, 전달 완료 이벤트 정리와 백로그 갱신에 대한 Spring 예약 실행 시간과
+  성공/실패. 정리와 백로그 갱신은 서로 독립된 단일 스레드 유지보수 작업이므로
+  한 작업이 실패해도 다른 작업의 예약은 계속된다.
 
-Raw callback URLs, hosts, resource references, event IDs, exception messages,
-and HTTP response content are never metric labels. Framework-supplied scheduled
-class/method and exception-class labels are allowed because they contain no
-request data. Logs may use `eventId` as a correlation value but must not include
-the callback URL, bearer token, resource reference, response body, or raw
-exception message. Apache HTTP header, wire, implementation, and TLS diagnostic
-logger categories remain disabled even under broader DEBUG logging. Operators
-must not override those protected logger categories. Repository telemetry does
-not imply that an external monitoring stack or alert is deployed.
+원본 콜백 URL, 호스트, 리소스 참조, 이벤트 ID, 예외 메시지와 HTTP 응답
+콘텐츠는 절대 메트릭 레이블로 사용하지 않는다. 프레임워크가 제공하는 예약
+클래스/메서드와 예외 클래스 레이블은 요청 데이터를 포함하지 않으므로 허용한다.
+로그에서는 `eventId`를 상관관계 값으로 사용할 수 있지만 콜백 URL, Bearer
+토큰, 리소스 참조, 응답 본문 또는 원본 예외 메시지를 포함해서는 안 된다.
+Apache HTTP 헤더, wire, 구현과 TLS 진단 로거 범주는 더 넓은 범위의 `DEBUG`
+로깅에서도 비활성 상태를 유지한다. 운영자는 보호되는 이 하위 로거 범주를
+재정의해서는 안 된다. 저장소 텔레메트리만으로 외부 모니터링 스택이나 알림이
+배포되었다고 볼 수 없다.
 
-## Acceptance criteria
+## 인수 기준
 
-1. Enabling delivery without a valid callback URL and distinct service token
-   fails configuration validation; disabling it performs no network request.
-2. A claim commits before DNS or HTTP work and an expiring lease recovers work
-   after a stopped dispatcher.
-3. The callback receives the adopted application headers, including a matching
-   `Idempotency-Key`, and only the adopted JSON fields.
-4. Public-global DNS validation and pinning happen before connection; redirects
-   and private, ambiguous, or oversized responses are rejected.
-5. A 2xx response marks the matching leased event delivered exactly once in
-   storage even when finalization is repeated.
-6. Every unsuccessful attempt persists a bounded outcome and capped
-   exponential retry time without deleting the event.
-7. A duplicate POST has the same `eventId`, allowing BATON to deduplicate its
-   effects.
-8. Retention deletes only delivered events older than the cutoff and only in a
-   bounded batch.
-9. Backlog, oldest-event lag, and attempt outcomes are observable without
-   sensitive or unbounded metric labels.
+1. 유효한 콜백 URL과 별도의 서비스 토큰 없이 전달을 활성화하면 설정 검증에
+   실패하고, 비활성화하면 네트워크 요청을 수행하지 않는다.
+2. DNS 또는 HTTP 작업 전에 선점 트랜잭션이 커밋되며, 디스패처가 중단되면
+   만료되는 임대가 작업을 복구한다.
+3. 콜백은 일치하는 `Idempotency-Key`를 포함한 채택된 애플리케이션 헤더와
+   채택된 JSON 필드만 받는다.
+4. 연결 전에 공개 전역 DNS 검증과 고정이 수행되며, 리다이렉트와 비공개·모호한
+   목적지 또는 크기 초과 응답은 거부된다.
+5. 2xx 응답은 확정을 반복하더라도 일치하는 임대 이벤트를 저장소에서 정확히 한
+   번만 전달 완료로 표시한다.
+6. 실패한 모든 시도는 이벤트를 삭제하지 않고 제한된 결과와 상한이 적용된 지수
+   재시도 시각을 저장한다.
+7. 중복 `POST`는 같은 `eventId`를 사용하므로 BATON이 효과의 중복을 제거할 수
+   있다.
+8. 보존 정책은 기준 시각보다 오래된 전달 완료 이벤트만 제한된 배치로 삭제한다.
+9. 민감하거나 제한되지 않은 메트릭 레이블 없이 백로그, 가장 오래된 이벤트 지연과
+   시도 결과를 관측할 수 있다.

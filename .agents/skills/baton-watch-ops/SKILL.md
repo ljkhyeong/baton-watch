@@ -1,39 +1,32 @@
 ---
 name: baton-watch-ops
-description: Runtime and deployment workflow for BATON WATCH outbound-check workers, schedules, containers, configuration, graceful shutdown, concurrency, network policy, secrets, rollout, rollback, and local Compose behavior. Use for operational or infrastructure changes and checker safety controls.
+description: BATON WATCH 아웃바운드 점검 작업자, 일정, 컨테이너, 설정, 정상 종료, 동시성, 네트워크 정책, 비밀 정보, 롤아웃, 롤백, 로컬 Compose 동작을 다루는 런타임 및 배포 작업 흐름이다. 운영 또는 인프라 변경과 점검기 안전 제어에 사용한다.
 ---
 
-# BATON WATCH Operations
+# BATON WATCH 운영
 
-## Distinguish current and target state
+## 현재 상태와 목표 상태 구분하기
 
-- Read README.md, HANDOFF.md, PRD-0001, and ADR-0001.
-- Treat compose.yml as a local single-service artifact, not proof of production deployment.
-- Keep secrets out of Git, images, Compose defaults, logs, and URLs.
-- Preserve the adopted single BATON HTTPS callback. Do not add a frontend,
-  broker, second consumer, or private-destination bypass without an adopted
-  requirement.
+- README.md, HANDOFF.md, PRD-0001, ADR-0001을 읽는다.
+- compose.yml을 로컬 단일 서비스 산출물로 취급하며, 운영 배포의 증거로 간주하지 않는다.
+- 비밀 정보를 Git, 이미지, Compose 기본값, 로그, URL에 포함하지 않는다.
+- 채택된 단일 BATON HTTPS 콜백을 보존한다. 채택된 요구사항 없이 프런트엔드, 브로커, 두 번째 소비자, 비공개 목적지 우회를 추가하지 않는다.
 
-## Secure outbound checks
+## 아웃바운드 점검 보호하기
 
-- Allow only adopted schemes and ports; reject ambiguous hosts and embedded credentials.
-- Resolve and reject loopback, link-local, private, multicast, unspecified, metadata, and other non-public destinations.
-- Pin connection attempts to the approved resolution while preserving HTTP Host and TLS verification.
-- For target checks, revalidate every redirect. Bound redirect count,
-  connection/read/total time, bytes, concurrency, and per-target pressure.
-- For event delivery, require the fixed default-port HTTPS callback, public-global
-  DNS validation and pinning, and no redirects. Keep its bearer token separate
-  from the monitor API token.
-- Treat DNS rebinding and alternate IPv4/IPv6 forms as hostile. Prefer outbound network controls as defense in depth.
+- 채택된 스킴과 포트만 허용하고, 모호한 호스트와 내장된 자격 증명을 거부한다.
+- 루프백, 링크 로컬, 비공개, 멀티캐스트, 미지정, 메타데이터, 그 밖의 공개되지 않은 목적지를 해석 후 거부한다.
+- HTTP `Host` 헤더와 TLS 검증을 보존하면서 연결 시도를 승인된 해석 결과에 고정한다.
+- 대상 점검에서는 모든 리다이렉트를 다시 검증한다. 리다이렉트 횟수, 연결/읽기/전체 시간, 바이트, 동시성, 대상별 부하를 제한한다.
+- 이벤트 전달에는 기본 포트로 고정된 HTTPS 콜백, 전역에서 접근 가능한 공개 주소에 대한 DNS 검증과 해석 결과 고정, 리다이렉트 금지를 요구한다. 해당 베어러 토큰은 모니터 API 토큰과 분리한다.
+- DNS 리바인딩과 대체 IPv4/IPv6 형식을 적대적인 것으로 취급한다. 심층 방어 수단으로 아웃바운드 네트워크 제어를 우선 적용한다.
 
-## Operate workers safely
+## 작업자 안전하게 운영하기
 
-- Keep claim, check, and finalize as separate phases; never hold a database transaction during network I/O.
-- Use leases, idempotent finalization, bounded batches, backpressure, and graceful shutdown that stops claims and drains bounded in-flight work.
-- Keep delivery at least once: retry with capped exponential backoff, preserve
-  every undelivered event, and purge only delivered events through bounded
-  maintenance.
-- Inject Clock; make schedule zones and timeout units explicit.
-- Use immutable image tags or digests, private app/data/management ports, probes, least privilege, and a tested rollback path when deployment is adopted.
+- 점유, 점검, 완료 처리를 서로 다른 단계로 유지하고, 네트워크 I/O 중에는 데이터베이스 트랜잭션을 절대 유지하지 않는다.
+- 리스, 멱등한 완료 처리, 제한된 배치, 역압, 점유를 중단하고 제한된 진행 중 작업을 소진하는 정상 종료를 사용한다.
+- 최소 한 번 전달을 유지한다. 상한이 있는 지수 백오프로 재시도하고, 전달되지 않은 모든 이벤트를 보존하며, 제한된 유지보수를 통해 전달된 이벤트만 삭제한다.
+- Clock을 주입하고, 일정 시간대와 타임아웃 단위를 명시한다.
+- 배포가 채택되면 불변 이미지 태그 또는 다이제스트, 비공개 앱/데이터/관리 포트, 프로브, 최소 권한, 검증된 롤백 경로를 사용한다.
 
-Verify ./gradlew test, docker compose config, image build, startup/status smoke check, shutdown, concurrency limits, and rollback in proportion to the change. Report external DNS, firewall, credentials, and live rollout as operator work until actually verified.
+변경 범위에 비례해 `./gradlew test`, `docker compose config`, 이미지 빌드, 시작/상태 스모크 점검, 종료, 동시성 제한, 롤백을 검증한다. 외부 DNS, 방화벽, 자격 증명, 실제 롤아웃은 직접 검증하기 전까지 운영자 작업으로 보고한다.

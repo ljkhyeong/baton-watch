@@ -1,86 +1,81 @@
-# PRD-0001: BATON WATCH Product Baseline
+# PRD-0001: BATON WATCH 제품 기준선
 
-Status: maintained baseline
+상태: 유지 관리 기준선
 
-Updated: 2026-08-02
+수정일: 2026-08-02
 
-## Purpose
+## 목적
 
-BATON WATCH is a separate service boundary for observing whether URLs attached to BATON RoleResource records remain reachable. It must keep monitoring latency and failures outside BATON transactions and projections.
+BATON WATCH는 BATON RoleResource 레코드에 연결된 URL이 계속 도달 가능한지 관찰하기 위한 별도 서비스 경계다. 모니터링 지연과 실패가 BATON 트랜잭션 및 프로젝션에 영향을 주지 않도록 그 바깥에서 처리해야 한다.
 
-## Current capability
+## 현재 기능
 
-The monitoring MVP from PRD-0003 is implemented. WATCH accepts revisioned active
-or inactive URL snapshots, schedules and performs bounded asynchronous checks,
-persists attempt/result metadata, derives current health, and records durable
-health-change events. PRD-0004 delivery to one configured BATON HTTPS callback
-is also implemented with durable leases, at-least-once retries, delivered-event
-retention, and low-cardinality operator telemetry. Production deployment is not
-established.
+PRD-0003의 모니터링 MVP는 구현되어 있다. WATCH는 리비전이 있는 활성 또는
+비활성 URL 스냅샷을 받아 제한된 비동기 검사를 예약하고 실행하며,
+시도/결과 메타데이터를 영속화하고 현재 상태를 도출하며 내구성 있는 상태 변경
+이벤트를 기록한다. 구성된 단일 BATON HTTPS 콜백으로 전달하는 PRD-0004도
+내구성 있는 리스, 최소 한 번 전달을 보장하는 재시도, 전달 완료 이벤트 보존, 낮은 카디널리티의
+운영자 텔레메트리와 함께 구현되어 있다. 운영 배포는 구축되지 않았다.
 
-## Ownership
+## 소유 범위
 
-WATCH owns:
+WATCH는 다음을 소유한다.
 
-- asynchronous URL-check schedules for resource references supplied by BATON;
-- immutable attempt and result history with bounded retention;
-- derived resource health: UNKNOWN, HEALTHY, DEGRADED, or BROKEN;
-- durable events recorded only when the derived health changes;
-- asynchronous, at-least-once delivery of those events to the adopted BATON
-  callback.
+- BATON이 제공한 리소스 참조에 대한 비동기 URL 검사 일정
+- 보존 범위가 제한된 불변 시도 및 결과 이력
+- 도출된 리소스 상태: UNKNOWN, HEALTHY, DEGRADED 또는 BROKEN
+- 도출된 상태가 변경될 때만 기록되는 내구성 있는 이벤트
+- 채택된 BATON 콜백으로 해당 이벤트를 비동기식으로 최소 한 번 전달하는 기능
 
-PRD-0003 adopts the first schedule, retry, health, retention, authentication,
-and HTTP-check contracts for the monitoring MVP. PRD-0004 adopts the direct
-HTTPS callback, payload, authentication, idempotency, retry/lease, retention,
-safety, and observability contract for event delivery.
+PRD-0003은 모니터링 MVP를 위한 최초의 일정, 재시도, 상태, 보존,
+인증 및 HTTP 검사 계약을 채택한다. PRD-0004는 이벤트 전달을 위한 직접
+HTTPS 콜백, 페이로드, 인증, 멱등성, 재시도/리스, 보존, 안전 및 관측성
+계약을 채택한다.
 
-## Explicit non-ownership
+## 명시적으로 소유하지 않는 범위
 
-WATCH must never:
+WATCH는 절대로 다음을 수행해서는 안 된다.
 
-- decide whether a principal may access a BATON workspace, role, or resource;
-- become the source of truth for RoleResource content or authorization;
-- store response bodies, credentials, cookies, or authorization headers;
-- make a BATON command, transaction, or projection wait for a network check.
+- 주체가 BATON 워크스페이스, 역할 또는 리소스에 접근할 수 있는지 결정
+- RoleResource 내용이나 인가의 원본 시스템 역할 수행
+- 응답 본문, 자격 증명, 쿠키 또는 인가 헤더 저장
+- BATON 명령, 트랜잭션 또는 프로젝션이 네트워크 검사를 기다리게 함
 
-BATON remains authoritative for resources and authorization. A missing or stale WATCH result must not deny BATON access by itself.
+리소스와 인가의 권위 있는 원본은 계속 BATON이다. WATCH 결과가 없거나 오래되었다는 이유만으로 BATON 접근을 거부해서는 안 된다.
 
-## Execution boundary
+## 실행 경계
 
-A check worker must claim eligible work in a short transaction, release the
-transaction, perform the target request, then finalize the attempt/result and
-any durable health-change event in another short transaction. An event
-dispatcher follows the same transaction boundary around the separate callback
-POST. Both use expiring leases and idempotent finalization so a stopped worker
-does not strand work. All time-dependent decisions use an injected Clock and
-UTC instants.
+검사 워커는 짧은 트랜잭션에서 처리 가능한 작업을 선점한 뒤 트랜잭션을
+종료하고 대상 요청을 수행해야 한다. 이후 다른 짧은 트랜잭션에서 시도/결과와
+내구성 있는 상태 변경 이벤트를 확정해야 한다. 이벤트 디스패처도 별도의 콜백
+POST 전후로 같은 트랜잭션 경계를 따른다. 둘 다 만료되는 리스와 멱등성 있는
+확정을 사용하므로 워커가 중지되어도 작업이 고립되지 않는다. 시간에 의존하는
+모든 결정에는 주입된 `Clock`과 UTC 시각을 사용한다.
 
-## Outbound-request safety baseline
+## 아웃바운드 요청 안전 기준선
 
-Before connecting, a checker must:
+검사기는 연결하기 전에 다음을 수행해야 한다.
 
-1. allow only adopted schemes and ports;
-2. parse and normalize the host without accepting embedded credentials or ambiguous alternate IP forms;
-3. resolve DNS and reject loopback, link-local, private, multicast, unspecified, metadata, and other non-public destinations;
-4. connect only to an address from the validated resolution set while preserving correct HTTP host and TLS verification;
-5. for target checks, re-run the complete policy for every redirect and cap
-   redirect count; for event delivery, reject redirects;
-6. cap connection, read, and total time, response bytes, and concurrency.
+1. 채택된 스킴과 포트만 허용한다.
+2. 포함된 자격 증명이나 모호한 대체 IP 형식을 허용하지 않고 호스트를 파싱하고 정규화한다.
+3. DNS를 조회하고 루프백, 링크 로컬, 사설, 멀티캐스트, 미지정, 메타데이터 및 그 밖의 비공개 목적지를 거부한다.
+4. 올바른 HTTP 호스트와 TLS 검증을 유지하면서 검증된 조회 결과 집합의 주소에만 연결한다.
+5. 대상 검사에서는 리디렉션마다 전체 정책을 다시 적용하고 리디렉션 횟수를 제한하며, 이벤트 전달에서는 리디렉션을 거부한다.
+6. 연결 시간, 읽기 시간, 전체 시간, 응답 바이트 및 동시성을 제한한다.
 
-This policy must account for DNS rebinding and changes between validation and connection. Never persist a response body. Logs must redact URL user-info, query, and fragment. Metrics must use bounded identifiers or result classes, never raw URLs, hosts, resource IDs, or exception messages as labels.
+이 정책은 DNS 리바인딩과 검증 시점부터 연결 시점까지 발생하는 변경을 고려해야 한다. 응답 본문은 절대로 영속화하지 않는다. 로그에서는 URL의 사용자 정보, 쿼리 및 프래그먼트를 가려야 한다. 메트릭에는 제한된 식별자나 결과 클래스만 사용하고 원시 URL, 호스트, 리소스 ID 또는 예외 메시지를 레이블로 사용해서는 안 된다.
 
-## Health semantics
+## 상태 의미
 
-UNKNOWN means no conclusive current assessment. HEALTHY, DEGRADED, and BROKEN
-are derived states, not direct HTTP status aliases. PRD-0003 defines the MVP
-thresholds and the treatment of redirects, TLS, DNS, timeouts, and internal
-failures.
+UNKNOWN은 확정적인 현재 평가가 없음을 뜻한다. HEALTHY, DEGRADED 및 BROKEN은
+HTTP 상태에 직접 대응하는 별칭이 아니라 도출된 상태다. PRD-0003은 MVP
+임계값과 리디렉션, TLS, DNS, 타임아웃 및 내부 실패 처리 방식을 정의한다.
 
-## Event delivery semantics
+## 이벤트 전달 의미
 
-Health-change events are delivered at least once, so BATON must durably
-deduplicate the matching `Idempotency-Key` and JSON `eventId`. The callback
-uses a separate bearer service token and a restricted payload; it does not
-carry a target URL, response body, credential, or authorization decision.
-WATCH retains every undelivered event and deletes only delivered events through
-bounded retention work. PRD-0004 is authoritative for the full contract.
+상태 변경 이벤트는 최소 한 번 전달되므로 BATON은 서로 일치하는
+`Idempotency-Key`와 JSON `eventId`를 내구성 있게 중복 제거해야 한다. 콜백은
+별도의 Bearer 서비스 토큰과 제한된 페이로드를 사용하며, 대상 URL, 응답 본문,
+자격 증명 또는 인가 결정을 포함하지 않는다. WATCH는 전달되지 않은 모든
+이벤트를 보존하고 제한된 보존 작업을 통해 전달 완료 이벤트만 삭제한다.
+전체 계약의 권위 있는 문서는 PRD-0004다.

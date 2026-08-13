@@ -1,31 +1,23 @@
 ---
 name: baton-watch-observability
-description: Observability workflow for BATON WATCH logs, metrics, traces, dashboards, alerts, request correlation, scheduler health, check outcomes, and durable event delivery. Use when adding telemetry or diagnosing runtime behavior without leaking target URLs or creating unbounded labels.
+description: BATON WATCH의 로그, 메트릭, 트레이스, 대시보드, 알림, 요청 상관관계, 스케줄러 상태, 점검 결과, 내구성 있는 이벤트 전달을 다루는 관측 가능성 작업 흐름이다. 대상 URL을 노출하거나 제한 없는 레이블을 만들지 않으면서 텔레메트리를 추가하거나 런타임 동작을 진단할 때 사용한다.
 ---
 
-# BATON WATCH Observability
+# BATON WATCH 관측 가능성
 
-## Protect data and cardinality
+## 데이터와 카디널리티 보호하기
 
-- Read PRD-0001, ADR-0001, and the affected telemetry source before editing.
-- Never use raw URLs, hosts, queries, fragments, resource or event IDs,
-  resolved IPs, exception messages, or stack-trace text as metric labels.
-- Prefer bounded labels such as outcome class, protocol, worker operation, and derived status.
-- Redact URL user-info, query, and fragment in logs. Never log response bodies, credentials, cookies, or authorization headers.
-- Preserve request or attempt correlation without turning high-cardinality identifiers into metric dimensions.
+- 수정 전에 PRD-0001, ADR-0001, 영향을 받는 텔레메트리 소스를 읽는다.
+- 원본 URL, 호스트, 쿼리, 프래그먼트, 리소스 ID나 이벤트 ID, 해석된 IP, 예외 메시지, 스택 트레이스 텍스트를 메트릭 레이블로 절대 사용하지 않는다.
+- 결과 분류, 프로토콜, 작업자 작업, 도출된 상태처럼 범위가 제한된 레이블을 우선 사용한다.
+- 로그에서는 URL 사용자 정보, 쿼리, 프래그먼트를 제거한다. 응답 본문, 자격 증명, 쿠키, `Authorization` 헤더를 절대 기록하지 않는다.
+- 카디널리티가 높은 식별자를 메트릭 차원으로 만들지 않으면서 요청 또는 시도의 상관관계를 유지한다.
 
-## Cover operational failure
+## 운영 실패 포괄하기
 
-- Add metrics for due backlog age, claim count, in-flight checks, outcome counts,
-  duration, timeouts, rejected destinations, lease recovery, and finalization
-  failures. Preserve the implemented event-delivery backlog,
-  oldest-undelivered age, bounded outcome, and finalization telemetry.
-- Distinguish DNS, connect, TLS, redirect-policy, HTTP-class, timeout, size-limit, and internal failures with a bounded taxonomy.
-- Alert on sustained user-impacting conditions, not one transient target failure.
-- Keep dashboard queries and alerts synchronized with exported metric names.
+- 처리 기한이 된 백로그 경과 시간, 점유 수, 진행 중인 점검, 결과 수, 소요 시간, 타임아웃, 거부된 목적지, 리스 복구, 완료 처리 실패에 대한 메트릭을 추가한다. 구현된 이벤트 전달 백로그, 가장 오래 전달되지 않은 이벤트의 경과 시간, 제한된 결과 분류, 완료 처리 텔레메트리를 보존한다.
+- DNS, 연결, TLS, 리다이렉트 정책, HTTP 분류, 타임아웃, 크기 제한, 내부 실패를 범위가 제한된 분류 체계로 구분한다.
+- 일시적인 대상 실패 하나가 아니라 사용자에게 지속적으로 영향을 주는 상태에 알림을 설정한다.
+- 대시보드 쿼리와 알림을 외부로 내보내는 메트릭 이름과 동기화한다.
 
-Add tests for tag sets, redaction, gauge refresh, and counter emission at
-critical failure boundaries. Verify the private management health/Prometheus
-endpoints and alert configuration when introduced. Do not document a
-monitoring stack or external alert as deployed merely because instrumentation
-or configuration exists.
+중요한 실패 경계의 태그 집합, 민감 정보 제거, 게이지 갱신, 카운터 발행을 테스트한다. 비공개 관리용 상태/Prometheus 엔드포인트와 알림 설정을 도입할 때 검증한다. 계측이나 설정이 존재한다는 이유만으로 모니터링 스택 또는 외부 알림이 배포되었다고 문서화하지 않는다.

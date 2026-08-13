@@ -1,141 +1,124 @@
-# ADR-0002: Monitoring MVP Storage and Execution
+# ADR-0002: 모니터링 MVP 저장소와 실행
 
-Status: accepted
+상태: 채택됨
 
-Date: 2026-08-01
+날짜: 2026-08-01
 
-## Context
+## 배경
 
-PRD-0003 requires durable schedules, leases, immutable attempt/result history,
-a current-health projection, and atomic health-change events. The worker must
-not hold a database transaction while it performs hostile or slow network I/O.
+PRD-0003은 내구성 일정, 임대, 불변 시도/결과 이력, 현재 상태 프로젝션과 원자적
+상태 변경 이벤트를 요구한다. 작업자는 적대적이거나 느린 네트워크 I/O를 수행하는
+동안 데이터베이스 트랜잭션을 유지해서는 안 된다.
 
-At the time of this decision, the repository had persistence and external
-adapter modules but had not selected a database, migration tool, storage API,
-or HTTP client.
+이 결정을 내릴 당시 저장소에는 영속성과 외부 어댑터 모듈이 있었지만 데이터베이스,
+마이그레이션 도구, 저장소 API 또는 HTTP 클라이언트를 선택하지 않은 상태였다.
 
-## Decision
+## 결정
 
-Use PostgreSQL as the MVP database, Flyway for append-only schema migrations,
-and Spring JDBC for explicit SQL and transaction boundaries. The persistence
-adapter owns four tables:
+MVP 데이터베이스로 PostgreSQL, 추가 전용 스키마 마이그레이션 도구로 Flyway,
+명시적 SQL과 트랜잭션 경계를 위해 Spring JDBC를 사용한다. 영속성 어댑터는
+다음 네 테이블을 소유한다.
 
-- `watch_monitor` for source revision, active schedule, lease, and current
-  projection;
-- `watch_attempt` for the immutable claim snapshot;
-- `watch_result` for immutable completed result metadata;
-- `watch_health_change_event` for the durable outbox and, as extended by
-  ADR-0003, its pending/delivered state, delivery attempts, due time, expiring
-  lease, bounded outcome, acknowledgement time, and retention eligibility.
+- `watch_monitor`: 원본 리비전, 활성 일정, 임대와 현재 프로젝션
+- `watch_attempt`: 불변 선점 스냅샷
+- `watch_result`: 불변 완료 결과 메타데이터
+- `watch_health_change_event`: 내구성 아웃박스와 ADR-0003에서 확장한
+  대기/전달 완료 상태, 전달 시도, 예정 시각, 만료되는 임대, 제한된 결과, 응답
+  확인 시각과 보존 대상 여부
 
-Claim uses a short transaction with `SELECT ... FOR UPDATE SKIP LOCKED`, followed
-by lease-token updates and attempt inserts. The application performs checks
-after that transaction returns. Finalization locks the monitor, verifies its
-lease token and source revision, inserts the result, derives health through the
-domain policy, updates the projection, and inserts an event when health changes
-in one transaction. The attempt identifier is unique so repeated finalization
-is a no-op.
+선점은 `SELECT ... FOR UPDATE SKIP LOCKED`를 사용하는 짧은 트랜잭션에서
+수행한 뒤 임대 토큰을 갱신하고 시도를 삽입한다. 애플리케이션은 해당 트랜잭션이
+반환된 뒤 점검을 수행한다. 확정 작업은 모니터를 잠그고 임대 토큰과 원본 리비전을
+검증한 뒤 결과를 삽입하고, 도메인 정책으로 상태를 도출하고, 프로젝션을 갱신하며,
+상태가 변경되었으면 한 트랜잭션에서 이벤트를 삽입한다. 시도 식별자는 고유하므로
+확정을 반복해도 아무 작업도 하지 않는다.
 
-Every adapter-owned persistence transaction has a five-second Spring
-transaction timeout and applies a one-second PostgreSQL `lock_timeout` with
-transaction-local scope. The lock limit fails row-lock contention before the
-broader statement deadline, and local scope prevents a pooled connection from
-carrying the setting into later work. Persistence fails before starting if a
-caller already owns a Spring transaction, preserving the rule that application
-network I/O cannot accidentally run inside an outer transaction.
+어댑터가 소유한 모든 영속성 트랜잭션에는 Spring 트랜잭션 타임아웃 5초를
+적용하고, 트랜잭션 로컬 범위의 PostgreSQL `lock_timeout` 1초를 적용한다.
+잠금 제한은 더 넓은 구문 기한보다 먼저 행 잠금 경합을 실패시키며, 로컬 범위는
+풀링된 연결이 이후 작업으로 설정을 전달하지 못하게 한다. 호출자가 이미 Spring
+트랜잭션을 소유하고 있으면 영속성 작업은 시작 전에 실패하여 애플리케이션의
+네트워크 I/O가 실수로 외부 트랜잭션 안에서 실행되지 않게 한다.
 
-Boot's shared `JdbcTemplate` has a five-second query timeout. The auto-configured
-`JdbcClient` reuses that template through `NamedParameterJdbcTemplate`, so the
-same statement deadline bounds the non-transactional projection lookup and
-event-backlog aggregation without a WATCH-owned JDBC wrapper. An active Spring
-transaction may shorten the effective statement deadline to its remaining
-transaction time.
+Boot의 공유 `JdbcTemplate`에는 쿼리 타임아웃 5초가 설정되어 있다. 자동 설정된
+`JdbcClient`는 `NamedParameterJdbcTemplate`을 통해 해당 템플릿을 재사용하므로
+WATCH가 별도 JDBC 래퍼를 소유하지 않아도 동일한 구문 기한이 비트랜잭션
+프로젝션 조회와 이벤트 백로그 집계를 제한한다. 활성 Spring 트랜잭션은 남은
+트랜잭션 시간에 맞춰 실효 구문 기한을 더 짧게 만들 수 있다.
 
-Use Apache HttpClient 5 in the external adapter. Automatic redirects are
-disabled. For every hop, a policy component parses and resolves the original
-host, rejects non-global addresses, and supplies only the approved addresses to
-a request-scoped client DNS resolver. The request URI keeps the original host
-so HTTP Host, SNI, and TLS hostname verification remain correct. The application
-depends only on an outbound checker port. Successful responses are closed
-normally, while byte- or header-limit failures abort the response immediately
-so Apache cannot drain additional bytes for connection reuse. An
-unknown-length body that reaches its remaining byte allowance is rejected
-without an extra probe read.
+외부 어댑터에서 Apache HttpClient 5를 사용한다. 자동 리다이렉트는 비활성화한다.
+각 경유 단계마다 정책 컴포넌트가 원래 호스트를 파싱하고 해석하여 비전역 주소를
+거부하고, 요청 범위 클라이언트 DNS 해석기에 승인된 주소만 제공한다. 요청 URI는
+원래 호스트를 유지하므로 HTTP Host, SNI와 TLS 호스트 이름 검증이 올바르게
+동작한다. 애플리케이션은 아웃바운드 점검기 포트에만 의존한다. 성공 응답은 정상적으로
+닫지만, 바이트 또는 헤더 제한 실패 시 Apache가 연결 재사용을 위해 추가 바이트를
+비우지 못하도록 응답을 즉시 중단한다. 길이를 알 수 없는 본문이 남은 바이트
+허용량에 도달하면 추가 탐색 읽기 없이 거부한다.
 
-Bootstrap fixes Apache HttpClient's raw header, wire, implementation, and TLS
-logger categories at `OFF`. These more specific levels remain effective when
-root or the broader Apache HTTP package is raised to `DEBUG`, preventing bearer
-headers, target queries, payloads, response bodies, hostnames, resolved
-addresses, certificate names, and raw close-failure exceptions from bypassing
-WATCH's redacted application logs. Operators must not explicitly override
-those protected categories.
+Bootstrap은 Apache HttpClient의 원본 헤더, wire, 구현과 TLS 로거 범주를
+`OFF`로 고정한다. 더 구체적인 이 레벨은 루트 또는 더 넓은 Apache HTTP 패키지가
+`DEBUG`로 올라가도 유효하므로 Bearer 헤더, 대상 쿼리, 페이로드, 응답 본문,
+호스트 이름, 해석된 주소, 인증서 이름과 원본 닫기 실패 예외가 WATCH의 비식별화된
+애플리케이션 로그를 우회하지 못하게 한다. 운영자는 보호되는 이 하위 범주를
+명시적으로 재정의해서는 안 된다.
 
-`TargetUrl` owns the static target syntax policy used when a snapshot is
-accepted and when each redirect is revalidated. Compatibility-deferred
-encoded-character checks remain explicit so historical rows can still be
-rehydrated and converted
-to `DESTINATION_REJECTED`; new synchronization commands must pass the same
-check before persistence. The external adapter adds only raw redirect-reference
-validation, resolution, and loop canonicalization before DNS/address approval.
+`TargetUrl`은 스냅샷을 수락할 때와 각 리다이렉트를 재검증할 때 사용하는 정적
+대상 구문 정책을 소유한다. 호환성을 위해 유예한 인코딩 문자 검사는 명시적으로
+유지하므로 과거 행을 다시 객체화할 수 있지만 DNS 또는 I/O 전에
+`DESTINATION_REJECTED`로 변환한다. 새로운 동기화 명령은 영속화 전에 동일한
+검사를 통과해야 한다. 외부 어댑터는 DNS/주소 승인 전에 원본 리다이렉트 참조
+검증, 해석과 루프 정규화만 추가한다.
 
-Spring scheduling lives in bootstrap and invokes application use cases. Target
-checks, callback delivery, and database maintenance use independent named
-single-thread schedulers. One check and one delivery batch run at a time per
-process, while a slow callback cannot starve target checks or maintenance.
-Unexpected failures leave the scheduled method so Spring's built-in
-`tasks.scheduled.execution` observation records an error, then a shared
-redacting scheduler error handler logs only the exception class and suppresses
-the failure so the periodic task remains scheduled. Stale-projection marking,
-attempt-history retention, delivered-event cleanup, and backlog refresh are
-separate methods on the same single-thread maintenance lane. This preserves
-each operation's independence and gives it a bounded framework method identity
-without a WATCH-owned scheduler-failure counter.
-Because Spring retains the original task exception for internal scheduled-task
-diagnostics, the Actuator `scheduledtasks` endpoint remains outside the exposed
-management allowlist; only health and Prometheus are exposed.
-Batch size, lease, interval, timeouts, byte limit, staleness, retention, and
-cleanup batch size are bounded configuration values. Security- and
-allocation-sensitive byte, header, executor, queue, and batch settings also
-have immutable implementation ceilings that runtime configuration cannot
-exceed.
+Spring 예약 기능은 bootstrap에 있으며 애플리케이션 유스케이스를 호출한다. 대상
+점검, 콜백 전달과 데이터베이스 유지보수는 서로 독립된 이름 있는 단일 스레드
+스케줄러를 사용한다. 프로세스당 점검 배치와 전달 배치를 각각 하나씩 실행하며,
+느린 콜백이 대상 점검이나 유지보수를 굶기지 못한다. 예상하지 못한 실패는 예약
+메서드 밖으로 전파되어 Spring 내장 `tasks.scheduled.execution` 관측이 오류를
+기록하게 한다. 이후 공유 비식별화 스케줄러 오류 처리기는 예외 클래스만 기록하고
+실패를 억제하여 주기 작업이 계속 예약되도록 한다. 오래된 프로젝션 표시, 시도 이력
+보존, 전달 완료 이벤트 정리와 백로그 갱신은 동일한 단일 스레드 유지보수 실행로의
+서로 다른 메서드다. 이를 통해 각 작업의 독립성을 유지하고 WATCH 자체 스케줄러
+실패 카운터 없이 제한된 프레임워크 메서드 식별자를 부여한다.
 
-Bootstrap binding delegates non-sensitive independent numeric and
-positive-duration bounds plus nested-property presence to Spring Boot
-configuration-properties Bean Validation. Secret syntax, conditional rules,
-cross-field comparisons, and overflow handling remain explicit redacted checks
-so invariants that span multiple values stay visible. External adapters still
-enforce allocation ceilings at the resource boundary even when bootstrap
-validation has already accepted the configuration.
+Spring은 내부 예약 작업 진단을 위해 원래 작업 예외를 유지하므로 Actuator
+`scheduledtasks` 엔드포인트는 공개 관리 허용 목록에서 제외한다. `health`와
+`prometheus`만 공개한다.
 
-The internal monitor API uses one runtime-supplied bearer token with at least
-32 non-padding RFC 6750 `token68` characters. Spring Security's standard Bearer resolver
-owns header parsing after the configuration is validated at startup. This is
-service authentication only; WATCH still does not make BATON authorization
-decisions.
+배치 크기, 임대, 간격, 타임아웃, 바이트 제한, 오래됨 기준, 보존 기간과 정리 배치
+크기는 제한된 설정값이다. 보안과 메모리 할당에 민감한 바이트, 헤더, 실행기, 큐와
+배치 설정에는 런타임 설정이 넘을 수 없는 불변 구현 상한도 적용한다.
 
-## Consequences
+Bootstrap 바인딩은 민감하지 않고 서로 독립적인 숫자와 양의 기간 제한, 중첩 속성
+존재 검증을 Spring Boot 설정 속성 Bean Validation에 위임한다. 비밀값 구문,
+조건부 규칙, 필드 간 비교와 오버플로 처리는 여러 값에 걸친 불변식을 드러내기 위해
+명시적인 비식별화 검사로 유지한다. 외부 어댑터는 bootstrap 검증에서 설정을 이미
+수락했더라도 리소스 경계에서 메모리 할당 상한을 계속 적용한다.
 
-The SQL is PostgreSQL-specific and persistence integration tests must exercise
-PostgreSQL, especially lease competition, recovery, stale revisions, and
-migrations. Spring JDBC keeps locking and transaction scopes visible at the
-cost of manual mapping.
+내부 모니터 API는 런타임에 공급되는 하나의 Bearer 토큰을 사용하며, 이 토큰에는
+RFC 6750 `token68`의 패딩이 아닌 문자가 32자 이상 있어야 한다. 시작 시 설정이
+검증된 후에는 Spring Security의 표준 Bearer 해석기가 헤더 파싱을 담당한다. 이는
+서비스 인증일 뿐이며 WATCH는 여전히 BATON의 인가 결정을 내리지 않는다.
 
-Transaction limits apply to transaction-scoped JDBC statements and row-lock
-waits, while the shared Spring JDBC query timeout also bounds non-transactional
-projection and backlog statements. These statement deadlines do not bound
-connection acquisition or a network path that cannot complete JDBC cancellation;
-those remain subject to datasource and runtime controls. Independent scheduler
-lanes can use up to three database connections concurrently, so pool sizing must
-retain that minimum operational headroom.
+## 결과
 
-DNS pinning requires an HTTP client with an injectable resolver; the JDK HTTP
-client is not used because Java 21 does not expose an equivalent per-request
-resolver. Redirect handling and response consumption remain explicit and
-testable. The JVM resolver itself cannot be forcibly cancelled, so a bounded
-resolver executor and infrastructure egress policy remain necessary defense in
-depth.
+SQL은 PostgreSQL에 종속되며 영속성 통합 테스트는 PostgreSQL, 특히 임대 경쟁,
+복구, 오래된 리비전과 마이그레이션을 실행해야 한다. Spring JDBC를 사용하면 수동
+매핑이 필요하지만 잠금과 트랜잭션 범위를 명확하게 드러낼 수 있다.
 
-The durable event table provides the atomic record consumed by the direct HTTPS
-dispatcher adopted in PRD-0004 and ADR-0003. Delivery uses separate short claim
-and finalize transactions around network I/O, capped exponential retry, and
-retention that deletes only acknowledged events. No broker is adopted.
+트랜잭션 제한은 트랜잭션 범위 JDBC 구문과 행 잠금 대기에 적용되며, 공유 Spring
+JDBC 쿼리 타임아웃도 비트랜잭션 프로젝션과 백로그 구문을 제한한다. 이 구문 기한은
+연결 획득이나 JDBC 취소를 완료할 수 없는 네트워크 경로를 제한하지 못한다. 해당
+경로에는 데이터소스와 런타임 제어가 계속 필요하다. 독립된 스케줄러 실행로는 최대
+세 개의 데이터베이스 연결을 동시에 사용할 수 있으므로 풀 크기에는 최소한 그만큼의
+운영 여유를 남겨야 한다.
+
+DNS 고정에는 해석기를 주입할 수 있는 HTTP 클라이언트가 필요하다. Java 21은
+이에 상응하는 요청별 해석기를 제공하지 않으므로 JDK HTTP 클라이언트를 사용하지
+않는다. 리다이렉트 처리와 응답 소비는 명시적이며 테스트 가능하게 유지한다. JVM
+해석기 자체는 강제로 취소할 수 없으므로 제한된 해석기 실행기와 인프라 송신 정책은
+심층 방어로 계속 필요하다.
+
+내구성 이벤트 테이블은 PRD-0004와 ADR-0003에서 채택한 직접 HTTPS 디스패처가
+소비하는 원자적 기록을 제공한다. 전달은 네트워크 I/O 전후에 별도의 짧은 선점 및
+확정 트랜잭션, 상한이 적용된 지수 재시도와 확인된 이벤트만 삭제하는 보존 정책을
+사용한다. 브로커는 채택하지 않는다.

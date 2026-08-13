@@ -1,56 +1,38 @@
-# BATON WATCH Agent Guide
+# BATON WATCH 에이전트 가이드
 
-## Start here
+## 시작하기
 
-Read HANDOFF.md, README.md, the affected PRD, and relevant ADR before editing. Treat code, tests, PRDs, and ADRs as durable truth; use HANDOFF.md only for active transfer state. Use the matching skill under .agents/skills/.
+수정 전에 `HANDOFF.md`, `README.md`, 영향을 받는 PRD와 관련 ADR을 읽는다. 코드, 테스트, PRD, ADR을 지속적으로 유지되는 진실로 취급하고, `HANDOFF.md`는 현재 인계 상태를 기록하는 용도로만 사용한다. `.agents/skills/` 아래에서 작업에 맞는 스킬을 사용한다.
 
-## Preserve ownership
+## 소유권 보존
 
-WATCH may asynchronously check BATON RoleResource URLs, retain
-schedules/attempt/result history, derive UNKNOWN, HEALTHY, DEGRADED, or BROKEN,
-and record durable health-change events. WATCH must not authorize BATON
-resources, store response bodies, or block BATON transactions or projections.
+WATCH는 BATON `RoleResource` URL을 비동기로 점검하고, 일정·시도·결과 이력을 보존하며, `UNKNOWN`, `HEALTHY`, `DEGRADED`, `BROKEN` 상태를 도출하고, 내구성 있는 상태 변경 이벤트를 기록할 수 있다. WATCH는 BATON 리소스의 권한을 판정하거나 응답 본문을 저장하거나 BATON 트랜잭션 또는 프로젝션을 차단해서는 안 된다.
 
-The monitoring MVP and direct HTTPS health-change event delivery are
-implemented. Delivery is at least once to one configured BATON callback; BATON
-must deduplicate by event ID. Do not document production deployment, external
-alerts, a frontend, or a message broker as live.
+모니터링 MVP와 직접 HTTPS 상태 변경 이벤트 전달은 구현되어 있다. 전달은 설정된 하나의 BATON 콜백에 대해 최소 한 번 방식이며, BATON은 이벤트 ID로 중복을 제거해야 한다. 운영 배포, 외부 알림, 프런트엔드, 메시지 브로커가 실제 가동 중인 것처럼 문서화하지 않는다.
 
-## Preserve architecture
+## 아키텍처 보존
 
-Keep dependencies flowing bootstrap -> adapters -> application -> domain under com.personal.baton.watch.
+`com.personal.baton.watch` 아래의 의존성 흐름을 `bootstrap -> adapters -> application -> domain`으로 유지한다.
 
-- Put invariants and value types in domain.
-- Put use cases, services, and ports in application.
-- Put HTTP controllers and transport DTOs in adapter-in-web.
-- Put database implementations in adapter-out-persistence.
-- Put outbound HTTP and remote integrations in adapter-out-external.
-- Put Spring assembly and runtime configuration in bootstrap.
+- 불변식과 값 타입은 `domain`에 둔다.
+- 유스케이스, 서비스, 포트는 `application`에 둔다.
+- HTTP 컨트롤러와 전송 DTO는 `adapter-in-web`에 둔다.
+- 데이터베이스 구현은 `adapter-out-persistence`에 둔다.
+- 아웃바운드 HTTP와 원격 연동은 `adapter-out-external`에 둔다.
+- Spring 조립과 런타임 설정은 `bootstrap`에 둔다.
 
-Keep controllers thin. Inject Clock into time-sensitive application or domain code.
+컨트롤러는 얇게 유지한다. 시간에 민감한 application 또는 domain 코드에는 `Clock`을 주입한다.
 
-## Check safety
+## 안전성 점검
 
-Before any outbound request, enforce scheme and port policy, resolve and reject
-non-public destinations, pin the approved address, and bound time, headers,
-bytes, concurrency, and queues. Revalidate every target-check redirect; never
-follow an event-delivery redirect. Treat DNS rebinding and alternate IP forms
-as hostile. Never store bodies or use raw URLs, hosts, resource references,
-event IDs, or exception messages as metric labels.
+모든 아웃바운드 요청 전에 스킴과 포트 정책을 적용하고, 공개되지 않은 목적지를 해석 후 거부하며, 승인된 주소를 고정하고, 시간·헤더·바이트·동시성·큐를 제한한다. 대상 점검의 모든 리다이렉트를 다시 검증하고, 이벤트 전달 리다이렉트는 절대 따라가지 않는다. DNS 리바인딩과 대체 IP 표기를 적대적인 입력으로 취급한다. 본문을 저장하거나 원본 URL, 호스트, 리소스 참조, 이벤트 ID, 예외 메시지를 메트릭 레이블로 사용하지 않는다.
 
-Claim check or delivery work in a short transaction, perform network I/O
-outside a transaction, then finalize in another short transaction. Keep event
-payloads immutable, leases expiring, retry delays capped, finalization
-idempotent, and retention limited to delivered events.
+점검 또는 전달 작업은 짧은 트랜잭션에서 점유하고, 네트워크 I/O는 트랜잭션 밖에서 수행한 뒤, 별도의 짧은 트랜잭션에서 완료 처리한다. 이벤트 페이로드는 불변으로, 리스는 만료되도록, 재시도 지연은 상한을 두고, 완료 처리는 멱등하게, 보존은 전달 완료 이벤트로만 제한한다.
 
-## Commit messages
+## 커밋 메시지
 
-Keep Conventional Commit type prefixes such as `feat:`, `fix:`, `docs:`,
-`test:`, `refactor:`, and `chore:` for categorization. Write commit subjects and
-bodies in Korean. After successful verification, commit completed changes and
-push the current branch unless the user says otherwise. Never force-push
-without explicit approval.
+분류를 위해 `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:` 같은 Conventional Commit 타입 접두사를 유지한다. 커밋 제목과 본문은 한국어로 작성한다. 검증에 성공하면 사용자가 달리 지시하지 않는 한 완료된 변경을 커밋하고 현재 브랜치를 푸시한다. 명시적인 승인 없이 강제 푸시하지 않는다.
 
-## Verify
+## 검증
 
-Run the narrowest affected task, then ./gradlew test for cross-module changes. Use fixed clocks for time behavior. Run docker compose config when Compose changes. Never claim a deployment or URL-check capability from repository artifacts alone.
+가장 좁은 범위의 관련 작업을 먼저 실행하고, 여러 모듈에 걸친 변경에는 `./gradlew test`를 실행한다. 시간 동작에는 고정 `Clock`을 사용한다. Compose가 변경되면 `docker compose config`를 실행한다. 저장소 산출물만으로 배포 또는 URL 점검 기능이 실제 동작한다고 주장하지 않는다.

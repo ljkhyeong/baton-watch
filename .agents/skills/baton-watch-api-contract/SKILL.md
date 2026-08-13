@@ -1,29 +1,29 @@
 ---
 name: baton-watch-api-contract
-description: HTTP contract workflow for BATON WATCH. Use when adding or changing /api/v1 routes, request or response DTOs, validation, authentication exposure, error codes, status codes, pagination, idempotency, or focused controller and serialization tests.
+description: BATON WATCH의 HTTP 계약 작업 흐름. /api/v1 경로, 요청 또는 응답 DTO, 검증, 인증 적용 범위, 오류 코드, 상태 코드, 페이지네이션, 멱등성, 범위를 좁힌 컨트롤러 및 직렬화 테스트를 추가하거나 변경할 때 사용한다.
 ---
 
-# BATON WATCH API Contract
+# BATON WATCH API 계약
 
-## Inspect and preserve the contract
+## 계약 점검 및 보존
 
-- Read docs/PRD/0002_api-contract/spec.md, the affected controller/DTO, and its HTTP test.
-- Read PRD-0001 and ADR-0001 when the endpoint changes product behavior or service ownership.
-- Read PRD-0004 when work touches the outbound BATON callback. That callback is
-  not an inbound WATCH API route.
-- Treat GET /api/v1/system/status and authenticated PUT/GET
-  /api/v1/resource-monitors/{resourceReference} as the implemented routes.
-- Keep routes under /api/v1 and return named transport DTOs. Delegate to an inbound application port.
-- Keep transport validation in the web adapter and authorization, state, and transaction rules in application or domain code.
+- docs/PRD/0002_api-contract/spec.md, 영향을 받는 컨트롤러/DTO와 해당 HTTP 테스트를 읽는다.
+- 엔드포인트가 제품 동작이나 서비스 소유권을 변경한다면 PRD-0001과 ADR-0001을 읽는다.
+- 아웃바운드 BATON 콜백을 다루는 작업이라면 PRD-0004를 읽는다. 이 콜백은
+  인바운드 WATCH API 경로가 아니다.
+- GET /api/v1/system/status와 인증된 PUT/GET
+  /api/v1/resource-monitors/{resourceReference}를 구현된 경로로 취급한다.
+- 경로를 /api/v1 아래에 유지하고 이름이 있는 전송 DTO를 반환한다. 인바운드 애플리케이션 포트에 위임한다.
+- 전송 검증은 웹 어댑터에 두고, 인가·상태·트랜잭션 규칙은 애플리케이션 또는 도메인 코드에 둔다.
 
-## Change workflow
+## 변경 절차
 
-1. Define authentication, idempotency, response shape, errors, and compatibility before adding a command or query.
-2. Do not expose response bodies, credentials, resolved addresses, raw exceptions, or authorization decisions owned by BATON.
-3. Update PRD-0002 and focused MockMvc contract tests in the same change.
-4. Assert exact status, content type, fields, enum values, and timestamp format.
-5. Run ./gradlew :adapter-in-web:test, then widen when application or runtime wiring changed.
+1. 명령 또는 조회를 추가하기 전에 인증, 멱등성, 응답 형태, 오류와 호환성을 정의한다.
+2. 응답 본문, 자격 증명, 해석된 주소, 원본 예외 또는 BATON이 소유하는 인가 결정을 노출하지 않는다.
+3. 같은 변경에서 PRD-0002와 범위를 좁힌 MockMvc 계약 테스트를 갱신한다.
+4. 정확한 상태, 콘텐츠 타입, 필드, 열거형 값과 타임스탬프 형식을 검증한다.
+5. ./gradlew :adapter-in-web:test를 실행하고, 애플리케이션 또는 런타임 조립이 변경됐다면 검증 범위를 넓힌다.
 
-No attempt-history, manual-check, inbound webhook, or event-delivery route is
-adopted. Do not invent one merely because PRD-0004 implements outbound direct
-delivery.
+시도 이력, 수동 점검, 인바운드 웹훅 또는 이벤트 전달 경로는 채택되지 않았다.
+PRD-0004가 아웃바운드 직접 전달을 구현한다는 이유만으로 이러한 경로를 만들지
+않는다.

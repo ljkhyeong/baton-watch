@@ -1,35 +1,28 @@
 ---
 name: baton-watch-documentation-flows
-description: Documentation workflow for BATON WATCH README.md, HANDOFF.md, AGENTS.md, PRDs, ADRs, links, implementation status, and service-boundary language. Use for documentation-only work or for synchronizing maintained documents with an implemented behavior change.
+description: BATON WATCH의 README.md, HANDOFF.md, AGENTS.md, PRD, ADR, 링크, 구현 상태, 서비스 경계 표현을 관리하는 문서 작업 흐름이다. 문서만 수정하거나 구현된 동작 변경에 맞춰 유지 문서를 동기화할 때 사용한다.
 ---
 
-# BATON WATCH Documentation Flows
+# BATON WATCH 문서 작업 흐름
 
-## Keep authority clear
+## 문서별 권위를 명확히 유지하기
 
-- Use README.md for setup and the concise current capability summary.
-- Use PRD-0001 for product scope, ownership, safety, and current versus planned behavior.
-- Use PRD-0002 for adopted HTTP routes and DTO semantics.
-- Use PRD-0003 for check scheduling/execution and PRD-0004 for the outbound
-  health-change callback contract.
-- Use ADRs for accepted durable architecture and trade-offs.
-- Use HANDOFF.md only for active state, verification, and the next useful entry point.
-- Use AGENTS.md for repository workflow and invariants, not product claims.
+- README.md에는 설정 방법과 현재 제공 기능의 간결한 요약을 기록한다.
+- PRD-0001에는 제품 범위, 소유권, 안전성, 현재 동작과 계획된 동작을 기록한다.
+- PRD-0002에는 채택된 HTTP 경로와 DTO 의미를 기록한다.
+- PRD-0003에는 점검 예약과 실행을, PRD-0004에는 아웃바운드 상태 변경 콜백 계약을 기록한다.
+- ADR에는 채택되어 지속되는 아키텍처와 절충안을 기록한다.
+- HANDOFF.md는 현재 작업 상태, 검증 결과, 다음으로 유용한 진입점만 기록하는 데 사용한다.
+- AGENTS.md에는 제품에 대한 주장이 아니라 저장소 작업 흐름과 불변식을 기록한다.
 
-## Preserve honesty
+## 문서의 사실성 유지하기
 
-- Compare implementation-shaped claims with code, tests, configuration, and routes.
-- State that the PRD-0003 monitoring MVP is implemented, including schedules,
-  checks, bounded history, derived health, and durable event recording.
-- State that PRD-0004 direct HTTPS event delivery is implemented but disabled
-  until an operator supplies its callback and separate bearer token.
-- Label production deployment, external alerts, frontend, and broker as
-  unimplemented.
-- Never claim WATCH owns BATON authorization, stores response bodies, blocks BATON transactions, uses a broker, has a frontend, or is deployed.
-- Keep the adopted delivery semantics precise: one public-global HTTPS
-  callback, at-least-once delivery, event-ID idempotency at BATON, no redirects,
-  durable retry leases, and retention of delivered events only.
-- PRD-0003 owns check thresholds and retention; PRD-0004 owns delivery payload,
-  authentication, safety, retry, retention, and observability.
+- 구현에 관한 주장은 코드, 테스트, 설정, 경로와 대조한다.
+- PRD-0003의 모니터링 MVP는 일정, 점검, 제한된 이력, 도출된 상태, 내구성 있는 이벤트 기록을 포함해 구현되었다고 명시한다.
+- PRD-0004의 직접 HTTPS 이벤트 전달은 구현되었지만, 운영자가 콜백과 별도의 베어러 토큰을 제공하기 전까지 비활성화된다고 명시한다.
+- 운영 배포, 외부 알림, 프런트엔드, 브로커는 구현되지 않은 것으로 표시한다.
+- WATCH가 BATON 권한 부여를 소유하거나, 응답 본문을 저장하거나, BATON 트랜잭션을 차단하거나, 브로커를 사용하거나, 프런트엔드를 제공하거나, 배포되었다고 절대 주장하지 않는다.
+- 채택된 전달 의미를 정확히 유지한다. 전역에서 접근 가능한 공개 HTTPS 콜백 하나, 최소 한 번 전달, BATON의 이벤트 ID 기반 멱등성, 리다이렉트 금지, 내구성 있는 재시도 리스, 전달 완료 이벤트만 보존한다.
+- PRD-0003은 점검 임계값과 보존을, PRD-0004는 전달 페이로드, 인증, 안전성, 재시도, 보존, 관측 가능성을 책임진다.
 
-Update the canonical document first, then synchronize only affected summaries. Check relative links, search for stale current/planned wording, and use git diff --check. Run application tests only when code or executable configuration also changed.
+정본 문서를 먼저 갱신한 뒤 영향을 받는 요약만 동기화한다. 상대 링크를 확인하고, 현재 상태와 계획 상태에 관한 오래된 표현을 검색하며, `git diff --check`를 실행한다. 코드나 실행 가능한 설정도 변경했을 때만 애플리케이션 테스트를 실행한다.

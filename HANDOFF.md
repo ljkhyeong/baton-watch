@@ -1,273 +1,63 @@
-# BATON WATCH Handoff
+# BATON WATCH 인계 문서
 
-## Current state
+## 현재 상태
 
-- The Java 21 / Spring Boot 4.1.0 monitoring MVP is implemented across six
-  hexagonal Gradle modules.
-- GET /api/v1/system/status and authenticated PUT/GET
-  /api/v1/resource-monitors/{resourceReference} are implemented.
-- Spring Security applies stateless service-token authentication to every
-  non-status `/api/v1/**` request with context-path-aware matching. Start-up
-  validation restricts the token to at least 32 non-padding RFC 6750 `token68`
-  characters,
-  and Spring Security's standard Bearer resolver parses the header. After
-  authentication, Spring MVC 400/404/405/406/415 rejections use the stable
-  redacted Problem Details contract while preserving standard `Allow` and
-  `Accept` response headers. The strict HTTP firewall remains in front of that
-  authentication boundary; suspicious path forms fail closed with a fixed
-  redacted HTTP 400 Problem Details response while retaining Spring Security's
-  request-rejection observation.
-- Framework failures detected after an HTTP response is already committed do
-  not re-enter Spring's default exception writer, preventing its fallback WARN
-  log from restoring a raw exception message. Unexpected server failures still
-  log only their bounded exception class.
-- Application time comes from an injected UTC Clock.
-- PostgreSQL stores revision-safe schedules, leases, immutable attempts/results,
-  current derived health, and durable health-change events with pending/delivered
-  state, retry timing, delivery attempts, and expiring leases.
-- JDBC monitoring persistence is split along the application ports: monitor
-  synchronization/projection/staleness and check claim/finalization/retention
-  have separate adapters, while row mapping and caller-transaction event
-  appending remain package-internal shared collaborators.
-- The worker performs SSRF-safe, DNS-pinned outbound checks outside database
-  transactions and handles staleness and bounded attempt retention. Monitor
-  synchronization, redirect hops, and the configured callback endpoint share
-  the same static `TargetUrl` policy; callbacks add HTTPS and no-query rules,
-  while legacy unsafe encodings can be rehydrated but are rejected before DNS
-  or I/O.
-- IPv6 destination approval fails closed against the IANA global-unicast
-  allocation registry snapshot dated 2025-10-10. Unlisted, reserved, and
-  carved-out special-purpose ranges are rejected before connection in both
-  target checks and callback delivery. Deployment-specific RFC 6052 NAT64
-  prefixes cannot be inferred from an address alone and remain subject to the
-  required infrastructure egress policy.
-- Target checks and event delivery share a neutral request-scoped Apache client,
-  bounded deadline executor, pinned resolver, and bounded body discarder while
-  retaining separate GET/redirect and POST/acknowledgement semantics.
-- Apache HttpClient raw header, wire, implementation, and TLS diagnostic logger
-  categories are fixed at `OFF`. Those child levels remain protective when root
-  or the broader Apache HTTP package is raised to `DEBUG`; operators must not
-  override the protected child categories.
-- A real local TLS handshake verifies that the shared client connects only to
-  the approved pinned address while preserving the original HTTP Host and TLS
-  SNI. A certificate trusted by the test client succeeds only for its DNS SAN;
-  the same certificate under a mismatched hostname is classified as
-  `TLS_FAILURE` before the server handles an HTTP request.
-- Response-byte accounting never consumes a probe byte beyond the configured
-  allowance. Unknown-length responses that reach the allowance are rejected
-  conservatively, oversized and header-limit failures are classified as
-  `RESPONSE_TOO_LARGE`, and failed responses are aborted without Apache draining
-  the remaining body.
-- Allocation-sensitive response, header, DNS/request executor, and queue
-  settings have hard implementation ceilings validated at bootstrap and again
-  in the external adapter before resource allocation. Production check,
-  delivery, and maintenance batch settings have separate bootstrap ceilings
-  enforced before lease arithmetic and service execution. Bootstrap delegates
-  non-sensitive independent numeric and positive-duration bounds plus
-  nested-property presence to Spring Boot configuration-properties Bean
-  Validation, while secret syntax, conditional rules, cross-field comparisons,
-  and overflow handling remain explicit redacted checks.
-- PRD-0004 direct delivery is implemented for one operator-configured BATON
-  HTTPS callback: exact payload and idempotency header, separate bearer service
-  authentication, public-global DNS pinning, no redirects, bounded resources,
-  capped retries with a 30-day hard configuration ceiling, and delivered-only
-  retention. The sender boundary accepts only immutable event payload data;
-  lease and retry metadata stay internal. A shared application retry policy
-  rejects larger delays before any event is claimed and owns the safely capped
-  exponential calculation.
-- A compatible BATON receiver with separate bearer authentication and an atomic
-  immutable `eventId` inbox is implemented in the BATON repository. Its
-  deployment and public WATCH-to-BATON integration are not yet verified.
-- Delivery is disabled by default. Undelivered events remain durable while it
-  is disabled or BATON is unavailable.
-- Target checks, callback delivery, and maintenance run on separate named
-  single-thread schedulers, so a slow callback batch cannot starve check polling
-  or cleanup. Every scheduler inherits the 65-second graceful shutdown wait;
-  local and staging Compose grant the process 110 seconds before forced
-  termination, covering the default 30-second web shutdown phase, scheduler
-  drain, and a bounded margin. Stale-projection marking, attempt-history
-  retention, delivered-event cleanup, and backlog refresh are independent
-  methods on the maintenance lane, so one failure does not prevent another
-  task from remaining scheduled.
-- Adapter-owned persistence transactions have a five-second JDBC statement
-  deadline and a transaction-local one-second PostgreSQL row-lock timeout. They
-  reject an existing outer Spring transaction before work starts, preserving
-  the network-outside-transaction boundary.
-- Boot's shared `JdbcTemplate` and auto-configured `JdbcClient` apply the same
-  five-second statement deadline to non-transactional projection and event
-  backlog reads.
-- Separate-port Actuator health/Prometheus endpoints and low-cardinality check,
-  scheduler, backlog, oldest-event-age, finalization, and delivery-outcome
-  telemetry are configured; Compose does not publish the management port. No
-  external alerting stack, frontend, broker, or production deployment is
-  present. Scheduler errors use Spring's `tasks.scheduled.execution` timer;
-  failures reach that observation before a redacting handler logs only their
-  class and keeps the fixed-delay task scheduled. The redundant WATCH-owned
-  scheduler-failure counter has no repository consumer and is removed. The
-  management allowlist remains exactly `health,prometheus`; `scheduledtasks` is
-  not exposed because Spring's internal task diagnostics retain the original
-  exception.
-- The GitHub Actions `Verify` job uses SHA-pinned official checkout, Java, and
-  Gradle actions, requires Docker, runs a clean uncached test/build, and parses
-  fresh JUnit XML to require all six PostgreSQL suites plus the production-root
-  context smoke. Both Testcontainers entry points use the library's fail-closed
-  Docker policy, so missing Docker is a test failure rather than a skip.
-- The primary GitHub repository is public. `main` strictly requires the
-  GitHub Actions `verify` check from app ID `15368`, enforces that requirement
-  for administrators, and disallows force pushes and branch deletion without
-  requiring a solo-repository review.
-- Repository Actions policy allows only GitHub-owned actions and the
-  SHA-pinned `gradle/actions/setup-gradle` action, requires full commit-SHA
-  references, keeps the default workflow token read-only, and requires
-  approval before any external contributor's fork workflow runs. Secret
-  scanning and push protection are enabled with no open secret alert.
-- The public repository was seeded only from the author/committer-email-
-  normalized history. The previous repository identity remains a private
-  history-only archive, and representative pre-rewrite commit SHAs are not
-  resolvable through the public repository API.
-- Staging deployment artifacts now define a SHA-tagged local WATCH image,
-  mode-0600 Compose secret files, an external PostgreSQL volume, separate
-  internal database and egress-capable edge networks, health checks, bounded
-  resources and logs, and a Cloudflare Tunnel overlay. Both base and tunnel
-  configurations publish no host ports. The staging configuration fixes
-  health-change delivery to disabled. The runbook keeps the active external
-  volume name in a separate single-assignment mode-0600 state file so a schema
-  rollback remains selected across operator shells and repository updates.
-- `https://watch-staging.b4ton.com` remains an intended staging URL, not a live
-  deployment claim. The current Mac has not authenticated a Cloudflare Tunnel
-  connector, a remotely managed tunnel and its connector token have not been
-  provisioned, and live DNS/TLS/origin routing has not been externally
-  verified.
+- Java 21 / Spring Boot 4.1.0 모니터링 MVP가 헥사고날 구조의 Gradle 6개 모듈에 구현되어 있다.
+- `GET /api/v1/system/status`와 인증된 `PUT`/`GET /api/v1/resource-monitors/{resourceReference}`가 구현되어 있다.
+- Spring Security는 컨텍스트 경로를 인식하는 매칭으로 상태 조회를 제외한 모든 `/api/v1/**` 요청에 무상태 서비스 토큰 인증을 적용한다. 시작 검증은 토큰을 패딩 제외 최소 32자의 RFC 6750 `token68` 문자로 제한하며, Spring Security 표준 Bearer 해석기가 헤더를 파싱한다. 인증 후 Spring MVC의 `400`/`404`/`405`/`406`/`415` 거부는 표준 `Allow`와 `Accept` 응답 헤더를 보존하면서 안정적이고 비식별화된 Problem Details 계약을 사용한다. 엄격한 HTTP 방화벽은 이 인증 경계 앞에 유지되며, 의심스러운 경로 형식은 Spring Security의 요청 거부 관측을 유지하면서 고정된 비식별화 HTTP `400` Problem Details 응답으로 실패 폐쇄된다.
+- HTTP 응답이 이미 커밋된 뒤 감지된 프레임워크 실패는 Spring 기본 예외 작성기로 다시 진입하지 않으므로, 대체 `WARN` 로그가 원본 예외 메시지를 복원하지 못한다. 예상하지 못한 서버 실패도 제한된 예외 클래스만 기록한다.
+- 애플리케이션 시간은 주입된 UTC `Clock`에서 가져온다.
+- PostgreSQL은 리비전 안전성을 갖춘 일정, 리스, 불변 시도·결과, 현재 파생 상태와 함께 대기·전달 완료 상태, 재시도 시각, 전달 시도 횟수, 만료 리스를 포함한 내구성 있는 상태 변경 이벤트를 저장한다.
+- JDBC 모니터링 영속성은 애플리케이션 포트에 따라 분리되어 있다. 모니터 동기화·프로젝션·오래됨 처리와 점검 점유·완료 처리·보존은 별도 어댑터가 담당하고, 행 매핑과 호출자 트랜잭션 내 이벤트 추가는 패키지 내부의 공유 협력자로 유지된다.
+- 워커는 데이터베이스 트랜잭션 밖에서 SSRF 안전성과 DNS 고정을 적용한 아웃바운드 점검을 수행하고, 오래된 프로젝션과 제한된 시도 이력 보존을 처리한다. 모니터 동기화, 리다이렉트 홉, 설정된 콜백 엔드포인트는 동일한 정적 `TargetUrl` 정책을 공유하며, 콜백에는 HTTPS와 쿼리 금지 규칙이 추가된다. 기존의 안전하지 않은 인코딩은 다시 적재할 수 있지만 DNS 또는 I/O 전에 거부된다.
+- IPv6 목적지 승인은 2025-10-10 기준 IANA 글로벌 유니캐스트 할당 레지스트리 스냅샷에 대해 실패 폐쇄된다. 미등재·예약·제외된 특수 목적 범위는 대상 점검과 콜백 전달 모두에서 연결 전에 거부된다. 배포 환경별 RFC 6052 NAT64 접두사는 주소만으로 추론할 수 없으므로 필수 인프라 이그레스 정책의 적용 대상이다.
+- 대상 점검과 이벤트 전달은 중립적인 요청 범위 Apache 클라이언트, 제한 시간이 있는 실행기, 고정 해석기, 크기 제한 본문 폐기기를 공유하면서도 GET·리다이렉트와 POST·확인 응답 의미는 분리해 유지한다.
+- Apache HttpClient의 원시 헤더, wire, 구현, TLS 진단 로거 범주는 `OFF`로 고정된다. 루트 또는 더 넓은 Apache HTTP 패키지가 `DEBUG`로 올라가도 이 하위 레벨이 보호 기능을 유지하며, 운영자는 보호된 하위 범주를 재정의해서는 안 된다.
+- 실제 로컬 TLS 핸드셰이크는 공유 클라이언트가 원본 HTTP Host와 TLS SNI를 보존하면서 승인·고정된 주소로만 연결함을 검증한다. 테스트 클라이언트가 신뢰하는 인증서는 해당 DNS SAN에서만 성공하며, 동일한 인증서를 호스트명이 일치하지 않는 상태로 사용하면 서버가 HTTP 요청을 처리하기 전에 `TLS_FAILURE`로 분류된다.
+- 응답 바이트 집계는 설정된 허용량을 넘는 탐색 바이트를 소비하지 않는다. 길이를 알 수 없는 응답이 허용량에 도달하면 보수적으로 거부하고, 크기 초과와 헤더 한도 실패는 `RESPONSE_TOO_LARGE`로 분류하며, 실패 응답은 Apache가 나머지 본문을 비우지 않도록 중단한다.
+- 할당에 민감한 응답·헤더·DNS/요청 실행기·큐 설정에는 구현상 강제 상한이 있으며, bootstrap과 외부 어댑터의 리소스 할당 직전에서 다시 검증된다. 운영 점검·전달·유지보수 배치 설정에는 별도의 bootstrap 상한이 있어 리스 산술과 서비스 실행 전에 적용된다. Bootstrap은 민감하지 않은 독립 숫자 범위, 양의 기간 범위, 중첩 속성 존재 여부를 Spring Boot 구성 속성 Bean Validation에 위임하고, 비밀값 문법, 조건부 규칙, 필드 간 비교, 오버플로 처리는 명시적이고 비식별화된 검사로 유지한다.
+- PRD-0004 직접 전달은 운영자가 설정한 하나의 BATON HTTPS 콜백에 대해 구현되어 있다. 정확한 페이로드와 멱등성 헤더, 별도 Bearer 서비스 인증, 공개 글로벌 DNS 고정, 리다이렉트 금지, 제한된 리소스, 30일의 강제 설정 상한이 있는 재시도, 전달 완료 이벤트만의 보존을 적용한다. 송신자 경계는 불변 이벤트 페이로드 데이터만 받고, 리스와 재시도 메타데이터는 내부에 유지한다. 공유 애플리케이션 재시도 정책은 이벤트 점유 전에 더 큰 지연을 거부하고 안전하게 상한을 둔 지수 계산을 소유한다.
+- 별도 Bearer 인증과 원자적·불변 `eventId` 수신함을 갖춘 호환 BATON 수신기가 BATON 저장소에 구현되어 있다. 해당 배포와 공개 WATCH-BATON 연동은 아직 검증되지 않았다.
+- 전달은 기본적으로 비활성화된다. 비활성 상태이거나 BATON을 사용할 수 없는 동안에도 미전달 이벤트는 내구성 있게 유지된다.
+- 대상 점검, 콜백 전달, 유지보수는 이름이 지정된 별도의 단일 스레드 스케줄러에서 실행되므로 느린 콜백 배치가 점검 폴링이나 정리를 굶기지 않는다. 모든 스케줄러는 65초의 우아한 종료 대기를 상속하고, 로컬·스테이징 Compose는 강제 종료 전 110초를 허용하여 기본 30초 웹 종료 단계, 스케줄러 비우기, 제한된 여유 시간을 포함한다. 오래된 프로젝션 표시, 시도 이력 보존, 전달 완료 이벤트 정리, 백로그 갱신은 유지보수 레인의 독립 메서드이므로 한 작업의 실패가 다른 작업의 예약 유지를 막지 않는다.
+- 어댑터 소유 영속성 트랜잭션에는 5초 JDBC 구문 제한 시간과 트랜잭션 로컬 1초 PostgreSQL 행 잠금 제한 시간이 적용된다. 작업 시작 전에 기존 외부 Spring 트랜잭션을 거부하여 네트워크 I/O를 트랜잭션 밖에 두는 경계를 보존한다.
+- Boot의 공유 `JdbcTemplate`과 자동 구성된 `JdbcClient`는 비트랜잭션 프로젝션 및 이벤트 백로그 조회에도 동일한 5초 구문 제한 시간을 적용한다.
+- 별도 포트의 Actuator 상태·Prometheus 엔드포인트와 낮은 카디널리티의 점검·스케줄러·백로그·가장 오래된 미전달 이벤트의 경과 시간·완료 처리·전달 결과 텔레메트리가 구성되어 있으며, Compose는 관리 포트를 공개하지 않는다. 외부 알림 스택, 프런트엔드, 브로커, 운영 배포는 존재하지 않는다. 스케줄러 오류는 Spring `tasks.scheduled.execution` 타이머를 사용하며, 실패는 비식별화 핸들러가 클래스만 기록하고 고정 지연 작업을 계속 예약하기 전에 해당 관측에 도달한다. 저장소 내 소비자가 없는 중복 WATCH 소유 스케줄러 실패 카운터는 제거되었다. 관리 허용 목록은 정확히 `health,prometheus`로 유지되며, Spring 내부 작업 진단이 원본 예외를 보유하므로 `scheduledtasks`는 노출하지 않는다.
+- GitHub Actions `Verify` 작업은 전체 SHA로 고정된 공식 checkout, Java, Gradle 액션을 사용하고 Docker를 요구하며, 캐시 없는 깨끗한 테스트·빌드를 실행한다. 새 JUnit XML을 파싱하여 PostgreSQL 테스트 모음 6개와 운영 루트 컨텍스트 스모크가 모두 실행됐음을 요구한다. 두 Testcontainers 진입점은 라이브러리의 실패 폐쇄형 Docker 정책을 사용하므로 Docker 부재는 건너뜀이 아니라 테스트 실패다.
+- 기본 GitHub 저장소는 공개 상태다. `main`은 앱 ID `15368`의 GitHub Actions `verify` 검사를 엄격히 요구하고 관리자에게도 적용하며, 단독 저장소 리뷰를 요구하지 않는 대신 강제 푸시와 브랜치 삭제를 금지한다.
+- 저장소 Actions 정책은 GitHub 소유 액션과 전체 SHA로 고정된 `gradle/actions/setup-gradle` 액션만 허용하고, 전체 커밋 SHA 참조를 요구하며, 기본 워크플로 토큰을 읽기 전용으로 유지하고, 외부 기여자의 포크 워크플로 실행 전에 승인을 요구한다. 비밀값 검사와 푸시 보호가 활성화되어 있으며 열린 비밀값 경고는 없다.
+- 공개 저장소는 작성자·커미터 이메일을 정규화한 이력에서만 생성되었다. 이전 저장소 식별자는 비공개 이력 전용 보관본으로 남아 있으며, 재작성 전 대표 커밋 SHA는 공개 저장소 API에서 확인할 수 없다.
+- 스테이징 배포 산출물은 SHA 태그가 붙은 로컬 WATCH 이미지, 권한 모드 `0600` Compose 비밀 파일, 외부 PostgreSQL 볼륨, 분리된 내부 데이터베이스 네트워크와 이그레스 가능한 엣지 네트워크, 상태 점검, 제한된 리소스·로그, Cloudflare Tunnel 오버레이를 정의한다. 기본 구성과 터널 구성 모두 호스트 포트를 공개하지 않는다. 스테이징 구성은 상태 변경 전달을 비활성으로 고정한다. 런북은 활성 외부 볼륨 이름을 별도의 1회 할당 권한 모드 `0600` 상태 파일에 보관하여 운영자 셸과 저장소 업데이트가 달라져도 스키마 롤백 시 선택이 유지되게 한다.
+- `https://watch-staging.b4ton.com`은 의도된 스테이징 URL이며 실제 배포를 주장하는 값이 아니다. 현재 Mac은 Cloudflare Tunnel 커넥터 인증을 완료하지 않았고, 원격 관리 터널과 커넥터 토큰도 준비되지 않았으며, 실제 DNS/TLS/오리진 라우팅도 외부에서 검증되지 않았다.
 
-## Verification
+## 검증
 
-- Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
-  and a 512 MiB Gradle heap: 372 tests passed with no skips,
-  failures, or errors, including the Docker-backed PostgreSQL Testcontainers
-  suite.
-- The real `BatonWatchApplication` root context started against a
-  service-connected PostgreSQL 18.4 container with Flyway V1/V2, Spring
-  Security, all three persistence adapters, outbound check and delivery
-  clients, enabled delivery workers, and all three named schedulers. Its HTTP
-  smoke proved public status access, unauthenticated PUT rejection without a
-  write, authenticated INACTIVE synchronization, authenticated projection
-  readback, and the persisted UNKNOWN/INACTIVE row without attempts or events.
-- The same result-evidence parser used by CI verified seven required suites and
-  33 tests: six PostgreSQL suites/32 tests and the one production-root smoke.
-- The first clean public-repository `Verify / verify` run for commit `f5502a7`
-  passed every step in 1 minute 32 seconds, including Docker preflight, clean
-  uncached tests, boot jar creation, and required-suite evidence validation.
-- Executable boot jar: passed.
-- Spring Boot JDBC and transaction auto-configuration: passed with Boot-managed
-  `JdbcTemplate`, `JdbcClient`, five-second query timeout, and
-  `PlatformTransactionManager`, plus the WATCH-owned bounded PostgreSQL
-  `TransactionOperations` wiring all three persistence adapters.
-- Outbound checker and callback adapter suite: 239 tests passed without a
-  live-internet dependency, including exact consumed-byte accounting,
-  no-drain response abort, header count/line classification, resource ceiling
-  boundaries, every current IANA-allocated IPv6 range boundary, reserved and
-  unallocated IPv6 rejection before check or delivery transport,
-  named daemon platform-thread creation for bounded DNS and request executors,
-  pinned-address TLS Host/SNI preservation, DNS SAN verification, and
-  trusted-certificate hostname-mismatch classification.
-- Bootstrap logging regression loads the production configuration through
-  Spring Boot's ConfigData and final log-level application path without
-  mutating the test JVM's logger state. With root and the broader Apache HTTP
-  package forced to `DEBUG`, raw header/wire and representative
-  implementation/TLS loggers remain `OFF`.
-- PostgreSQL 18.4 Testcontainers suite: 32 tests passed, including V1/V2
-  migration, revision races, deterministic locked-row skipping for check and
-  delivery claims, disjoint concurrent claims, concurrent finalization
-  idempotency, delivery token/attempt stale rejection, batch check- and
-  delivery-claim rollback, check and delivery lease recovery, atomic event
-  rollback across finalization, synchronization, and staleness, retry
-  boundaries, backlog state, delivered-only retention, row-lock timeout,
-  transaction-deadline rollback, transaction-local setting restoration,
-  bounded non-transactional projection and backlog reads, and outer-transaction
-  rejection.
-- Named scheduler tests verify independent single-thread execution, owned
-  thread prefixes, shutdown policies, explicit routing of all six scheduled
-  methods, `outcome=ERROR` framework observation, redacted failure logging, and
-  continued fixed-delay execution after a failure.
-- Delivery retry policy tests verify first, exponential, and maximum-attempt
-  delays plus the exact 30-day accepted and 30-day-plus-one-nanosecond rejected
-  configuration boundary before a persistence claim.
-- Configuration-properties binding tests verify that Spring rejects invalid
-  monitoring and delivery batch limits plus nested HTTP executor bounds with
-  field-specific validation failures.
-- Executable boot jar and clean Docker multi-stage build: passed.
-- Isolated Compose delivery smoke: PostgreSQL became healthy, Flyway V1 and V2
-  applied, the application status and separate management health endpoints were
-  UP, active sync returned UNKNOWN, and the asynchronous check reached
-  SUCCESS/HEALTHY.
-- With delivery disabled, the smoke database contained one PENDING event with
-  delivery attempt zero and no lease; the Prometheus delivery backlog gauge was
-  `1.0`, matching the database count.
-- Smoke logs contained none of the exercised target URL, resource reference, or
-  bearer token values. The test containers stopped cleanly, and their network
-  and PostgreSQL volume were removed afterward.
-- docker compose config --quiet: passed. Smoke containers, network, and test
-  volume were removed afterward.
-- All six project-local skills passed quick_validate.py after documentation
-  synchronization.
-- The public-staging preflight sends malformed JSON without credentials and
-  requires `401`, externally demonstrating rejection before a JSON parser
-  error. Its executable nine-case shell test also fixes token separation,
-  child-environment isolation, hostname shape, POST/content-type/body, user
-  curl configuration, HTTPS-only/no-proxy/TLS/deadline/output controls, and
-  HTTP-status handling. A live receiver or public delivery run has not yet
-  been verified.
-- `https://watch-staging.b4ton.com` is the selected public-staging WATCH base
-  URL. Its DNS record, valid HTTPS routing, deployed instance, and externally
-  successful status response have not been provisioned or verified, so the
-  hostname is not evidence of a live deployment.
-- Public-staging readiness was checked without printing values. None of the
-  five required local variables was present, and the GitHub repository had no
-  Actions secrets or environments. No BATON callback, distinct operator
-  tokens, database/log access, or acknowledgement-loss ingress was available,
-  so the runbook was not executed against an external system.
-- The monitor API authentication boundary has a real embedded-server test under
-  a non-empty servlet context path. It verifies the Bearer challenge, exact 401
-  problem fields,
-  fail-closed `/api/v1/**` handling, statelessness, public status access, and
-  authenticated PUT without CSRF. The same server test verifies that strict
-  firewall rejection of semicolon and duplicate-slash paths returns a fixed
-  redacted HTTP 400 problem without exposing the rejected path or resource
-  reference. A focused exception-handler test proves that a committed response
-  cannot trigger Spring's raw exception-message fallback log.
-- Staging Compose artifacts are available as `compose.staging.yml`,
-  `compose.staging-tunnel.yml`, and `ops/staging.env.example`. Their merged
-  configuration is designed to require an immutable WATCH image, external
-  PostgreSQL volume, and three file-backed secrets while publishing no host
-  port in either mode. This is static artifact evidence only; no live
-  Cloudflare connector or external endpoint test has passed yet.
-- The executable staging Compose policy test passed for both the base and
-  tunnel-rendered models. An isolated base-origin smoke then used mode-0600 test
-  secrets, a dedicated external volume, and the hardened image: PostgreSQL and
-  WATCH became healthy, Flyway V1/V2 were present, internal status and
-  readiness were `UP`, the edge-network status path succeeded, unauthenticated
-  monitor access returned `401`, and both containers had empty host port
-  bindings. WATCH environment inspection contained no password or token value,
-  and bounded logs contained none of the exercised secrets or prohibited
-  request-data categories.
-- A graceful stop preserved the external volume; the same image and volume
-  restarted healthy with both migration records intact. Compose shutdown again
-  preserved the volume before the explicitly named test volume, test image,
-  containers, networks, and temporary secret files were removed. This proves a
-  local origin path only, not a Cloudflare connector or public deployment.
+- Gradle 9.2.1, 워커 2개, Gradle 힙 512 MiB 환경에서 `clean test :bootstrap:bootJar --no-build-cache`를 실행했다. Docker 기반 PostgreSQL Testcontainers 모음을 포함한 테스트 372개가 건너뜀·실패·오류 없이 통과했다.
+- 실제 `BatonWatchApplication` 루트 컨텍스트가 Flyway V1/V2, Spring Security, 영속성 어댑터 3개, 아웃바운드 점검·전달 클라이언트, 활성화된 전달 워커, 이름이 지정된 스케줄러 3개와 함께 서비스 연결된 PostgreSQL 18.4 컨테이너를 대상으로 시작됐다. HTTP 스모크는 공개 상태 접근, 쓰기 없는 미인증 PUT 거부, 인증된 `INACTIVE` 동기화, 인증된 프로젝션 재조회, 시도나 이벤트가 없는 영속 `UNKNOWN`/`INACTIVE` 행을 증명했다.
+- CI와 동일한 결과 증거 파서가 필수 테스트 모음 7개와 테스트 33개를 검증했다. PostgreSQL 모음 6개·테스트 32개와 운영 루트 스모크 1개다.
+- 공개 저장소 커밋 `f5502a7`의 첫 번째 깨끗한 `Verify / verify` 실행은 Docker 사전 검사, 캐시 없는 깨끗한 테스트, 부트 JAR 생성, 필수 테스트 모음 증거 검증을 포함한 모든 단계를 1분 32초에 통과했다.
+- 실행 가능한 부트 JAR: 통과.
+- Spring Boot JDBC 및 트랜잭션 자동 구성: Boot 관리 `JdbcTemplate`, `JdbcClient`, 5초 조회 제한 시간, `PlatformTransactionManager`와 영속성 어댑터 3개를 연결하는 WATCH 소유의 제한된 PostgreSQL `TransactionOperations`를 포함해 통과했다.
+- 아웃바운드 점검기·콜백 어댑터 모음: 실제 인터넷 의존성 없이 테스트 239개가 통과했다. 정확한 소비 바이트 집계, 본문을 비우지 않는 응답 중단, 헤더 개수·행 분류, 리소스 상한 경계, 현재 IANA 할당 IPv6 범위의 모든 경계, 점검·전달 전송 전 예약·미할당 IPv6 거부, 제한된 DNS·요청 실행기의 이름 있는 데몬 플랫폼 스레드 생성, 고정 주소 TLS Host/SNI 보존, DNS SAN 검증, 신뢰 인증서의 호스트명 불일치 분류를 포함한다.
+- 부트스트랩 로깅 회귀 테스트는 테스트 JVM의 로거 상태를 변경하지 않고 Spring Boot ConfigData와 최종 로그 레벨 적용 경로를 통해 운영 설정을 적재한다. 루트와 더 넓은 Apache HTTP 패키지를 `DEBUG`로 강제해도 원시 헤더·wire와 대표 구현·TLS 로거는 `OFF`로 유지된다.
+- PostgreSQL 18.4 Testcontainers 모음: 테스트 32개가 통과했다. V1/V2 마이그레이션, 리비전 경합, 점검·전달 점유 시 잠긴 행의 결정적 건너뛰기, 서로 겹치지 않는 동시 점유, 동시 완료 처리 멱등성, 오래된 전달 토큰·시도 거부, 배치 점검·전달 점유 롤백, 점검·전달 리스 복구, 완료 처리·동기화·오래됨 처리 전반의 원자적 이벤트 롤백, 재시도 경계, 백로그 상태, 전달 완료 이벤트만의 보존, 행 잠금 제한 시간, 트랜잭션 제한 시간 롤백, 트랜잭션 로컬 설정 복원, 제한된 비트랜잭션 프로젝션·백로그 조회, 외부 트랜잭션 거부를 포함한다.
+- 이름이 지정된 스케줄러 테스트는 독립 단일 스레드 실행, 소유 스레드 접두사, 종료 정책, 예약 메서드 6개의 명시적 라우팅, `outcome=ERROR` 프레임워크 관측, 비식별화된 실패 로깅, 실패 후 고정 지연 실행 지속을 검증한다.
+- 전달 재시도 정책 테스트는 첫 번째·지수형·최대 시도 지연과 함께 영속성 점유 전 정확한 30일 허용 및 30일+1나노초 거부 설정 경계를 검증한다.
+- 구성 속성 바인딩 테스트는 Spring이 잘못된 모니터링·전달 배치 한도와 중첩 HTTP 실행기 범위를 필드별 검증 실패로 거부함을 확인한다.
+- 실행 가능한 부트 JAR와 깨끗한 Docker 다단계 빌드: 통과.
+- 격리된 Compose 전달 스모크: PostgreSQL이 정상 상태가 되고 Flyway V1/V2가 적용됐으며, 애플리케이션 상태와 별도 관리 상태 엔드포인트가 `UP`, 활성 동기화 결과가 `UNKNOWN`, 비동기 점검 결과가 `SUCCESS`/`HEALTHY`에 도달했다.
+- 전달이 비활성화된 상태에서 스모크 데이터베이스에는 전달 시도 0, 리스 없음인 `PENDING` 이벤트가 하나 있었고, Prometheus 전달 백로그 게이지는 데이터베이스 개수와 같은 `1.0`이었다.
+- 스모크 로그에는 실행에 사용한 대상 URL, 리소스 참조, Bearer 토큰 값이 없었다. 테스트 컨테이너는 정상 종료됐고 네트워크와 PostgreSQL 볼륨도 이후 제거됐다.
+- `docker compose config --quiet`: 통과. 스모크 컨테이너, 네트워크, 테스트 볼륨은 이후 제거됐다.
+- 문서 동기화 후 프로젝트 로컬 스킬 6개가 모두 `quick_validate.py`를 통과했다.
+- 공개 스테이징 사전 검사는 자격 증명 없이 잘못된 JSON을 전송하고 `401`을 요구하여 JSON 파서 오류보다 먼저 거부됨을 외부에서 증명한다. 실행 가능한 9개 사례 셸 테스트는 토큰 분리, 자식 환경 격리, 호스트명 형식, POST·content-type·본문, 사용자 curl 설정, HTTPS 전용·no-proxy·TLS·제한 시간·출력 제어, HTTP 상태 처리도 고정한다. 실제 수신기나 공개 전달 실행은 아직 검증되지 않았다.
+- `https://watch-staging.b4ton.com`은 선택된 공개 스테이징 WATCH 기본 URL이다. DNS 레코드, 유효한 HTTPS 라우팅, 배포 인스턴스, 외부에서 성공한 상태 응답은 준비되거나 검증되지 않았으므로 이 호스트명은 실제 배포의 증거가 아니다.
+- 값을 출력하지 않고 공개 스테이징 준비 상태를 확인했다. 필수 로컬 변수 5개가 모두 없었고 GitHub 저장소에도 Actions 비밀값이나 환경이 없었다. BATON 콜백, 서로 다른 운영자 토큰, 데이터베이스·로그 접근, 확인 응답 손실 ingress를 사용할 수 없어 런북은 외부 시스템을 대상으로 실행하지 않았다.
+- 모니터 API 인증 경계는 비어 있지 않은 서블릿 컨텍스트 경로에서 실제 내장 서버 테스트를 갖는다. Bearer 챌린지, 정확한 `401` 문제 필드, 실패 폐쇄형 `/api/v1/**` 처리, 무상태성, 공개 상태 접근, CSRF 없는 인증 PUT을 검증한다. 같은 서버 테스트는 엄격한 방화벽이 세미콜론·중복 슬래시 경로를 거부할 때 거부된 경로나 리소스 참조를 노출하지 않는 고정 비식별화 HTTP `400` 문제를 반환함을 확인한다. 범위를 좁힌 예외 핸들러 테스트는 커밋된 응답이 Spring의 원본 예외 메시지 대체 로그를 유발할 수 없음을 증명한다.
+- 스테이징 Compose 산출물은 `compose.staging.yml`, `compose.staging-tunnel.yml`, `ops/staging.env.example`로 제공된다. 병합 구성은 두 모드 모두 호스트 포트를 공개하지 않으면서 불변 WATCH 이미지, 외부 PostgreSQL 볼륨, 파일 기반 비밀값 3개를 요구하도록 설계됐다. 이는 정적 산출물 증거일 뿐이며, 실제 Cloudflare 커넥터나 외부 엔드포인트 테스트는 아직 통과하지 않았다.
+- 실행 가능한 스테이징 Compose 정책 테스트가 기본 및 터널 렌더링 모델 모두에서 통과했다. 이어 격리된 기본 오리진 스모크가 권한 모드 `0600` 테스트 비밀값, 전용 외부 볼륨, 강화 이미지를 사용했다. PostgreSQL과 WATCH가 정상 상태가 되고 Flyway V1/V2가 존재했으며, 내부 상태·준비 상태는 `UP`, 엣지 네트워크 상태 경로는 성공, 미인증 모니터 접근은 `401`, 두 컨테이너의 호스트 포트 바인딩은 비어 있었다. WATCH 환경 검사에는 비밀번호나 토큰 값이 없었고, 제한된 로그에는 실행에 사용한 비밀값이나 금지된 요청 데이터 범주가 없었다.
+- 우아한 종료 후 외부 볼륨이 보존됐고, 동일한 이미지와 볼륨이 두 마이그레이션 기록을 유지한 채 정상 재시작했다. Compose 종료는 명시적으로 이름 붙인 테스트 볼륨, 테스트 이미지, 컨테이너, 네트워크, 임시 비밀 파일을 제거하기 전에 다시 볼륨을 보존했다. 이는 로컬 오리진 경로만 증명하며 Cloudflare 커넥터나 공개 배포를 증명하지 않는다.
 
-## Next useful slice
+## 다음 권장 작업
 
-Authenticate the current Mac to the `b4ton.com` Cloudflare account, create the
-remotely managed staging tunnel, install its connector token and the independent
-database/API secret files with mode 0600, initialize the active-volume state,
-create the external PostgreSQL volume, and build the selected clean Git SHA
-locally. Configure
-`watch-staging.b4ton.com` with status and monitor paths routed to
-`http://watch:8080`, a final `404` catch-all, cache bypass, and an Active edge
-certificate. Then deploy with both staging Compose files and verify internal
-application/database health plus external status, unauthenticated `401`, TLS, cache, and log
-redaction while delivery remains disabled. Only after that should the separate
-BATON callback and acknowledgement-loss delivery exercise be provisioned. Do
-not infer a deployment from repository artifacts or Cloudflare configuration
-alone.
+현재 Mac을 `b4ton.com` Cloudflare 계정에 인증하고, 원격 관리 스테이징 터널을 생성하며, 커넥터 토큰과 서로 독립적인 데이터베이스·API 비밀 파일을 권한 모드 `0600`으로 설치한다. 활성 볼륨 상태를 초기화하고 외부 PostgreSQL 볼륨을 생성한 뒤 선택한 깨끗한 Git SHA를 로컬에서 빌드한다. `watch-staging.b4ton.com`의 상태·모니터 경로를 `http://watch:8080`으로 라우팅하고, 최종 `404` 포괄 규칙, 캐시 우회, `Active` 엣지 인증서를 구성한다. 이후 두 스테이징 Compose 파일로 배포하고 전달은 비활성 상태로 유지한 채 내부 애플리케이션·데이터베이스 상태와 외부 상태, 미인증 `401`, TLS, 캐시, 로그 비식별화를 검증한다. 그 다음에만 별도 BATON 콜백과 확인 응답 손실 전달 실험을 준비한다. 저장소 산출물이나 Cloudflare 구성만으로 배포를 추론하지 않는다.
