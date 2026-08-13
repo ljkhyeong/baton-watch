@@ -24,7 +24,7 @@ import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
-/** JDBC adapter for monitor synchronization, projection queries, and staleness. */
+/** 모니터 동기화, 프로젝션 조회, 오래된 프로젝션 처리를 담당하는 JDBC 어댑터다. */
 public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePort {
 
     private final JdbcTemplate jdbc;

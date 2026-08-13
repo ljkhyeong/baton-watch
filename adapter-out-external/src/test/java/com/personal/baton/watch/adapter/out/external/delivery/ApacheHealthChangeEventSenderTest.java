@@ -35,7 +35,7 @@ class ApacheHealthChangeEventSenderTest {
             try (ApacheHealthChangeEventSender ignored = sender(
                     URI.create("https://events.example.com/callback"),
                     "0123456789abcdef0123456789abcdef")) {
-                // Construction and close are the lifecycle contract exercised here.
+                // 여기서는 생성과 닫기라는 생명주기 계약을 검증한다.
             }
         });
     }

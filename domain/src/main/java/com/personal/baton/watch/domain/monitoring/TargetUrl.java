@@ -27,13 +27,13 @@ public record TargetUrl(String value) {
         return uri().getScheme().toLowerCase(Locale.ROOT);
     }
 
-    /** Applies encoded-character restrictions without preventing historical rows from being rehydrated. */
+    /** 기존 행의 재구성을 막지 않으면서 인코딩된 문자 제한을 적용합니다. */
     public TargetUrl requireSafeEncodedCharacters() {
         requireSafeReferenceCharacters(value);
         return this;
     }
 
-    /** Validates a raw target or redirect reference before URI resolution can normalize it. */
+    /** URI 해석 과정에서 정규화되기 전에 원시 대상 또는 리다이렉트 참조를 검증합니다. */
     public static void requireSafeReferenceCharacters(String value) {
         Objects.requireNonNull(value, "value");
         validateRawCharacters(value);

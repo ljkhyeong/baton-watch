@@ -4,7 +4,7 @@ import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Connection and response bounds applied to one request-scoped Apache client. */
+/** 요청 범위 Apache 클라이언트 하나에 적용하는 연결 및 응답 제한. */
 public record ApacheHttpClientLimits(
         Duration connectTimeout,
         Duration responseTimeout,

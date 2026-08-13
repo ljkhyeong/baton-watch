@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** Appends an event inside the caller's active transaction; it starts no transaction itself. */
+/** 호출자의 활성 트랜잭션 안에서 이벤트를 추가하며 자체 트랜잭션은 시작하지 않는다. */
 final class JdbcHealthChangeEventAppender {
 
     private final JdbcTemplate jdbc;

@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.hc.client5.http.DnsResolver;
 
-/** A resolver scoped to one approved request target; it never performs DNS. */
+/** 승인된 요청 대상 하나로 범위가 제한된 리졸버이며 DNS 조회를 절대 수행하지 않는다. */
 final class PinnedDnsResolver implements DnsResolver {
 
     private final String expectedHostname;

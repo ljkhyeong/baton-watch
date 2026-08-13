@@ -1,4 +1,4 @@
 interface:
-  display_name: "BATON WATCH Documentation"
-  short_description: "Keep WATCH documentation honest"
-  default_prompt: "Use $baton-watch-documentation-flows to update BATON WATCH documentation with clear current and planned states."
+  display_name: "BATON WATCH 문서"
+  short_description: "WATCH 문서의 사실성을 유지합니다"
+  default_prompt: "$baton-watch-documentation-flows 스킬을 사용해 현재 상태와 계획 상태를 명확히 구분하여 BATON WATCH 문서를 갱신합니다."

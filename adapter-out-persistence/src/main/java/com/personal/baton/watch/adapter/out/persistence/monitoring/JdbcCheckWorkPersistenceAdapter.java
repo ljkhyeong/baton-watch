@@ -26,7 +26,7 @@ import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
-/** JDBC adapter for check claims, finalization, and bounded attempt retention. */
+/** 점검 선점, 완료 처리, 제한된 시도 보존을 담당하는 JDBC 어댑터다. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
 
     private final JdbcTemplate jdbc;

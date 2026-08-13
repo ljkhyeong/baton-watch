@@ -16,9 +16,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * Runs the JVM resolver in a bounded executor. Cancelling a future cannot force
- * the platform resolver itself to stop; the bounded pool prevents unbounded
- * thread creation while an infrastructure egress policy remains defense in depth.
+ * 제한된 실행기에서 JVM 리졸버를 실행한다. Future를 취소해도 플랫폼 리졸버 자체를 강제로
+ * 중지할 수 없으므로, 제한된 풀은 스레드가 무한히 생성되는 것을 방지하고 인프라 이그레스
+ * 정책은 심층 방어 수단으로 유지된다.
  */
 public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 

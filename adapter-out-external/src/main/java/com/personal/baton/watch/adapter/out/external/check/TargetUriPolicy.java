@@ -4,7 +4,7 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
 import java.util.Locale;
 
-/** Adapts the canonical TargetUrl policy to per-hop redirect and loop handling. */
+/** 기준 {@code TargetUrl} 정책을 홉별 리다이렉트 및 순환 처리에 맞게 연결한다. */
 final class TargetUriPolicy {
 
     ValidatedUri prepare(TargetUrl targetUrl) throws TargetPolicyException {

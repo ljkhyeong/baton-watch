@@ -7,8 +7,8 @@ import java.util.function.LongConsumer;
 import org.apache.hc.core5.http.HttpEntity;
 
 /**
- * Consumes only bounded bytes and never retains response body content. Failed
- * streams remain open so the owning response can abort instead of draining.
+ * 제한된 바이트만 소비하고 응답 본문 내용을 절대 보관하지 않는다. 실패한 스트림은 열린 상태로
+ * 두어 소유 응답이 본문을 끝까지 소비하는 대신 중단할 수 있게 한다.
  */
 public final class ResponseBodyDiscarder {
 
@@ -41,8 +41,8 @@ public final class ResponseBodyDiscarder {
                 if (declaredLength == limit) {
                     return closeCompleted(input, consumed);
                 }
-                // An unknown-length stream cannot be probed without consuming
-                // beyond the cap, so reaching the cap is rejected conservatively.
+                // 길이를 알 수 없는 스트림은 상한을 초과해 소비하지 않고는 탐색할 수 없으므로,
+                // 상한에 도달하면 보수적으로 거부한다.
                 throw new ResponseTooLargeException(consumed);
             }
             int read = input.read(buffer, 0, requested);

@@ -1,6 +1,6 @@
 package com.personal.baton.watch.adapter.out.external;
 
-/** Hard ceilings for operator-configurable outbound HTTP resources. */
+/** 운영자가 구성할 수 있는 아웃바운드 HTTP 리소스의 강제 상한. */
 public final class OutboundResourceBounds {
 
     public static final long MAX_CHECK_RESPONSE_BYTES = 1024L * 1024L;

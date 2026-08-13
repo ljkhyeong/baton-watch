@@ -18,7 +18,7 @@ import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
 
-/** Apache HttpClient 5 transport for one already-validated and DNS-pinned hop. */
+/** 이미 검증되고 DNS에 고정된 단일 홉용 Apache HttpClient 5 전송 구현. */
 public final class ApacheHttpHopTransport implements HttpHopTransport, AutoCloseable {
 
     private final CheckerLimits limits;

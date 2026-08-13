@@ -10,7 +10,7 @@ import java.net.URI;
 import java.util.Objects;
 import tools.jackson.databind.ObjectMapper;
 
-/** Production sender for the fixed BATON health-change callback endpoint. */
+/** 고정 BATON 상태 변경 콜백 엔드포인트용 운영 송신자. */
 public final class ApacheHealthChangeEventSender implements HealthChangeEventSender, AutoCloseable {
 
     private final SafeEventDeliveryEngine engine;
@@ -81,7 +81,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
         try {
             closeable.close();
         } catch (Exception ignored) {
-            // Shutdown is best effort and intentionally does not expose exception details.
+            // 종료는 최선을 다해 시도하며 예외 세부 정보를 의도적으로 노출하지 않는다.
         }
     }
 }

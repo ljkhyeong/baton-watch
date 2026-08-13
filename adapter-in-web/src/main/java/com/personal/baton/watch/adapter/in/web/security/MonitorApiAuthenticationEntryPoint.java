@@ -14,7 +14,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import tools.jackson.databind.ObjectMapper;
 
-/** Writes the stable RFC 9457-compatible unauthorized response for monitor APIs. */
+/** 모니터 API에 안정적인 RFC 9457 호환 미인증 응답을 작성한다. */
 public final class MonitorApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
     private static final URI UNAUTHORIZED_TYPE =

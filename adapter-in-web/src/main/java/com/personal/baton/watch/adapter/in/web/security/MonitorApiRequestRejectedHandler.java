@@ -13,7 +13,7 @@ import org.springframework.security.web.firewall.RequestRejectedException;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
 import tools.jackson.databind.ObjectMapper;
 
-/** Writes a stable redacted response when the HTTP firewall rejects a request. */
+/** HTTP 방화벽이 요청을 거부할 때 안정적이고 민감 정보가 제거된 응답을 작성한다. */
 public final class MonitorApiRequestRejectedHandler implements RequestRejectedHandler {
 
     private static final URI REQUEST_REJECTED_TYPE =
