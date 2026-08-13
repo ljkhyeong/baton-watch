@@ -3,7 +3,6 @@ package com.personal.baton.watch.adapter.out.external.http;
 import java.net.InetAddress;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
 import javax.net.ssl.SSLContext;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
@@ -13,7 +12,6 @@ import org.apache.hc.client5.http.impl.io.ManagedHttpClientConnectionFactory;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
 import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
-import org.apache.hc.client5.http.ssl.TlsSocketStrategy;
 import org.apache.hc.core5.http.config.Http1Config;
 import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.Timeout;
@@ -21,18 +19,14 @@ import org.apache.hc.core5.util.Timeout;
 /** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
 public final class PinnedApacheClientFactory {
 
-    private final Supplier<SSLContext> sslContextFactory;
+    private final SSLContext sslContext;
 
     public PinnedApacheClientFactory() {
-        this(SSLContexts::createDefault);
+        this(SSLContexts.createDefault());
     }
 
     PinnedApacheClientFactory(SSLContext sslContext) {
-        this(fixedSslContext(sslContext));
-    }
-
-    private PinnedApacheClientFactory(Supplier<SSLContext> sslContextFactory) {
-        this.sslContextFactory = Objects.requireNonNull(sslContextFactory, "sslContextFactory");
+        this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
     }
 
     public CloseableHttpClient open(
@@ -63,7 +57,9 @@ public final class PinnedApacheClientFactory {
                 PoolingHttpClientConnectionManagerBuilder.create()
                         .setConnectionFactory(connectionFactory)
                         .setDnsResolver(new PinnedDnsResolver(hostname, approvedAddresses))
-                        .setTlsSocketStrategy(newTlsSocketStrategy())
+                        .setTlsSocketStrategy(ClientTlsStrategyBuilder.create()
+                                .setSslContext(sslContext)
+                                .buildClassic())
                         .setDefaultConnectionConfig(connectionConfig)
                         .setMaxConnTotal(1)
                         .setMaxConnPerRoute(1)
@@ -87,16 +83,4 @@ public final class PinnedApacheClientFactory {
         }
     }
 
-    private TlsSocketStrategy newTlsSocketStrategy() {
-        SSLContext sslContext = Objects.requireNonNull(
-                sslContextFactory.get(), "sslContextFactory result");
-        return ClientTlsStrategyBuilder.create()
-                .setSslContext(sslContext)
-                .buildClassic();
-    }
-
-    private static Supplier<SSLContext> fixedSslContext(SSLContext sslContext) {
-        Objects.requireNonNull(sslContext, "sslContext");
-        return () -> sslContext;
-    }
 }

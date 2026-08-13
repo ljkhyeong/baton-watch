@@ -27,7 +27,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
             int httpQueueCapacity,
             ObjectMapper objectMapper) {
         Objects.requireNonNull(limits, "limits");
-        ValidatedDeliveryEndpoint validatedEndpoint = validateEndpoint(endpoint);
+        ValidatedDeliveryEndpoint validatedEndpoint = new DeliveryEndpointPolicy().validate(endpoint);
         String validatedToken = validateBearerToken(bearerToken);
         OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
         OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
@@ -57,14 +57,6 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
     public void close() {
         closeQuietly(transport);
         closeQuietly(dnsLookup);
-    }
-
-    private static ValidatedDeliveryEndpoint validateEndpoint(URI endpoint) {
-        try {
-            return new DeliveryEndpointPolicy().validate(endpoint);
-        } catch (DeliveryPolicyException exception) {
-            throw new IllegalArgumentException("event delivery endpoint violates policy");
-        }
     }
 
     private static String validateBearerToken(String bearerToken) {

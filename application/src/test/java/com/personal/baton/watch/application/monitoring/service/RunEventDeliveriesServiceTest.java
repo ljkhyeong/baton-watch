@@ -56,7 +56,6 @@ class RunEventDeliveriesServiceTest {
         assertEquals(5, persistence.limit);
         assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
         assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
-        assertEquals(claim.deliveryAttempt(), persistence.finalization.deliveryAttempt());
         assertNull(persistence.finalization.nextAttemptAt());
     }
 

@@ -340,6 +340,24 @@ class SafeUrlCheckEngineTest {
         assertEquals(null, observation.httpStatusCode());
     }
 
+    @Test
+    void transportIllegalArgumentFailureRemainsAnInternalFailure() throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        HttpHopTransport transport = (target, remainingTime, remainingBytes) -> {
+            throw new IllegalArgumentException("detail that must not escape");
+        };
+
+        CheckObservation observation = engine(
+                        DEFAULT_LIMITS,
+                        new RecordingDnsLookup(publicAnswer()),
+                        transport,
+                        clock)
+                .check(new TargetUrl("https://internal.example/"));
+
+        assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertEquals(null, observation.httpStatusCode());
+    }
+
     private static SafeUrlCheckEngine engine(
             CheckerLimits limits,
             DnsLookup dns,

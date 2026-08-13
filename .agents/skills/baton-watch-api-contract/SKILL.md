@@ -15,6 +15,11 @@ description: BATON WATCH의 HTTP 계약 작업 흐름. /api/v1 경로, 요청 �
   /api/v1/resource-monitors/{resourceReference}를 구현된 경로로 취급한다.
 - 경로를 /api/v1 아래에 유지하고 이름이 있는 전송 DTO를 반환한다. 인바운드 애플리케이션 포트에 위임한다.
 - 전송 검증은 웹 어댑터에 두고, 인가·상태·트랜잭션 규칙은 애플리케이션 또는 도메인 코드에 둔다.
+- 같은 필드와 HTTP 경계에서 한 제약이 다른 제약을 이미 포함하면 소유하는 제약만
+  유지한다. 문서 모양만 맞추려고 중복 Bean Validation이나 별도 검증기를 만들지 않는다.
+- 요청 바인딩, Bearer 헤더 해석과 프레임워크 예외 분류는 Spring MVC·Security의
+  표준 변환기와 공통 예외 처리 확장점을 우선 사용한다. WATCH 고유 코드는 안정적인
+  Problem Details 봉투, 민감 정보 제거와 MVC 이전 인증·방화벽 경계에만 둔다.
 
 ## 변경 절차
 

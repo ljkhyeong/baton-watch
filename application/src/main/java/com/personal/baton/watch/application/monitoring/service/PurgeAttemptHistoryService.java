@@ -28,11 +28,7 @@ public final class PurgeAttemptHistoryService implements PurgeAttemptHistoryUseC
     @Override
     public int purgeAttemptHistory() {
         Instant completedBefore = clock.instant().minus(retention);
-        int purged = persistence.purgeAttempts(completedBefore, batchSize);
-        if (purged < 0 || purged > batchSize) {
-            throw new IllegalStateException("persistence returned an invalid affected count");
-        }
-        return purged;
+        return persistence.purgeAttempts(completedBefore, batchSize);
     }
 
     private Duration requirePositive(Duration duration) {

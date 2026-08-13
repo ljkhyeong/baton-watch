@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.system;
 
 import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
-import java.util.Objects;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,7 +12,7 @@ public final class SystemStatusController {
     private final GetSystemStatusUseCase getSystemStatus;
 
     public SystemStatusController(GetSystemStatusUseCase getSystemStatus) {
-        this.getSystemStatus = Objects.requireNonNull(getSystemStatus, "getSystemStatus");
+        this.getSystemStatus = getSystemStatus;
     }
 
     @GetMapping("/status")
@@ -21,4 +20,3 @@ public final class SystemStatusController {
         return SystemStatusResponse.from(getSystemStatus.getStatus());
     }
 }
-

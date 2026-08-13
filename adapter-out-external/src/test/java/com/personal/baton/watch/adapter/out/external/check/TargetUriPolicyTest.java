@@ -28,9 +28,11 @@ class TargetUriPolicyTest {
 
     @Test
     void mapsAnInvalidRedirectTargetToAnAdapterPolicyFailure() {
-        assertThrows(
-                TargetPolicyException.class,
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
                 () -> policy.validate(URI.create("https://example.com/%0d%0aHost:internal")));
+
+        assertEquals("target rejected", exception.getMessage());
     }
 
     @Test

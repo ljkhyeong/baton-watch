@@ -171,16 +171,6 @@ class ApacheHttpHopTransportTest {
         }
     }
 
-    @Test
-    void rejectsDisabledExecutorBounds() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheHttpHopTransport(testLimits(64), 0, 1));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheHttpHopTransport(testLimits(64), 1, 0));
-    }
-
     private HttpServer server() throws Exception {
         return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     }

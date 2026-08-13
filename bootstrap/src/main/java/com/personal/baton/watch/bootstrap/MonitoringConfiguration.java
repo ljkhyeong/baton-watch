@@ -11,7 +11,6 @@ import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCa
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
-import com.personal.baton.watch.application.monitoring.service.GetMonitorProjectionService;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
@@ -44,7 +43,7 @@ public class MonitoringConfiguration {
 
     @Bean
     GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
-        return new GetMonitorProjectionService(persistence);
+        return persistence::findProjection;
     }
 
     @Bean

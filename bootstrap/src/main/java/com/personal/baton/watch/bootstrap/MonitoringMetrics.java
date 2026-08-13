@@ -8,7 +8,6 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.Locale;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 
@@ -27,7 +26,7 @@ final class MonitoringMetrics {
     private final AtomicLong oldestEventAgeSeconds = new AtomicLong();
 
     MonitoringMetrics(MeterRegistry registry) {
-        this.registry = Objects.requireNonNull(registry, "registry");
+        this.registry = registry;
         Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
                 .description("Health-change events that are not yet delivered")
                 .register(registry);
@@ -38,7 +37,6 @@ final class MonitoringMetrics {
     }
 
     void recordCheckBatch(DueCheckBatchResult result) {
-        Objects.requireNonNull(result, "result");
         increment(CHECK_CLAIMED, result.claimed());
         increment(CHECK_FINALIZATIONS, "status", "applied", result.applied());
         increment(CHECK_FINALIZATIONS, "status", "already_finalized", result.alreadyFinalized());
@@ -46,7 +44,6 @@ final class MonitoringMetrics {
     }
 
     void recordEventDeliveryBatch(EventDeliveryBatchResult result) {
-        Objects.requireNonNull(result, "result");
         increment(DELIVERY_CLAIMED, result.claimed());
         increment(DELIVERY_FINALIZATIONS, "status", "delivered", result.delivered());
         increment(DELIVERY_FINALIZATIONS, "status", "retry_scheduled", result.retryScheduled());
@@ -55,7 +52,6 @@ final class MonitoringMetrics {
     }
 
     void recordEventDeliveryAttempt(EventDeliveryOutcome outcome) {
-        Objects.requireNonNull(outcome, "outcome");
         increment(DELIVERY_ATTEMPTS, "outcome", outcome.name().toLowerCase(Locale.ROOT), 1);
     }
 
@@ -72,7 +68,6 @@ final class MonitoringMetrics {
     }
 
     void updateEventDeliveryBacklog(EventDeliveryBacklog backlog) {
-        Objects.requireNonNull(backlog, "backlog");
         eventDeliveryBacklog.set(backlog.pendingCount());
         oldestEventAgeSeconds.set(backlog.oldestEventAge()
                 .map(Duration::toSeconds)

@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -219,7 +220,7 @@ class SafeEventDeliveryEngineTest {
             DnsLookup dns,
             DeliveryTransport transport,
             LongSupplier clock,
-            HealthChangeEventSerializer serializer) {
+            Function<HealthChangeEventPayload, byte[]> serializer) {
         return new SafeEventDeliveryEngine(
                 new ValidatedDeliveryEndpoint(
                         URI.create("https://events.example.com/api/v1/health-events"),

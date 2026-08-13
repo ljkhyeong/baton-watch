@@ -28,8 +28,7 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
     @Override
     public int markStaleProjectionsUnknown() {
         Instant markedAt = clock.instant();
-        int changed = persistence.markStaleUnknown(markedAt.minus(stalenessThreshold), markedAt, batchSize);
-        return validateAffectedCount(changed);
+        return persistence.markStaleUnknown(markedAt.minus(stalenessThreshold), markedAt, batchSize);
     }
 
     private Duration requirePositive(Duration duration) {
@@ -38,12 +37,5 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
             throw new IllegalArgumentException("stalenessThreshold must be positive");
         }
         return duration;
-    }
-
-    private int validateAffectedCount(int changed) {
-        if (changed < 0 || changed > batchSize) {
-            throw new IllegalStateException("persistence returned an invalid affected count");
-        }
-        return changed;
     }
 }

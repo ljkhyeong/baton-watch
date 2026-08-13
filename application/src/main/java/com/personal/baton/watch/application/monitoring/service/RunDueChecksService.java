@@ -66,8 +66,6 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             CheckFinalization finalization = new CheckFinalization(
                     claimedCheck.attemptId(),
                     claimedCheck.leaseToken(),
-                    claimedCheck.resourceReference(),
-                    claimedCheck.sourceRevision(),
                     observation,
                     completedAt,
                     completedAt.plus(interval));

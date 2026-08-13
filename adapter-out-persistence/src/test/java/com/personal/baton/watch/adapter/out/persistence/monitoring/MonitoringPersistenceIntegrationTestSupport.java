@@ -74,8 +74,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         return new CheckFinalization(
                 claimed.attemptId(),
                 claimed.leaseToken(),
-                claimed.resourceReference(),
-                claimed.sourceRevision(),
                 observation,
                 completedAt,
                 nextCheckAt);
@@ -83,13 +81,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     protected MonitorProjection projection(String reference) {
         return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
-    }
-
-    protected int count(String table) {
-        if (!List.of("watch_attempt", "watch_result", "watch_health_change_event").contains(table)) {
-            throw new IllegalArgumentException("unsupported test table");
-        }
-        return jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Integer.class);
     }
 
     protected static void cancelIfRunning(Future<?> future) {

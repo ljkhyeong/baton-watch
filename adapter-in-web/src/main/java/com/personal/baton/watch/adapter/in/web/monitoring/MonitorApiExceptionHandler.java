@@ -9,24 +9,19 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.HttpMediaTypeNotAcceptableException;
-import org.springframework.web.HttpMediaTypeNotSupportedException;
-import org.springframework.web.HttpRequestMethodNotSupportedException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
-import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
-import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(MonitorApiExceptionHandler.class);
     private static final URI REDACTED_REQUEST = URI.create("urn:baton-watch:request");
+    private static final ProblemSpec INVALID_REQUEST =
+            ProblemSpec.of("invalid-request", "Invalid request", "INVALID_REQUEST");
     private static final ProblemSpec ROUTE_NOT_FOUND =
             ProblemSpec.of("route-not-found", "Route not found", "ROUTE_NOT_FOUND");
     private static final ProblemSpec METHOD_NOT_ALLOWED =
@@ -46,73 +41,8 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
         return problem(
                 exception.status(),
-                exception.type(),
-                exception.title(),
-                exception.code(),
+                new ProblemSpec(exception.type(), exception.title(), exception.code()),
                 HttpHeaders.EMPTY);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleMethodArgumentNotValid(
-            MethodArgumentNotValidException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return invalidRequest(exception, headers, status, request);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleHttpMessageNotReadable(
-            HttpMessageNotReadableException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return invalidRequest(exception, headers, status, request);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleNoResourceFoundException(
-            NoResourceFoundException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return frameworkProblem(exception, request, status, ROUTE_NOT_FOUND, headers);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleNoHandlerFoundException(
-            NoHandlerFoundException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return frameworkProblem(exception, request, status, ROUTE_NOT_FOUND, headers);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleHttpRequestMethodNotSupported(
-            HttpRequestMethodNotSupportedException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return frameworkProblem(exception, request, status, METHOD_NOT_ALLOWED, headers);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(
-            HttpMediaTypeNotSupportedException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return frameworkProblem(exception, request, status, UNSUPPORTED_MEDIA_TYPE, headers);
-    }
-
-    @Override
-    protected ResponseEntity<Object> handleHttpMediaTypeNotAcceptable(
-            HttpMediaTypeNotAcceptableException exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        return frameworkProblem(exception, request, status, NOT_ACCEPTABLE, headers);
     }
 
     @ExceptionHandler(Exception.class)
@@ -143,40 +73,21 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
                     INTERNAL_ERROR,
                     headers);
         }
-        if (status.isSameCodeAs(HttpStatus.BAD_REQUEST)) {
-            MonitorApiException invalidRequest = MonitorApiException.invalidRequest();
-            return frameworkProblem(
-                    exception,
-                    request,
-                    status,
-                    invalidRequest.type(),
-                    invalidRequest.title(),
-                    invalidRequest.code(),
-                    headers);
-        }
-        return frameworkProblem(exception, request, status, REQUEST_REJECTED, headers);
+        ProblemSpec problem = switch (status.value()) {
+            case 400 -> INVALID_REQUEST;
+            case 404 -> ROUTE_NOT_FOUND;
+            case 405 -> METHOD_NOT_ALLOWED;
+            case 406 -> NOT_ACCEPTABLE;
+            case 415 -> UNSUPPORTED_MEDIA_TYPE;
+            default -> REQUEST_REJECTED;
+        };
+        return frameworkProblem(exception, request, status, problem, headers);
     }
 
     private boolean responseCommitted(WebRequest request) {
         return request instanceof ServletWebRequest servletRequest
                 && servletRequest.getResponse() != null
                 && servletRequest.getResponse().isCommitted();
-    }
-
-    private ResponseEntity<Object> invalidRequest(
-            Exception exception,
-            HttpHeaders headers,
-            HttpStatusCode status,
-            WebRequest request) {
-        MonitorApiException invalidRequest = MonitorApiException.invalidRequest();
-        return frameworkProblem(
-                exception,
-                request,
-                status,
-                invalidRequest.type(),
-                invalidRequest.title(),
-                invalidRequest.code(),
-                headers);
     }
 
     private ResponseEntity<Object> frameworkProblem(
@@ -193,22 +104,6 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
                 request);
     }
 
-    private ResponseEntity<Object> frameworkProblem(
-            Exception exception,
-            WebRequest request,
-            HttpStatusCode status,
-            URI type,
-            String title,
-            String code,
-            HttpHeaders headers) {
-        return frameworkProblem(
-                exception,
-                request,
-                status,
-                new ProblemSpec(type, title, code),
-                headers);
-    }
-
     private ResponseEntity<Object> problem(
             HttpStatusCode status,
             ProblemSpec problem,
@@ -217,15 +112,6 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
                 problemDetail(status, problem),
                 problemHeaders(headers),
                 status);
-    }
-
-    private ResponseEntity<Object> problem(
-            HttpStatusCode status,
-            URI type,
-            String title,
-            String code,
-            HttpHeaders headers) {
-        return problem(status, new ProblemSpec(type, title, code), headers);
     }
 
     private ProblemDetail problemDetail(HttpStatusCode status, ProblemSpec spec) {

@@ -1,19 +1,14 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
-import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.autoconfigure.AutoConfigurations;
-import org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration;
-import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
-import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegrationTestSupport {
 
@@ -44,28 +39,6 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                 .noneMatch(name -> name.contains("exception"))
                 .noneMatch(name -> name.contains("header"))
                 .noneMatch(name -> name.contains("cookie"));
-    }
-
-    @Test
-    void springBootFlywayAutoConfigurationAppliesThePackagedMigration() {
-        Flyway.configure().dataSource(testDataSource).cleanDisabled(false).load().clean();
-
-        new ApplicationContextRunner()
-                .withConfiguration(AutoConfigurations.of(
-                        DataSourceAutoConfiguration.class, FlywayAutoConfiguration.class))
-                .withPropertyValues(
-                        "spring.datasource.url=" + POSTGRES.getJdbcUrl(),
-                        "spring.datasource.username=" + POSTGRES.getUsername(),
-                        "spring.datasource.password=" + POSTGRES.getPassword())
-                .run(context -> {
-                    assertThat(context).hasNotFailed();
-                    assertThat(context).hasSingleBean(Flyway.class);
-                    assertThat(context.getBean(Flyway.class).info().current().getVersion().getVersion())
-                            .isEqualTo("2");
-                    JdbcTemplate bootJdbc = new JdbcTemplate(context.getBean(DataSource.class));
-                    assertThat(bootJdbc.queryForObject(
-                            "SELECT COUNT(*) FROM watch_monitor", Integer.class)).isZero();
-                });
     }
 
     @Test

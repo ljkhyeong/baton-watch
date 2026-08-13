@@ -2,7 +2,6 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
@@ -19,8 +18,8 @@ final class EventDeliveryScheduler {
     private final MonitoringMetrics metrics;
 
     EventDeliveryScheduler(RunEventDeliveriesUseCase runEventDeliveries, MonitoringMetrics metrics) {
-        this.runEventDeliveries = Objects.requireNonNull(runEventDeliveries, "runEventDeliveries");
-        this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.runEventDeliveries = runEventDeliveries;
+        this.metrics = metrics;
     }
 
     @Scheduled(

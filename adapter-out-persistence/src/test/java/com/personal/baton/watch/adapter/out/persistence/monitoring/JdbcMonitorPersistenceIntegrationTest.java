@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -58,7 +59,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                 String.class,
                 "resource:revision"))
                 .isEqualTo("https://one.example/path");
-        assertThat(count("watch_health_change_event")).isZero();
+        assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isZero();
     }
 
     @Test
@@ -122,7 +123,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         changedAt.plusSeconds(1),
                         changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
-        assertThat(count("watch_result")).isEqualTo(1);
+        assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
         assertThat(jdbc.queryForList("""
                 SELECT previous_health || '->' || current_health
                 FROM watch_health_change_event
@@ -220,7 +221,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         MonitorProjection projection = projection("resource:stale");
         assertThat(projection.health()).isEqualTo(Health.UNKNOWN);
         assertThat(projection.consecutiveFailures()).isEqualTo(1);
-        assertThat(count("watch_health_change_event")).isEqualTo(2);
+        assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(2);
     }
 
     @Test

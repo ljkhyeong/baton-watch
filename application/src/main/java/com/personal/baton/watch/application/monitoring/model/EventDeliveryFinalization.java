@@ -7,7 +7,6 @@ import java.util.UUID;
 public record EventDeliveryFinalization(
         UUID eventId,
         UUID leaseToken,
-        int deliveryAttempt,
         EventDeliveryObservation observation,
         Instant completedAt,
         Instant nextAttemptAt) {
@@ -17,9 +16,6 @@ public record EventDeliveryFinalization(
         Objects.requireNonNull(leaseToken, "leaseToken");
         Objects.requireNonNull(observation, "observation");
         Objects.requireNonNull(completedAt, "completedAt");
-        if (deliveryAttempt <= 0) {
-            throw new IllegalArgumentException("delivery attempt must be positive");
-        }
         if (observation.outcome().isDelivered()) {
             if (nextAttemptAt != null) {
                 throw new IllegalArgumentException("delivered event cannot have a next attempt");

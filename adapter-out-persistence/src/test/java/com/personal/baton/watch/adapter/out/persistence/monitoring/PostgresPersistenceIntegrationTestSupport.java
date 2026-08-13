@@ -1,8 +1,6 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,9 +41,5 @@ abstract class PostgresPersistenceIntegrationTestSupport {
         dataSource.setUsername(POSTGRES.getUsername());
         dataSource.setPassword(POSTGRES.getPassword());
         return dataSource;
-    }
-
-    protected static OffsetDateTime databaseTime(Instant instant) {
-        return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 }

@@ -5,7 +5,6 @@ import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProject
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import jakarta.validation.Valid;
-import java.util.Objects;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,8 +23,8 @@ public final class ResourceMonitorController {
     public ResourceMonitorController(
             SynchronizeMonitorUseCase synchronizeMonitor,
             GetMonitorProjectionUseCase getMonitorProjection) {
-        this.synchronizeMonitor = Objects.requireNonNull(synchronizeMonitor, "synchronizeMonitor");
-        this.getMonitorProjection = Objects.requireNonNull(getMonitorProjection, "getMonitorProjection");
+        this.synchronizeMonitor = synchronizeMonitor;
+        this.getMonitorProjection = getMonitorProjection;
     }
 
     @PutMapping(path = "/{resourceReference}", consumes = MediaType.APPLICATION_JSON_VALUE)

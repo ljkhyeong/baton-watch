@@ -9,8 +9,6 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
-import com.personal.baton.watch.domain.monitoring.ResourceReference;
-import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,8 +28,6 @@ class RunDueChecksServiceTest {
     private static final ClaimedCheck CLAIM = new ClaimedCheck(
             UUID.fromString("00000000-0000-0000-0000-000000000001"),
             UUID.fromString("00000000-0000-0000-0000-000000000002"),
-            new ResourceReference("resource-1"),
-            new SourceRevision(11),
             new TargetUrl("https://example.com/health"));
 
     @Test

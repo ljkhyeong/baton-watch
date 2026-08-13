@@ -13,12 +13,12 @@ import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersist
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.HealthDerivationPolicy;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
-import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -51,22 +51,21 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
         if (!leaseUntil.isAfter(claimedAt)) {
             throw new IllegalArgumentException("lease must expire after it is claimed");
         }
-        return requireTransactionResult(transactions.execute(
-                ignored -> claimInTransaction(claimedAt, leaseUntil, limit)));
+        return transactions.execute(
+                ignored -> claimInTransaction(claimedAt, leaseUntil, limit));
     }
 
     @Override
     public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
         Objects.requireNonNull(finalization, "finalization");
-        return requireTransactionResult(
-                transactions.execute(ignored -> finalizeInTransaction(finalization)));
+        return transactions.execute(ignored -> finalizeInTransaction(finalization));
     }
 
     @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
         Objects.requireNonNull(completedBefore, "completedBefore");
         requirePositiveLimit(limit);
-        return requireTransactionResult(transactions.execute(ignored -> jdbc.update("""
+        return transactions.execute(ignored -> jdbc.update("""
                 DELETE FROM watch_attempt
                 WHERE attempt_id IN (
                     SELECT attempt.attempt_id
@@ -85,7 +84,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                     ORDER BY COALESCE(result.completed_at, attempt.claimed_at), attempt.attempt_id
                     LIMIT ?
                 )
-                """, databaseTime(completedBefore), databaseTime(completedBefore), limit)));
+                """, databaseTime(completedBefore), databaseTime(completedBefore), limit));
     }
 
     private List<ClaimedCheck> claimInTransaction(
@@ -105,7 +104,8 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 databaseTime(claimedAt),
                 limit);
 
-        return due.stream().map(monitor -> {
+        List<ClaimedCheck> claimed = new ArrayList<>(due.size());
+        for (MonitorRow monitor : due) {
             UUID attemptId = UUID.randomUUID();
             UUID leaseToken = UUID.randomUUID();
             jdbc.update("""
@@ -136,13 +136,12 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                     databaseTime(leaseUntil),
                     databaseTime(claimedAt),
                     monitor.resourceReference());
-            return new ClaimedCheck(
+            claimed.add(new ClaimedCheck(
                     attemptId,
                     leaseToken,
-                    new ResourceReference(monitor.resourceReference()),
-                    monitor.sourceRevision(),
-                    new TargetUrl(monitor.targetUrl()));
-        }).toList();
+                    new TargetUrl(monitor.targetUrl())));
+        }
+        return claimed;
     }
 
     private CheckFinalizationStatus finalizeInTransaction(
@@ -156,7 +155,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 FROM watch_attempt
                 WHERE attempt_id = ?
                 """, JdbcCheckWorkPersistenceAdapter::mapAttempt, finalization.attemptId()));
-        if (attempt == null || !attemptMatches(attempt, finalization)) {
+        if (attempt == null || !attempt.leaseToken().equals(finalization.leaseToken())) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
         if (finalization.completedAt().isBefore(attempt.claimedAt())) {
@@ -167,12 +166,12 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 "SELECT " + MONITOR_COLUMNS
                         + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                 MonitoringJdbcRows::mapMonitor,
-                finalization.resourceReference().value()));
+                attempt.resourceReference()));
 
         if (resultExists(finalization.attemptId())) {
             return CheckFinalizationStatus.ALREADY_FINALIZED;
         }
-        if (monitor == null || !monitorOwnsClaim(monitor, finalization)) {
+        if (monitor == null || !monitorOwnsClaim(monitor, attempt, finalization)) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
 
@@ -224,12 +223,12 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 databaseTime(lastConclusiveAt),
                 databaseTime(finalization.nextCheckAt()),
                 databaseTime(finalization.completedAt()),
-                finalization.resourceReference().value());
+                attempt.resourceReference());
 
         if (monitor.health() != derived.health()) {
             eventAppender.append(
-                    finalization.resourceReference().value(),
-                    finalization.sourceRevision().value(),
+                    attempt.resourceReference(),
+                    attempt.sourceRevision().value(),
                     finalization.attemptId(),
                     monitor.health(),
                     derived.health(),
@@ -239,26 +238,18 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     }
 
     private boolean resultExists(UUID attemptId) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(
+        return jdbc.queryForObject(
                 "SELECT EXISTS (SELECT 1 FROM watch_result WHERE attempt_id = ?)",
                 Boolean.class,
-                attemptId));
-    }
-
-    private boolean attemptMatches(
-            AttemptRow attempt, CheckFinalization finalization) {
-        return attempt.leaseToken().equals(finalization.leaseToken())
-                && attempt.resourceReference().equals(
-                        finalization.resourceReference().value())
-                && attempt.sourceRevision().equals(finalization.sourceRevision());
+                attemptId);
     }
 
     private boolean monitorOwnsClaim(
-            MonitorRow monitor, CheckFinalization finalization) {
+            MonitorRow monitor, AttemptRow attempt, CheckFinalization finalization) {
         return monitor.monitoringState() == MonitoringState.ACTIVE
                 && finalization.attemptId().equals(monitor.leaseAttemptId())
                 && finalization.leaseToken().equals(monitor.leaseToken())
-                && finalization.sourceRevision().equals(monitor.sourceRevision());
+                && attempt.sourceRevision().equals(monitor.sourceRevision());
     }
 
     private static AttemptRow mapAttempt(
@@ -274,10 +265,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
         }
-    }
-
-    private static <T> T requireTransactionResult(T result) {
-        return Objects.requireNonNull(result, "transaction callback result");
     }
 
     private record AttemptRow(
