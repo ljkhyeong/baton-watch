@@ -11,8 +11,8 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
     private final MonitoringMetrics metrics;
 
     MeteredHealthChangeEventSender(HealthChangeEventSender delegate, MonitoringMetrics metrics) {
-        this.delegate = Objects.requireNonNull(delegate, "delegate");
-        this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.delegate = delegate;
+        this.metrics = metrics;
     }
 
     @Override

@@ -1,7 +1,9 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
@@ -10,6 +12,7 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
+import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Duration;
 import java.time.Instant;
@@ -45,12 +48,21 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 BASE_TIME, BASE_TIME.plus(LEASE), 2);
 
         assertThat(claims)
-                .extracting(claim -> claim.resourceReference().value())
-                .containsExactly("resource:a-legacy", "resource:b-current");
-        assertThat(claims)
                 .extracting(claim -> claim.targetUrl().value())
                 .containsExactly(historicalTarget, "https://current.example/path");
-        assertThat(count("watch_attempt")).isEqualTo(2);
+        assertThat(jdbc.queryForList(
+                "SELECT resource_reference FROM watch_attempt ORDER BY resource_reference",
+                String.class))
+                .containsExactly("resource:a-legacy", "resource:b-current");
+        assertThat(jdbc.queryForList(
+                "SELECT source_revision FROM watch_attempt ORDER BY resource_reference",
+                Long.class))
+                .containsExactly(1L, 1L);
+        assertThat(jdbc.queryForList(
+                "SELECT target_url FROM watch_attempt ORDER BY resource_reference",
+                String.class))
+                .containsExactly(historicalTarget, "https://current.example/path");
+        assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
     }
 
     @Test
@@ -77,8 +89,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         BASE_TIME.plusSeconds(32),
                         BASE_TIME.plusSeconds(92))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
-        assertThat(count("watch_attempt")).isEqualTo(2);
-        assertThat(count("watch_result")).isEqualTo(1);
+        assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
+        assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
     }
 
     @Test
@@ -104,11 +116,11 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
             assertThat(firstClaims).hasSize(1);
             assertThat(secondClaims).hasSize(1);
             assertThat(List.of(
-                            firstClaims.getFirst().resourceReference().value(),
-                            secondClaims.getFirst().resourceReference().value()))
+                            firstClaims.getFirst().targetUrl().value(),
+                            secondClaims.getFirst().targetUrl().value()))
                     .containsExactlyInAnyOrder(
-                            "resource:check-concurrent-1", "resource:check-concurrent-2");
-            assertThat(count("watch_attempt")).isEqualTo(2);
+                            "https://one.example/path", "https://two.example/path");
+            assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
         } finally {
             cancelIfRunning(first);
             cancelIfRunning(second);
@@ -144,9 +156,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
             assertThat(lockTransaction.isCompleted()).isFalse();
             assertThat(claims)
-                    .extracting(claim -> claim.resourceReference().value())
-                    .containsExactly(nextReference);
-            assertThat(count("watch_attempt")).isEqualTo(1);
+                    .extracting(claim -> claim.targetUrl().value())
+                    .containsExactly("https://next.example/path");
+            assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(1);
         } finally {
             try {
                 if (claimFuture != null && !claimFuture.isDone()) {
@@ -178,7 +190,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                             BASE_TIME, BASE_TIME.plus(LEASE), 2))
                     .isInstanceOf(DataIntegrityViolationException.class);
 
-            assertThat(count("watch_attempt")).isZero();
+            assertThat(countRowsInTable(jdbc, "watch_attempt")).isZero();
             assertThat(jdbc.queryForObject("""
                     SELECT COUNT(*)
                     FROM watch_monitor
@@ -198,8 +210,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
         assertThat(checkWorkPersistence.claimDueChecks(
                         BASE_TIME, BASE_TIME.plus(LEASE), 2))
-                .extracting(claim -> claim.resourceReference().value())
-                .containsExactly(firstReference, secondReference);
+                .extracting(claim -> claim.targetUrl().value())
+                .containsExactly(
+                        "https://batch-one.example/path",
+                        "https://batch-two.example/path");
     }
 
     @Test
@@ -214,8 +228,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         CheckFinalization wrongToken = new CheckFinalization(
                 claimed.attemptId(),
                 UUID.randomUUID(),
-                claimed.resourceReference(),
-                claimed.sourceRevision(),
                 valid.observation(),
                 valid.completedAt(),
                 valid.nextCheckAt());
@@ -227,8 +239,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(checkWorkPersistence.finalizeCheck(valid))
                 .isEqualTo(CheckFinalizationStatus.ALREADY_FINALIZED);
 
-        assertThat(count("watch_result")).isEqualTo(1);
-        assertThat(count("watch_health_change_event")).isEqualTo(1);
+        assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
+        assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(1);
         assertThat(jdbc.queryForObject(
                 "SELECT response_bytes FROM watch_result WHERE attempt_id = ?",
                 Long.class,
@@ -264,8 +276,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                     .containsExactlyInAnyOrder(
                             CheckFinalizationStatus.APPLIED,
                             CheckFinalizationStatus.ALREADY_FINALIZED);
-            assertThat(count("watch_result")).isEqualTo(1);
-            assertThat(count("watch_health_change_event")).isEqualTo(1);
+            assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
+            assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(1);
         } finally {
             cancelIfRunning(first);
             cancelIfRunning(second);
@@ -284,8 +296,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 ) VALUES (?, ?, ?, ?, 'UNKNOWN', 'HEALTHY', ?, ?)
                 """,
                 UUID.randomUUID(),
-                claimed.resourceReference().value(),
-                claimed.sourceRevision().value(),
+                "resource:atomic",
+                1L,
                 claimed.attemptId(),
                 OffsetDateTime.ofInstant(BASE_TIME.minusSeconds(1), ZoneOffset.UTC),
                 OffsetDateTime.ofInstant(BASE_TIME.minusSeconds(1), ZoneOffset.UTC));
@@ -298,7 +310,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
-        assertThat(count("watch_result")).isZero();
+        assertThat(countRowsInTable(jdbc, "watch_result")).isZero();
         MonitorProjection projection = projection("resource:atomic");
         assertThat(projection.health()).isEqualTo(Health.UNKNOWN);
         assertThat(projection.lastOutcome()).isEmpty();
@@ -306,7 +318,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 SELECT lease_attempt_id = ?
                 FROM watch_monitor
                 WHERE resource_reference = ?
-                """, Boolean.class, claimed.attemptId(), claimed.resourceReference().value())).isTrue();
+                """, Boolean.class, claimed.attemptId(), "resource:atomic")).isTrue();
     }
 
     @Test
@@ -319,7 +331,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 claimed("resource:after", BASE_TIME.plusSeconds(3)));
         monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
-                        attempts.getFirst().resourceReference(), new SourceRevision(2)),
+                        new ResourceReference("resource:abandoned"), new SourceRevision(2)),
                 BASE_TIME.plusSeconds(31));
 
         finalizeAt(attempts.get(1), cutoff.minusSeconds(1));
@@ -331,9 +343,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(checkWorkPersistence.purgeAttempts(cutoff, 1)).isEqualTo(1);
         assertThat(checkWorkPersistence.purgeAttempts(cutoff, 1)).isZero();
 
-        assertThat(count("watch_attempt")).isEqualTo(2);
-        assertThat(count("watch_result")).isEqualTo(2);
-        assertThat(count("watch_health_change_event")).isEqualTo(3);
+        assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
+        assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(2);
+        assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(3);
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM watch_health_change_event

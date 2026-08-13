@@ -11,6 +11,7 @@ import java.net.InetAddress;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 
 final class SafeEventDeliveryEngine {
@@ -21,7 +22,7 @@ final class SafeEventDeliveryEngine {
     private final DnsLookup dnsLookup;
     private final GlobalAddressPolicy addressPolicy;
     private final DeliveryTransport transport;
-    private final HealthChangeEventSerializer serializer;
+    private final Function<HealthChangeEventPayload, byte[]> serializer;
     private final LongSupplier clock;
 
     SafeEventDeliveryEngine(
@@ -31,7 +32,7 @@ final class SafeEventDeliveryEngine {
             DnsLookup dnsLookup,
             GlobalAddressPolicy addressPolicy,
             DeliveryTransport transport,
-            HealthChangeEventSerializer serializer,
+            Function<HealthChangeEventPayload, byte[]> serializer,
             LongSupplier clock) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
         this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
@@ -46,10 +47,7 @@ final class SafeEventDeliveryEngine {
     EventDeliveryObservation send(HealthChangeEventPayload payload) {
         long startedAt = clock.getAsLong();
         try {
-            if (payload == null) {
-                return EventDeliveryObservation.internalFailure();
-            }
-            byte[] body = serializer.serialize(payload);
+            byte[] body = serializer.apply(payload);
             Duration remaining = remaining(startedAt);
             if (remaining.isZero()) {
                 return failure(EventDeliveryOutcome.DNS_FAILURE);

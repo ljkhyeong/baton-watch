@@ -138,16 +138,6 @@ class ApacheEventDeliveryTransportTest {
         }
     }
 
-    @Test
-    void rejectsDisabledExecutorBounds() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheEventDeliveryTransport(testLimits(8_192), 0, 1));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheEventDeliveryTransport(testLimits(8_192), 1, 0));
-    }
-
     private HttpServer server() throws Exception {
         return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     }

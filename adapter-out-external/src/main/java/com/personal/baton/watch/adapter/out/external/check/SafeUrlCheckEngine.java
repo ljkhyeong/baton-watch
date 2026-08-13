@@ -46,7 +46,7 @@ final class SafeUrlCheckEngine {
             ValidatedUri current;
             try {
                 current = targetPolicy.prepare(targetUrl);
-            } catch (TargetPolicyException exception) {
+            } catch (IllegalArgumentException exception) {
                 return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, state);
             }
 
@@ -111,7 +111,7 @@ final class SafeUrlCheckEngine {
                 try {
                     URI redirectUri = targetPolicy.resolveRedirect(current, response.locations().getFirst());
                     next = targetPolicy.validate(redirectUri);
-                } catch (TargetPolicyException exception) {
+                } catch (IllegalArgumentException exception) {
                     return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
                 }
                 if (current.scheme().equals("https") && next.scheme().equals("http")) {

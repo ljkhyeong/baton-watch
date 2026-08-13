@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -95,7 +96,6 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryFinalization failed = new EventDeliveryFinalization(
                 first.payload().eventId(),
                 first.leaseToken(),
-                first.deliveryAttempt(),
                 EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE),
                 completedAt,
                 retryAt);
@@ -193,7 +193,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     @Test
-    void sameLeaseConcurrentFinalizationAppliesOnceAndTokenAndAttemptMustBothMatch() throws Exception {
+    void sameLeaseConcurrentFinalizationAppliesOnceAndTokenMustMatch() throws Exception {
         UUID eventId = createDeliveryEvent("resource:delivery-concurrent-finalize", BASE_TIME);
         Instant dueAt = BASE_TIME.plusSeconds(1);
         ClaimedHealthChangeEvent claimed = claimOneDelivery(dueAt);
@@ -202,21 +202,11 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryFinalization wrongToken = new EventDeliveryFinalization(
                 eventId,
                 UUID.randomUUID(),
-                claimed.deliveryAttempt(),
-                valid.observation(),
-                completedAt,
-                null);
-        EventDeliveryFinalization wrongAttempt = new EventDeliveryFinalization(
-                eventId,
-                claimed.leaseToken(),
-                claimed.deliveryAttempt() + 1,
                 valid.observation(),
                 completedAt,
                 null);
 
         assertThat(deliveryAdapter.finalizeDelivery(wrongToken))
-                .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
-        assertThat(deliveryAdapter.finalizeDelivery(wrongAttempt))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
 
         JdbcHealthChangeEventDeliveryAdapter anotherAdapter = newDeliveryAdapter();
@@ -372,7 +362,6 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         return new EventDeliveryFinalization(
                 event.payload().eventId(),
                 event.leaseToken(),
-                event.deliveryAttempt(),
                 EventDeliveryObservation.forHttpStatus(204),
                 completedAt,
                 null);

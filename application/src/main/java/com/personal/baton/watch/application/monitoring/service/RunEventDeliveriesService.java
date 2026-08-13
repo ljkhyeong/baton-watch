@@ -64,7 +64,6 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
                     persistence.finalizeDelivery(new EventDeliveryFinalization(
                             event.payload().eventId(),
                             event.leaseToken(),
-                            event.deliveryAttempt(),
                             observation,
                             completedAt,
                             nextAttemptAt)),

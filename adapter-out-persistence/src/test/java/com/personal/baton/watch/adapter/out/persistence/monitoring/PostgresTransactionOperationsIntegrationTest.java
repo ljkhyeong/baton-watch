@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 

@@ -49,7 +49,6 @@ final class WorkerSchedulingConfiguration {
                 .additionalCustomizers(scheduler -> {
                     scheduler.setErrorHandler(errorHandler);
                     scheduler.setRemoveOnCancelPolicy(true);
-                    scheduler.setContinueExistingPeriodicTasksAfterShutdownPolicy(false);
                     scheduler.setExecuteExistingDelayedTasksAfterShutdownPolicy(false);
                 })
                 .build();

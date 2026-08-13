@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
@@ -28,7 +27,7 @@ class HealthChangeEventJsonSerializerTest {
                 42,
                 Instant.parse("2026-08-02T01:02:03.456Z"));
 
-        String json = new String(serializer.serialize(payload), StandardCharsets.UTF_8);
+        String json = new String(serializer.apply(payload), StandardCharsets.UTF_8);
 
         assertEquals(
                 "{\"eventId\":\"00000000-0000-0000-0000-000000000001\","
@@ -40,15 +39,12 @@ class HealthChangeEventJsonSerializerTest {
                         + "\"currentHealth\":\"BROKEN\","
                         + "\"changedAt\":\"2026-08-02T01:02:03.456Z\"}",
                 json);
-        assertEquals(8, objectMapper.readTree(json).size());
-        assertFalse(json.contains("leaseToken"));
-        assertFalse(json.contains("deliveryAttempt"));
     }
 
     @Test
     void omitsAttemptIdEntirelyWhenTheHealthChangeDidNotComeFromAnAttempt() {
         String json = new String(
-                serializer.serialize(payload(Optional.empty(), 42, Instant.parse("2026-08-02T01:02:03Z"))),
+                serializer.apply(payload(Optional.empty(), 42, Instant.parse("2026-08-02T01:02:03Z"))),
                 StandardCharsets.UTF_8);
 
         assertEquals(
@@ -60,14 +56,12 @@ class HealthChangeEventJsonSerializerTest {
                         + "\"currentHealth\":\"BROKEN\","
                         + "\"changedAt\":\"2026-08-02T01:02:03Z\"}",
                 json);
-        assertEquals(7, objectMapper.readTree(json).size());
-        assertFalse(json.contains("attemptId"));
     }
 
     @Test
     void preservesLongRevisionAndNanosecondUtcTimestampWithoutNumericCoercion() {
         String json = new String(
-                serializer.serialize(payload(
+                serializer.apply(payload(
                         Optional.empty(),
                         Long.MAX_VALUE,
                         Instant.parse("2026-08-02T01:02:03.123456789Z"))),

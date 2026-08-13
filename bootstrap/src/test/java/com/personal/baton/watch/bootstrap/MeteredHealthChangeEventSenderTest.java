@@ -50,6 +50,24 @@ class MeteredHealthChangeEventSenderTest {
     }
 
     @Test
+    void convertsNullSenderResultsToInternalFailures() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
+                ignored -> null,
+                new MonitoringMetrics(registry));
+
+        EventDeliveryObservation observation = sender.send(null);
+
+        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertEquals(
+                1.0,
+                registry.get("baton.watch.event.delivery.attempts")
+                        .tag("outcome", "internal_failure")
+                        .counter()
+                        .count());
+    }
+
+    @Test
     void telemetryFailureCannotTurnAnAcknowledgedDeliveryIntoARetry() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         registry.config().meterFilter(new MeterFilter() {

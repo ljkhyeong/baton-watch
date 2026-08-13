@@ -7,37 +7,39 @@ import java.util.Locale;
 /** 기준 {@code TargetUrl} 정책을 홉별 리다이렉트 및 순환 처리에 맞게 연결한다. */
 final class TargetUriPolicy {
 
-    ValidatedUri prepare(TargetUrl targetUrl) throws TargetPolicyException {
+    private static final String REJECTION_MESSAGE = "target rejected";
+
+    ValidatedUri prepare(TargetUrl targetUrl) {
         if (targetUrl == null) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
         try {
             return validated(targetUrl.requireSafeEncodedCharacters());
         } catch (IllegalArgumentException exception) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
     }
 
-    ValidatedUri validate(URI uri) throws TargetPolicyException {
+    ValidatedUri validate(URI uri) {
         if (uri == null) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
         try {
             return prepare(new TargetUrl(uri.toString()));
         } catch (IllegalArgumentException exception) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
     }
 
-    URI resolveRedirect(ValidatedUri current, String location) throws TargetPolicyException {
+    URI resolveRedirect(ValidatedUri current, String location) {
         if (location == null) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
         try {
             TargetUrl.requireSafeReferenceCharacters(location);
             return current.uri().resolve(location);
         } catch (IllegalArgumentException exception) {
-            throw new TargetPolicyException();
+            throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
     }
 

@@ -28,11 +28,7 @@ public final class PurgeDeliveredEventsService implements PurgeDeliveredEventsUs
     @Override
     public int purgeDeliveredEvents() {
         Instant deliveredBefore = clock.instant().minus(retention);
-        int purged = persistence.purgeDeliveredEvents(deliveredBefore, batchSize);
-        if (purged < 0 || purged > batchSize) {
-            throw new IllegalStateException("persistence returned an invalid affected count");
-        }
-        return purged;
+        return persistence.purgeDeliveredEvents(deliveredBefore, batchSize);
     }
 
     private static Duration requirePositive(Duration duration) {

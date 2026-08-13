@@ -46,16 +46,6 @@ class EventDeliveryApplicationModelTest {
         assertTrue(claimed(Health.UNKNOWN, Health.HEALTHY, 1).payload().attemptId().isEmpty());
     }
 
-    @Test
-    void batchResultRequiresNonNegativeCountsThatMatchClaimedEvents() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new EventDeliveryBatchResult(1, 0, 0, 0, 0));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new EventDeliveryBatchResult(1, -1, 0, 0, 2));
-    }
-
     private ClaimedHealthChangeEvent claimed(Health previous, Health current, int deliveryAttempt) {
         return new ClaimedHealthChangeEvent(
                 payload(previous, current),

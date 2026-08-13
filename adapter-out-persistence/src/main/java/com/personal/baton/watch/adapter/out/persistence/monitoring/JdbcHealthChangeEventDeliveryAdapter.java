@@ -15,11 +15,11 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Supplier;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -56,20 +56,22 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         if (!leaseUntil.isAfter(claimedAt)) {
             throw new IllegalArgumentException("lease must expire after it is claimed");
         }
-        return inTransaction(() -> claimInTransaction(claimedAt, leaseUntil, limit));
+        return transactions.execute(
+                ignored -> claimInTransaction(claimedAt, leaseUntil, limit));
     }
 
     @Override
     public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
         Objects.requireNonNull(finalization, "finalization");
-        return inTransaction(() -> finalizeInTransaction(finalization));
+        return transactions.execute(ignored -> finalizeInTransaction(finalization));
     }
 
     @Override
     public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
         Objects.requireNonNull(deliveredBefore, "deliveredBefore");
         requirePositiveLimit(limit);
-        return inTransaction(() -> purgeDeliveredInTransaction(deliveredBefore, limit));
+        return transactions.execute(
+                ignored -> purgeDeliveredInTransaction(deliveredBefore, limit));
     }
 
     @Override
@@ -101,7 +103,8 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 .query(JdbcHealthChangeEventDeliveryAdapter::mapDelivery)
                 .list();
 
-        return pending.stream().map(event -> {
+        List<ClaimedHealthChangeEvent> claimed = new ArrayList<>(pending.size());
+        for (DeliveryRow event : pending) {
             UUID leaseToken = UUID.randomUUID();
             int deliveryAttempt = event.deliveryAttempt() == Integer.MAX_VALUE
                     ? Integer.MAX_VALUE
@@ -115,7 +118,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                             """)
                     .params(deliveryAttempt, leaseToken, databaseTime(leaseUntil), event.eventId())
                     .update();
-            return new ClaimedHealthChangeEvent(
+            claimed.add(new ClaimedHealthChangeEvent(
                     new HealthChangeEventPayload(
                             event.eventId(),
                             new ResourceReference(event.resourceReference()),
@@ -125,8 +128,9 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                             event.currentHealth(),
                             event.changedAt()),
                     leaseToken,
-                    deliveryAttempt);
-        }).toList();
+                    deliveryAttempt));
+        }
+        return claimed;
     }
 
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
@@ -144,8 +148,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         if (event.deliveryStatus() == DeliveryStatus.DELIVERED) {
             return EventDeliveryFinalizationStatus.ALREADY_DELIVERED;
         }
-        if (!finalization.leaseToken().equals(event.leaseToken())
-                || finalization.deliveryAttempt() != event.deliveryAttempt()) {
+        if (!finalization.leaseToken().equals(event.leaseToken())) {
             return EventDeliveryFinalizationStatus.STALE_CLAIM;
         }
         if (finalization.completedAt().isBefore(event.changedAt())) {
@@ -224,12 +227,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be positive");
         }
-    }
-
-    private <T> T inTransaction(Supplier<T> operation) {
-        return Objects.requireNonNull(
-                transactions.execute(ignored -> operation.get()),
-                "transaction callback result");
     }
 
     private enum DeliveryStatus {

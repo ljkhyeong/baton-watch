@@ -4,7 +4,6 @@ import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,10 +24,10 @@ public final class MonitoringScheduler {
             MarkStaleProjectionsUseCase markStaleProjections,
             PurgeAttemptHistoryUseCase purgeAttemptHistory,
             MonitoringMetrics metrics) {
-        this.runDueChecks = Objects.requireNonNull(runDueChecks, "runDueChecks");
-        this.markStaleProjections = Objects.requireNonNull(markStaleProjections, "markStaleProjections");
-        this.purgeAttemptHistory = Objects.requireNonNull(purgeAttemptHistory, "purgeAttemptHistory");
-        this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.runDueChecks = runDueChecks;
+        this.markStaleProjections = markStaleProjections;
+        this.purgeAttemptHistory = purgeAttemptHistory;
+        this.metrics = metrics;
     }
 
     @Scheduled(

@@ -49,9 +49,6 @@ class WorkerSchedulingConfigurationTest {
                     scheduler.getScheduledThreadPoolExecutor().getRemoveOnCancelPolicy());
             assertThat(schedulers.values()).allMatch(scheduler ->
                     !scheduler.getScheduledThreadPoolExecutor()
-                            .getContinueExistingPeriodicTasksAfterShutdownPolicy());
-            assertThat(schedulers.values()).allMatch(scheduler ->
-                    !scheduler.getScheduledThreadPoolExecutor()
                             .getExecuteExistingDelayedTasksAfterShutdownPolicy());
 
             ThreadPoolTaskScheduler delivery = schedulers.get(

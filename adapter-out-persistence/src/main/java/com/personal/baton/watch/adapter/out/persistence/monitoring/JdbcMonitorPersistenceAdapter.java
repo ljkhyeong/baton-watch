@@ -45,8 +45,8 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(synchronizedAt, "synchronizedAt");
-        return requireTransactionResult(
-                transactions.execute(ignored -> synchronizeInTransaction(command, synchronizedAt)));
+        return transactions.execute(
+                ignored -> synchronizeInTransaction(command, synchronizedAt));
     }
 
     @Override
@@ -67,8 +67,8 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
         if (staleBefore.isAfter(markedAt)) {
             throw new IllegalArgumentException("stale cutoff cannot follow marked time");
         }
-        return requireTransactionResult(transactions.execute(
-                ignored -> markStaleInTransaction(staleBefore, markedAt, limit)));
+        return transactions.execute(
+                ignored -> markStaleInTransaction(staleBefore, markedAt, limit));
     }
 
     private SynchronizationResult synchronizeInTransaction(
@@ -123,7 +123,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 ? null
                 : targetOrStateChanged ? synchronizedAt : existing.nextCheckAt();
 
-        jdbc.update("""
+        MonitorRow updated = DataAccessUtils.requiredSingleResult(jdbc.query("""
                 UPDATE watch_monitor
                 SET source_revision = ?,
                     monitor_status = ?,
@@ -139,7 +139,9 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                     lease_expires_at = NULL,
                     updated_at = ?
                 WHERE resource_reference = ?
-                """,
+                RETURNING
+                """ + MONITOR_COLUMNS,
+                MonitoringJdbcRows::mapMonitor,
                 command.sourceRevision().value(),
                 command.monitoringState().name(),
                 requestedTarget,
@@ -150,7 +152,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 databaseTime(lastConclusiveAt),
                 databaseTime(nextCheckAt),
                 databaseTime(synchronizedAt),
-                command.resourceReference().value());
+                command.resourceReference().value()));
 
         if (existing.health() != derivation.health()) {
             eventAppender.append(
@@ -162,19 +164,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                     synchronizedAt);
         }
 
-        MonitorRow updated = new MonitorRow(
-                command.resourceReference().value(),
-                command.sourceRevision(),
-                command.monitoringState(),
-                requestedTarget,
-                derivation.health(),
-                derivation.consecutiveFailures(),
-                lastOutcome,
-                lastCheckedAt,
-                lastConclusiveAt,
-                nextCheckAt,
-                null,
-                null);
         return new SynchronizationResult(
                 SynchronizationStatus.APPLIED, toProjection(updated));
     }
@@ -185,7 +174,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
         Instant nextCheckAt = command.monitoringState() == MonitoringState.ACTIVE
                 ? synchronizedAt
                 : null;
-        int inserted = jdbc.update("""
+        return DataAccessUtils.singleResult(jdbc.query("""
                 INSERT INTO watch_monitor (
                     resource_reference,
                     source_revision,
@@ -198,30 +187,16 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                     updated_at
                 ) VALUES (?, ?, ?, ?, 'UNKNOWN', 0, ?, ?, ?)
                 ON CONFLICT (resource_reference) DO NOTHING
-                """,
+                RETURNING
+                """ + MONITOR_COLUMNS,
+                MonitoringJdbcRows::mapMonitor,
                 command.resourceReference().value(),
                 command.sourceRevision().value(),
                 command.monitoringState().name(),
                 target,
                 databaseTime(nextCheckAt),
                 databaseTime(synchronizedAt),
-                databaseTime(synchronizedAt));
-        if (inserted == 0) {
-            return null;
-        }
-        return new MonitorRow(
-                command.resourceReference().value(),
-                command.sourceRevision(),
-                command.monitoringState(),
-                target,
-                Health.UNKNOWN,
-                0,
-                null,
-                null,
-                null,
-                nextCheckAt,
-                null,
-                null);
+                databaseTime(synchronizedAt)));
     }
 
     private int markStaleInTransaction(
@@ -280,7 +255,4 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
         }
     }
 
-    private static <T> T requireTransactionResult(T result) {
-        return Objects.requireNonNull(result, "transaction callback result");
-    }
 }

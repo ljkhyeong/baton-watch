@@ -5,7 +5,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -23,7 +22,7 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
     private final ObjectMapper objectMapper;
 
     public MonitorApiAuthenticationEntryPoint(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.objectMapper = objectMapper;
     }
 
     @Override

@@ -3,7 +3,6 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEventsUseCase;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,9 +21,9 @@ final class EventDeliveryMaintenanceScheduler {
             PurgeDeliveredEventsUseCase purgeDeliveredEvents,
             GetEventDeliveryBacklogUseCase getBacklog,
             MonitoringMetrics metrics) {
-        this.purgeDeliveredEvents = Objects.requireNonNull(purgeDeliveredEvents, "purgeDeliveredEvents");
-        this.getBacklog = Objects.requireNonNull(getBacklog, "getBacklog");
-        this.metrics = Objects.requireNonNull(metrics, "metrics");
+        this.purgeDeliveredEvents = purgeDeliveredEvents;
+        this.getBacklog = getBacklog;
+        this.metrics = metrics;
     }
 
     @Scheduled(

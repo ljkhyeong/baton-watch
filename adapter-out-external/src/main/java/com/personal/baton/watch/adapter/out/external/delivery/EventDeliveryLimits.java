@@ -20,10 +20,6 @@ public record EventDeliveryLimits(
         requireNanosRepresentable(connectTimeout, "connectTimeout");
         requireNanosRepresentable(responseTimeout, "responseTimeout");
         requireNanosRepresentable(totalTimeout, "totalTimeout");
-        if (connectTimeout.compareTo(totalTimeout) > 0
-                || responseTimeout.compareTo(totalTimeout) > 0) {
-            throw new IllegalArgumentException("phase timeouts must not exceed totalTimeout");
-        }
         OutboundResourceBounds.requireResponseBytes(
                 maxResponseBytes, OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);

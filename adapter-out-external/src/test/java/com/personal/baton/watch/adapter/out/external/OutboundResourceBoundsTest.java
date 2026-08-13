@@ -12,6 +12,9 @@ class OutboundResourceBoundsTest {
         assertDoesNotThrow(() -> OutboundResourceBounds.requireResponseBytes(
                 OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES,
                 OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES));
+        assertDoesNotThrow(() -> OutboundResourceBounds.requireResponseBytes(
+                OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES,
+                OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES));
         assertDoesNotThrow(() -> OutboundResourceBounds.requireHeaderBounds(
                 OutboundResourceBounds.MAX_HEADER_COUNT,
                 OutboundResourceBounds.MAX_HEADER_LINE_LENGTH));

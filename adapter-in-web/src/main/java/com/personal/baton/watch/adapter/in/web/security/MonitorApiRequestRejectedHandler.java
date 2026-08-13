@@ -5,7 +5,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
@@ -23,7 +22,7 @@ public final class MonitorApiRequestRejectedHandler implements RequestRejectedHa
     private final ObjectMapper objectMapper;
 
     public MonitorApiRequestRejectedHandler(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.objectMapper = objectMapper;
     }
 
     @Override

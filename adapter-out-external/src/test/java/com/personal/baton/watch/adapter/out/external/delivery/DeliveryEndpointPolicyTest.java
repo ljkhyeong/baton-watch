@@ -27,9 +27,11 @@ class DeliveryEndpointPolicyTest {
     @ParameterizedTest
     @MethodSource("rejectedEndpoints")
     void rejectsUnsafeOrAmbiguousEndpoints(String rawEndpoint) {
-        assertThrows(
-                DeliveryPolicyException.class,
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
                 () -> policy.validate(URI.create(rawEndpoint)));
+
+        assertEquals("event delivery endpoint violates policy", exception.getMessage());
     }
 
     private static Stream<String> rejectedEndpoints() {
