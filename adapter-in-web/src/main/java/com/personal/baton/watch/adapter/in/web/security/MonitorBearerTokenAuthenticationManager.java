@@ -10,7 +10,7 @@ import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 
-/** Authenticates the operator-configured monitor API service token. */
+/** 운영자가 설정한 모니터 API 서비스 토큰을 인증한다. */
 public final class MonitorBearerTokenAuthenticationManager implements AuthenticationManager {
 
     private static final String PRINCIPAL = "baton-watch-monitor-api";

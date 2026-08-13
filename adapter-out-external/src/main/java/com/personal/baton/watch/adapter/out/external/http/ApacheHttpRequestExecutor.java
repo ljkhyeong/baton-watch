@@ -22,7 +22,7 @@ import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.MessageConstraintException;
 
-/** Owns a bounded HTTP executor and applies one hard deadline to each request. */
+/** 제한된 HTTP 실행기를 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
 
     @FunctionalInterface
@@ -118,7 +118,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         } catch (SocketTimeoutException exception) {
             throw failure(ApacheHttpFailure.Kind.READ_TIMEOUT, progress.responseBytes());
         } catch (UnknownHostException exception) {
-            // A pinned resolver mismatch is an adapter invariant failure, not a fresh DNS lookup.
+            // 고정 리졸버 불일치는 새로운 DNS 조회 사유가 아니라 어댑터 불변식 위반이다.
             throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         } catch (InterruptedIOException exception) {
             Thread.currentThread().interrupt();

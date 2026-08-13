@@ -6,7 +6,7 @@ import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.util.Objects;
 
-/** Production checker facade. It owns bounded DNS and HTTP executors. */
+/** 운영용 점검기 퍼사드. 제한된 DNS 및 HTTP 실행기를 소유한다. */
 public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
 
     private final SafeUrlCheckEngine engine;
@@ -51,7 +51,7 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
         try {
             closeable.close();
         } catch (Exception ignored) {
-            // Shutdown is best effort and intentionally does not expose exception details.
+            // 종료는 최선을 다해 시도하며 예외 세부 정보를 의도적으로 노출하지 않는다.
         }
     }
 

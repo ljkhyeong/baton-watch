@@ -8,14 +8,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Rejects an entire DNS answer when any address is not public global unicast. */
+/** 주소 중 하나라도 공개 글로벌 유니캐스트가 아니면 DNS 응답 전체를 거부한다. */
 public final class GlobalAddressPolicy {
 
     /**
-     * Allocated public IPv6 global-unicast prefixes from the IANA registry snapshot dated
-     * 2025-10-10. Unlisted and future allocations fail closed until they are reviewed.
-     * IANA protocol assignments and 6to4 are intentionally excluded.
-     * Source: https://www.iana.org/assignments/ipv6-unicast-address-assignments/
+     * 2025-10-10 일자의 IANA 레지스트리 스냅샷에 등재된, 할당된 공개 IPv6 글로벌 유니캐스트
+     * 접두사다. 미등재 범위와 향후 할당은 검토되기 전까지 실패 폐쇄 방식으로 거부한다.
+     * IANA 프로토콜 할당과 6to4는 의도적으로 제외했다.
+     * 출처: https://www.iana.org/assignments/ipv6-unicast-address-assignments/
      */
     private static final List<Cidr> ALLOCATED_PUBLIC_IPV6 = List.of(
             cidr("2001:200::", 23),

@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
-/** Shared SQL projection and mapping for the current monitor row. */
+/** 현재 모니터 행에 대한 공유 SQL 프로젝션과 매핑이다. */
 final class MonitoringJdbcRows {
 
     static final String MONITOR_COLUMNS = """

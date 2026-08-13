@@ -7,7 +7,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 import tools.jackson.databind.SerializationFeature;
 
-/** Serializes only the fixed BATON callback DTO; internal claim metadata is not representable here. */
+/** 고정 BATON 콜백 DTO만 직렬화하며, 내부 점유 메타데이터는 이 표현에 포함할 수 없다. */
 final class HealthChangeEventJsonSerializer implements HealthChangeEventSerializer {
 
     private final ObjectWriter writer;

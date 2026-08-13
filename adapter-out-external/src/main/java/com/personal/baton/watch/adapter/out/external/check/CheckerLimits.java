@@ -4,7 +4,7 @@ import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
 
-/** Runtime limits for a single outbound URL check. No limit may be disabled. */
+/** 단일 아웃바운드 URL 점검의 런타임 제한. 어떤 제한도 비활성화할 수 없다. */
 public record CheckerLimits(
         Duration connectTimeout,
         Duration responseTimeout,

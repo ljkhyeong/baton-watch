@@ -1,6 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.http;
 
-/** Bounded failure taxonomy shared by the Apache HTTP infrastructure. */
+/** Apache HTTP 인프라가 공유하는 제한된 실패 분류 체계. */
 public final class ApacheHttpFailure extends Exception {
 
     public enum Kind {

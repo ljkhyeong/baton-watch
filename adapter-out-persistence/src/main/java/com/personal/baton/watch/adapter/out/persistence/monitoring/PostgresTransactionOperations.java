@@ -7,7 +7,7 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** Applies a transaction-local PostgreSQL lock timeout around short persistence work. */
+/** 짧은 영속성 작업에 트랜잭션 로컬 PostgreSQL 잠금 제한 시간을 적용한다. */
 public final class PostgresTransactionOperations implements TransactionOperations {
 
     private static final String APPLY_LOCK_TIMEOUT =

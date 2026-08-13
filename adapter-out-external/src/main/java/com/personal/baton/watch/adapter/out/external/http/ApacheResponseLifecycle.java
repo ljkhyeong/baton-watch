@@ -10,7 +10,7 @@ import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.io.ModalCloseable;
 
-/** Closes completed responses normally and aborts failed responses without draining them. */
+/** 완료 응답은 정상적으로 닫고 실패 응답은 본문을 끝까지 소비하지 않고 중단한다. */
 public final class ApacheResponseLifecycle {
 
     @FunctionalInterface

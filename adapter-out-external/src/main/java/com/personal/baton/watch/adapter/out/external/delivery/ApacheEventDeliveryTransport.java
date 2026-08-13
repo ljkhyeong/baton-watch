@@ -17,7 +17,7 @@ import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 
-/** Executes one already-validated, DNS-pinned POST without redirects or client state. */
+/** 이미 검증되고 DNS에 고정된 POST 하나를 리다이렉트나 클라이언트 상태 없이 실행한다. */
 final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoCloseable {
 
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";

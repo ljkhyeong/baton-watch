@@ -26,7 +26,7 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
         try {
             metrics.recordEventDeliveryAttempt(observation.outcome());
         } catch (RuntimeException ignored) {
-            // Telemetry must never change an acknowledged delivery into a retry.
+            // 텔레메트리 실패가 확인된 전달을 재시도로 바꾸어서는 안 된다.
         }
         return observation;
     }

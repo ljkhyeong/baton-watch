@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Immutable health-change data that may cross the outbound sender boundary. */
+/** 아웃바운드 송신자 경계를 통과할 수 있는 불변 상태 변경 데이터다. */
 public record HealthChangeEventPayload(
         UUID eventId,
         ResourceReference resourceReference,

@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-/** Bounds every short PostgreSQL persistence transaction and its row-lock wait. */
+/** 모든 짧은 PostgreSQL 영속성 트랜잭션과 행 잠금 대기를 제한한다. */
 @ConfigurationProperties("watch.persistence")
 public record PersistenceProperties(Duration transactionTimeout, Duration lockTimeout) {
 

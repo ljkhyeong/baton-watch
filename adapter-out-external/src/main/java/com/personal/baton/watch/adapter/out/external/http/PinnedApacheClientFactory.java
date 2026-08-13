@@ -18,7 +18,7 @@ import org.apache.hc.core5.http.config.Http1Config;
 import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.Timeout;
 
-/** Builds a request-scoped client that can resolve only one approved hostname. */
+/** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
 public final class PinnedApacheClientFactory {
 
     private final Supplier<SSLContext> sslContextFactory;

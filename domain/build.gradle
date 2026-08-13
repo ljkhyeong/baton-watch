@@ -1,2 +1,1 @@
-// Domain code has no framework or adapter dependencies.
-
+// 도메인 코드는 프레임워크나 어댑터에 의존하지 않습니다.

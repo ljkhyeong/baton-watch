@@ -9,7 +9,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** Assembles the bounded transaction policy shared by every PostgreSQL adapter. */
+/** 모든 PostgreSQL 어댑터가 공유하는 제한된 트랜잭션 정책을 조립한다. */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(PersistenceProperties.class)
 class PersistenceTransactionConfiguration {

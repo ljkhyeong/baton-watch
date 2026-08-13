@@ -95,7 +95,7 @@ public record WatchProperties(
     }
 
     private static String requireToken(String token) {
-        // Bean Validation failure analysis includes rejected values, so credentials stay procedural.
+        // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
         Objects.requireNonNull(token, "apiToken");
         if (!BEARER_TOKEN.matcher(token).matches()) {
             throw new IllegalArgumentException(

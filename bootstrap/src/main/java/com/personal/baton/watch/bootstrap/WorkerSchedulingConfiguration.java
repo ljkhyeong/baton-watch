@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
-/** Isolates checks, callback delivery, and database maintenance on bounded schedulers. */
+/** 점검, 콜백 전달, 데이터베이스 유지보수를 제한된 스케줄러에서 격리한다. */
 @Configuration(proxyBeanMethods = false)
 final class WorkerSchedulingConfiguration {
 

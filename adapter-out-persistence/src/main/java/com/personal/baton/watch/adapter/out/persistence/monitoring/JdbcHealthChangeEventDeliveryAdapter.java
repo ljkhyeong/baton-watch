@@ -23,7 +23,7 @@ import java.util.function.Supplier;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
-/** JDBC adapter for the durable health-change event delivery lifecycle. */
+/** 내구성 있는 상태 변경 이벤트 전달 생명주기를 담당하는 JDBC 어댑터다. */
 public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeEventDeliveryPersistencePort {
 
     private static final String DELIVERY_COLUMNS = """

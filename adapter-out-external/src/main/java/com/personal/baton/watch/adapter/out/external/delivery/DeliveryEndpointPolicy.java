@@ -4,7 +4,7 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
 import java.util.Locale;
 
-/** Static policy for the single configured BATON callback endpoint. */
+/** 설정된 단일 BATON 콜백 엔드포인트의 정적 정책. */
 final class DeliveryEndpointPolicy {
 
     ValidatedDeliveryEndpoint validate(URI endpoint) throws DeliveryPolicyException {
