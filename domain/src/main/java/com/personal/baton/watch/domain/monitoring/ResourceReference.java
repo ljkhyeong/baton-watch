@@ -10,7 +10,7 @@ public record ResourceReference(String value) {
 
     public ResourceReference {
         Objects.requireNonNull(value, "value");
-        if (value.isEmpty() || value.length() > MAX_LENGTH || !ALLOWED.matcher(value).matches()) {
+        if (value.length() > MAX_LENGTH || !ALLOWED.matcher(value).matches()) {
             throw new IllegalArgumentException("resource reference must contain 1-128 allowed characters");
         }
     }

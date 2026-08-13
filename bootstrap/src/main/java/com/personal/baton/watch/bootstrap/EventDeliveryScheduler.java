@@ -5,12 +5,12 @@ import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliverie
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "watch.event-delivery", name = "enabled", havingValue = "true")
+@ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
 final class EventDeliveryScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(EventDeliveryScheduler.class);

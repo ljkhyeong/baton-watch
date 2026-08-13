@@ -138,10 +138,21 @@ class ResourceMonitorControllerTest {
                         org.hamcrest.Matchers.containsString("missing-resource"))));
     }
 
+    @Test
+    void delegatesPathConversionToSpringWithoutExposingInvalidReferences() throws Exception {
+        mockMvc.perform(get("/api/v1/resource-monitors/invalid!reference"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("invalid!reference"))));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
         "{",
         "{}",
+        "{\"sourceRevision\":-1,\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":\"invalid\",\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":42,\"monitoringState\":\"PAUSED\"}"
     })

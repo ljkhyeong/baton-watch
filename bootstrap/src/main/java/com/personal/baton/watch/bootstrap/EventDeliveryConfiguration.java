@@ -12,10 +12,8 @@ import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetr
 import com.personal.baton.watch.application.monitoring.service.GetEventDeliveryBacklogService;
 import com.personal.baton.watch.application.monitoring.service.PurgeDeliveredEventsService;
 import com.personal.baton.watch.application.monitoring.service.RunEventDeliveriesService;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Clock;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -38,8 +36,8 @@ class EventDeliveryConfiguration {
         return new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
     }
 
-    @Bean(destroyMethod = "close")
-    @ConditionalOnProperty(prefix = "watch.event-delivery", name = "enabled", havingValue = "true")
+    @Bean
+    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
@@ -66,14 +64,14 @@ class EventDeliveryConfiguration {
 
     @Bean
     @Primary
-    @ConditionalOnProperty(prefix = "watch.event-delivery", name = "enabled", havingValue = "true")
+    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
     HealthChangeEventSender meteredHealthChangeEventSender(
             ApacheHealthChangeEventSender sender, MonitoringMetrics metrics) {
         return new MeteredHealthChangeEventSender(sender, metrics);
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "watch.event-delivery", name = "enabled", havingValue = "true")
+    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
     RunEventDeliveriesUseCase runEventDeliveriesUseCase(
             HealthChangeEventDeliveryPersistencePort persistence,
             HealthChangeEventSender sender,
@@ -105,9 +103,7 @@ class EventDeliveryConfiguration {
     }
 
     static void requireSeparateToken(String deliveryToken, String monitorApiToken) {
-        if (MessageDigest.isEqual(
-                deliveryToken.getBytes(StandardCharsets.UTF_8),
-                monitorApiToken.getBytes(StandardCharsets.UTF_8))) {
+        if (deliveryToken.equals(monitorApiToken)) {
             throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
         }
     }

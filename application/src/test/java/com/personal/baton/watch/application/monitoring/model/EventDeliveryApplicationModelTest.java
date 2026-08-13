@@ -27,7 +27,9 @@ class EventDeliveryApplicationModelTest {
                 EventDeliveryOutcome.HTTP_SERVER_ERROR,
                 EventDeliveryObservation.forHttpStatus(503).outcome());
         assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(199));
-        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.delivered(199));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 199));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> EventDeliveryObservation.failure(EventDeliveryOutcome.DELIVERED));

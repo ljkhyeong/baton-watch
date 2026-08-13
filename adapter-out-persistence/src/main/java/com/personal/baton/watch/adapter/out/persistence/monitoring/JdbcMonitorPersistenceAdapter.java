@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MONITOR_COLUMNS;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
-import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.enumName;
 
 import com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MonitorRow;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
@@ -21,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -56,7 +56,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 "SELECT " + MONITOR_COLUMNS + " FROM watch_monitor WHERE resource_reference = ?",
                 MonitoringJdbcRows::mapMonitor,
                 resourceReference.value());
-        return rows.stream().findFirst().map(this::toProjection);
+        return DataAccessUtils.optionalResult(rows).map(this::toProjection);
     }
 
     @Override
@@ -73,30 +73,29 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     private SynchronizationResult synchronizeInTransaction(
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
-        List<MonitorRow> existingRows = jdbc.query(
+        MonitorRow existing = DataAccessUtils.singleResult(jdbc.query(
                 "SELECT " + MONITOR_COLUMNS
                         + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                 MonitoringJdbcRows::mapMonitor,
-                command.resourceReference().value());
+                command.resourceReference().value()));
 
-        if (existingRows.isEmpty()) {
+        if (existing == null) {
             MonitorRow inserted = tryInsertMonitor(command, synchronizedAt);
             if (inserted != null) {
                 return new SynchronizationResult(
                         SynchronizationStatus.APPLIED, toProjection(inserted));
             }
-            existingRows = jdbc.query(
+            existing = DataAccessUtils.singleResult(jdbc.query(
                     "SELECT " + MONITOR_COLUMNS
                             + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                     MonitoringJdbcRows::mapMonitor,
-                    command.resourceReference().value());
-            if (existingRows.isEmpty()) {
+                    command.resourceReference().value()));
+            if (existing == null) {
                 throw new IllegalStateException(
                         "conflicting monitor disappeared during synchronization");
             }
         }
 
-        MonitorRow existing = existingRows.getFirst();
         int revisionComparison = command.sourceRevision().compareTo(existing.sourceRevision());
         if (revisionComparison < 0) {
             return new SynchronizationResult(
@@ -146,7 +145,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 requestedTarget,
                 derivation.health().name(),
                 derivation.consecutiveFailures(),
-                enumName(lastOutcome),
+                lastOutcome == null ? null : lastOutcome.name(),
                 databaseTime(lastCheckedAt),
                 databaseTime(lastConclusiveAt),
                 databaseTime(nextCheckAt),

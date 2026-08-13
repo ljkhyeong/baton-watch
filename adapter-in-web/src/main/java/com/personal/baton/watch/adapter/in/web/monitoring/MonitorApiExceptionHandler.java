@@ -143,7 +143,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
                     INTERNAL_ERROR,
                     headers);
         }
-        if (status.value() == HttpStatus.BAD_REQUEST.value()) {
+        if (status.isSameCodeAs(HttpStatus.BAD_REQUEST)) {
             MonitorApiException invalidRequest = MonitorApiException.invalidRequest();
             return frameworkProblem(
                     exception,

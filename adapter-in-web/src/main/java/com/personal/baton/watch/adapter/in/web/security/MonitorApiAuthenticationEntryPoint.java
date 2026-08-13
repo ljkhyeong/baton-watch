@@ -34,7 +34,7 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setCharacterEncoding(StandardCharsets.UTF_8);
         objectMapper.writeValue(response.getOutputStream(), unauthorizedProblem());
     }
 

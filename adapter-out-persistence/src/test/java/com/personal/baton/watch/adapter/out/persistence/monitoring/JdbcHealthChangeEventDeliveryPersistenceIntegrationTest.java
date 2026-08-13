@@ -349,7 +349,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         Instant changedAt = claimedAt.plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         check,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         changedAt,
                         changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
@@ -373,7 +373,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 event.payload().eventId(),
                 event.leaseToken(),
                 event.deliveryAttempt(),
-                EventDeliveryObservation.delivered(204),
+                EventDeliveryObservation.forHttpStatus(204),
                 completedAt,
                 null);
     }

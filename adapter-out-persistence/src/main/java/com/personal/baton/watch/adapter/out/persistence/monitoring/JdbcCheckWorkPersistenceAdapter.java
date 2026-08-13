@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -150,33 +151,31 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
             return CheckFinalizationStatus.ALREADY_FINALIZED;
         }
 
-        List<AttemptRow> attempts = jdbc.query("""
-                SELECT attempt_id, resource_reference, source_revision, lease_token, claimed_at
+        AttemptRow attempt = DataAccessUtils.singleResult(jdbc.query("""
+                SELECT resource_reference, source_revision, lease_token, claimed_at
                 FROM watch_attempt
                 WHERE attempt_id = ?
-                """, JdbcCheckWorkPersistenceAdapter::mapAttempt, finalization.attemptId());
-        if (attempts.isEmpty() || !attemptMatches(attempts.getFirst(), finalization)) {
+                """, JdbcCheckWorkPersistenceAdapter::mapAttempt, finalization.attemptId()));
+        if (attempt == null || !attemptMatches(attempt, finalization)) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
-        AttemptRow attempt = attempts.getFirst();
         if (finalization.completedAt().isBefore(attempt.claimedAt())) {
             throw new IllegalArgumentException("completion cannot precede claim");
         }
 
-        List<MonitorRow> monitors = jdbc.query(
+        MonitorRow monitor = DataAccessUtils.singleResult(jdbc.query(
                 "SELECT " + MONITOR_COLUMNS
                         + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                 MonitoringJdbcRows::mapMonitor,
-                finalization.resourceReference().value());
+                finalization.resourceReference().value()));
 
         if (resultExists(finalization.attemptId())) {
             return CheckFinalizationStatus.ALREADY_FINALIZED;
         }
-        if (monitors.isEmpty() || !monitorOwnsClaim(monitors.getFirst(), finalization)) {
+        if (monitor == null || !monitorOwnsClaim(monitor, finalization)) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
 
-        MonitorRow monitor = monitors.getFirst();
         CheckObservation observation = finalization.observation();
         jdbc.update("""
                 INSERT INTO watch_result (
@@ -248,8 +247,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     private boolean attemptMatches(
             AttemptRow attempt, CheckFinalization finalization) {
-        return attempt.attemptId().equals(finalization.attemptId())
-                && attempt.leaseToken().equals(finalization.leaseToken())
+        return attempt.leaseToken().equals(finalization.leaseToken())
                 && attempt.resourceReference().equals(
                         finalization.resourceReference().value())
                 && attempt.sourceRevision().equals(finalization.sourceRevision());
@@ -266,7 +264,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     private static AttemptRow mapAttempt(
             ResultSet resultSet, int ignoredRow) throws SQLException {
         return new AttemptRow(
-                resultSet.getObject("attempt_id", UUID.class),
                 resultSet.getString("resource_reference"),
                 new SourceRevision(resultSet.getLong("source_revision")),
                 resultSet.getObject("lease_token", UUID.class),
@@ -284,7 +281,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     }
 
     private record AttemptRow(
-            UUID attemptId,
             String resourceReference,
             SourceRevision sourceRevision,
             UUID leaseToken,

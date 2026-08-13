@@ -70,7 +70,6 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
     private static String validateBearerToken(String bearerToken) {
         Objects.requireNonNull(bearerToken, "bearerToken");
         if (bearerToken.length() < 32
-                || bearerToken.isBlank()
                 || bearerToken.codePoints().anyMatch(codePoint -> codePoint < 0x21 || codePoint > 0x7e)) {
             throw new IllegalArgumentException(
                     "event delivery bearer token must contain at least 32 safe characters");

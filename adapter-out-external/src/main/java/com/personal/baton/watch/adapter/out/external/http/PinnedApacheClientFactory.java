@@ -7,15 +7,12 @@ import java.util.function.Supplier;
 import javax.net.ssl.SSLContext;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.config.RequestConfig;
-import org.apache.hc.client5.http.impl.DefaultSchemePortResolver;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.impl.io.ManagedHttpClientConnectionFactory;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
-import org.apache.hc.client5.http.impl.routing.DefaultRoutePlanner;
 import org.apache.hc.client5.http.ssl.ClientTlsStrategyBuilder;
-import org.apache.hc.client5.http.ssl.HostnameVerificationPolicy;
 import org.apache.hc.client5.http.ssl.TlsSocketStrategy;
 import org.apache.hc.core5.http.config.Http1Config;
 import org.apache.hc.core5.ssl.SSLContexts;
@@ -57,12 +54,8 @@ public final class PinnedApacheClientFactory {
                 .setSocketTimeout(responseTimeout)
                 .build();
         RequestConfig requestConfig = RequestConfig.custom()
-                .setRedirectsEnabled(false)
                 .setAuthenticationEnabled(false)
-                .setContentCompressionEnabled(false)
                 .setProtocolUpgradeEnabled(false)
-                .setExpectContinueEnabled(false)
-                .setHardCancellationEnabled(true)
                 .setConnectionRequestTimeout(connectTimeout)
                 .setResponseTimeout(responseTimeout)
                 .build();
@@ -79,8 +72,6 @@ public final class PinnedApacheClientFactory {
         try {
             return HttpClients.custom()
                     .setConnectionManager(connectionManager)
-                    .setConnectionManagerShared(false)
-                    .setRoutePlanner(new DefaultRoutePlanner(DefaultSchemePortResolver.INSTANCE))
                     .setDefaultRequestConfig(requestConfig)
                     .disableAutomaticRetries()
                     .disableRedirectHandling()
@@ -101,7 +92,6 @@ public final class PinnedApacheClientFactory {
                 sslContextFactory.get(), "sslContextFactory result");
         return ClientTlsStrategyBuilder.create()
                 .setSslContext(sslContext)
-                .setHostVerificationPolicy(HostnameVerificationPolicy.BUILTIN)
                 .buildClassic();
     }
 

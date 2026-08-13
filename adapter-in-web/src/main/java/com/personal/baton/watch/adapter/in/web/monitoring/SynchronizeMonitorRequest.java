@@ -6,21 +6,15 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 public record SynchronizeMonitorRequest(
-        @NotNull Long sourceRevision,
+        @NotNull @PositiveOrZero Long sourceRevision,
         @NotNull MonitoringState monitoringState,
         String targetUrl) {
 
-    SynchronizeMonitorCommand toCommand(String rawResourceReference) {
-        ResourceReference resourceReference;
-        SourceRevision revision;
-        try {
-            resourceReference = new ResourceReference(rawResourceReference);
-            revision = new SourceRevision(sourceRevision);
-        } catch (IllegalArgumentException exception) {
-            throw MonitorApiException.invalidRequest();
-        }
+    SynchronizeMonitorCommand toCommand(ResourceReference resourceReference) {
+        SourceRevision revision = new SourceRevision(sourceRevision);
 
         if (monitoringState == MonitoringState.ACTIVE) {
             if (targetUrl == null) {

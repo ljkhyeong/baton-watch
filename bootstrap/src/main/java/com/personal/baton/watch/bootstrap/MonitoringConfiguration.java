@@ -83,7 +83,7 @@ public class MonitoringConfiguration {
                 properties.maintenanceBatchSize());
     }
 
-    @Bean(destroyMethod = "close")
+    @Bean
     ApacheUrlChecker urlChecker(WatchProperties properties) {
         WatchProperties.Http http = properties.http();
         CheckerLimits limits = new CheckerLimits(

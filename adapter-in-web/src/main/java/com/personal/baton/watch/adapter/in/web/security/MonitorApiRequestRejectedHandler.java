@@ -33,7 +33,7 @@ public final class MonitorApiRequestRejectedHandler implements RequestRejectedHa
             RequestRejectedException requestRejectedException) throws IOException {
         response.setStatus(HttpStatus.BAD_REQUEST.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.setCharacterEncoding(StandardCharsets.UTF_8);
         objectMapper.writeValue(response.getOutputStream(), requestRejectedProblem());
     }
 

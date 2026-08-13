@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.check;
 
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Locale;
 
 /** Adapts the canonical TargetUrl policy to per-hop redirect and loop handling. */
@@ -31,13 +30,13 @@ final class TargetUriPolicy {
     }
 
     URI resolveRedirect(ValidatedUri current, String location) throws TargetPolicyException {
-        if (location == null || location.isEmpty()) {
+        if (location == null) {
             throw new TargetPolicyException();
         }
         try {
             TargetUrl.requireSafeReferenceCharacters(location);
-            return current.uri().resolve(new URI(location));
-        } catch (URISyntaxException | IllegalArgumentException exception) {
+            return current.uri().resolve(location);
+        } catch (IllegalArgumentException exception) {
             throw new TargetPolicyException();
         }
     }
