@@ -67,13 +67,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         BASE_TIME.plusSeconds(31),
                         BASE_TIME.plusSeconds(91))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         recovered,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         BASE_TIME.plusSeconds(32),
                         BASE_TIME.plusSeconds(92))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
@@ -241,7 +241,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         ClaimedCheck claimed = claimOne(BASE_TIME);
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                 BASE_TIME.plusSeconds(1),
                 BASE_TIME.plusSeconds(61));
         JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
@@ -292,7 +292,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                 BASE_TIME.plusSeconds(1),
                 BASE_TIME.plusSeconds(61));
         assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))
@@ -388,7 +388,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     private void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);

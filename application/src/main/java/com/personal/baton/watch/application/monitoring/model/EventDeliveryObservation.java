@@ -9,13 +9,9 @@ public record EventDeliveryObservation(EventDeliveryOutcome outcome, Integer htt
         validateHttpStatus(outcome, httpStatusCode);
     }
 
-    public static EventDeliveryObservation delivered(int httpStatusCode) {
-        return new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, httpStatusCode);
-    }
-
     public static EventDeliveryObservation forHttpStatus(int httpStatusCode) {
         if (httpStatusCode >= 200 && httpStatusCode <= 299) {
-            return delivered(httpStatusCode);
+            return new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, httpStatusCode);
         }
         if (httpStatusCode >= 300 && httpStatusCode <= 499) {
             return new EventDeliveryObservation(EventDeliveryOutcome.HTTP_CLIENT_ERROR, httpStatusCode);

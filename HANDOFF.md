@@ -142,7 +142,7 @@
 ## Verification
 
 - Gradle 9.2.1 `clean test :bootstrap:bootJar --no-build-cache` with two workers
-  and a 512 MiB Gradle heap: 370 tests passed with no skips,
+  and a 512 MiB Gradle heap: 372 tests passed with no skips,
   failures, or errors, including the Docker-backed PostgreSQL Testcontainers
   suite.
 - The real `BatonWatchApplication` root context started against a

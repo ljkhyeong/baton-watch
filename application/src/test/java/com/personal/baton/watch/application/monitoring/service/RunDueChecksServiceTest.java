@@ -42,7 +42,7 @@ class RunDueChecksServiceTest {
                 persistence,
                 target -> {
                     calls.add("check");
-                    return CheckObservation.forHttpStatus(204);
+                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0);
                 },
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 LEASE,

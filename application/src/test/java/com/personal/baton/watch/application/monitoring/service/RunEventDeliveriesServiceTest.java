@@ -42,7 +42,7 @@ class RunEventDeliveriesServiceTest {
                 payload -> {
                     assertEquals(claim.payload(), payload);
                     calls.add("send");
-                    return EventDeliveryObservation.delivered(204);
+                    return EventDeliveryObservation.forHttpStatus(204);
                 });
 
         EventDeliveryBatchResult result = service.runEventDeliveries();

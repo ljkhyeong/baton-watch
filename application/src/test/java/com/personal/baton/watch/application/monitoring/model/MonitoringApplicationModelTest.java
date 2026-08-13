@@ -37,10 +37,16 @@ class MonitoringApplicationModelTest {
 
     @Test
     void boundsHttpObservationsToThePersistedTaxonomy() {
-        assertEquals(CheckOutcome.SUCCESS, CheckObservation.forHttpStatus(204).outcome());
-        assertEquals(CheckOutcome.HTTP_CLIENT_ERROR, CheckObservation.forHttpStatus(404).outcome());
-        assertEquals(CheckOutcome.HTTP_SERVER_ERROR, CheckObservation.forHttpStatus(503).outcome());
-        assertThrows(IllegalArgumentException.class, () -> CheckObservation.forHttpStatus(199));
+        assertEquals(CheckOutcome.SUCCESS, CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0).outcome());
+        assertEquals(
+                CheckOutcome.HTTP_CLIENT_ERROR,
+                CheckObservation.forHttpStatus(404, Duration.ZERO, 0, 0).outcome());
+        assertEquals(
+                CheckOutcome.HTTP_SERVER_ERROR,
+                CheckObservation.forHttpStatus(503, Duration.ZERO, 0, 0).outcome());
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> CheckObservation.forHttpStatus(199, Duration.ZERO, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new CheckObservation(
                 CheckOutcome.SUCCESS, null, Duration.ZERO, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new CheckObservation(

@@ -58,10 +58,6 @@ final class MonitoringJdbcRows {
         return instant == null ? null : OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    static String enumName(Enum<?> value) {
-        return value == null ? null : value.name();
-    }
-
     private static <E extends Enum<E>> E enumValue(Class<E> type, String value) {
         return value == null ? null : Enum.valueOf(type, value);
     }

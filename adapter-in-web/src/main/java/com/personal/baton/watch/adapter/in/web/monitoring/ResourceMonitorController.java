@@ -30,7 +30,7 @@ public final class ResourceMonitorController {
 
     @PutMapping(path = "/{resourceReference}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public MonitorResponse synchronize(
-            @PathVariable String resourceReference,
+            @PathVariable ResourceReference resourceReference,
             @Valid @RequestBody SynchronizeMonitorRequest request) {
         SynchronizationResult result = synchronizeMonitor.synchronize(request.toCommand(resourceReference));
         return switch (result.status()) {
@@ -41,14 +41,8 @@ public final class ResourceMonitorController {
     }
 
     @GetMapping("/{resourceReference}")
-    public MonitorResponse get(@PathVariable String resourceReference) {
-        ResourceReference reference;
-        try {
-            reference = new ResourceReference(resourceReference);
-        } catch (IllegalArgumentException exception) {
-            throw MonitorApiException.invalidRequest();
-        }
-        return getMonitorProjection.get(reference)
+    public MonitorResponse get(@PathVariable ResourceReference resourceReference) {
+        return getMonitorProjection.get(resourceReference)
                 .map(MonitorResponse::from)
                 .orElseThrow(MonitorApiException::notFound);
     }

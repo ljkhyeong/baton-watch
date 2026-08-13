@@ -16,6 +16,7 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -100,7 +101,10 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck first = claimOne(BASE_TIME);
         Instant completedAt = BASE_TIME.plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
-                        first, CheckObservation.forHttpStatus(204), completedAt, completedAt.plus(INTERVAL))))
+                        first,
+                        CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
+                        completedAt,
+                        completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
 
         ClaimedCheck inFlight = claimOne(completedAt.plus(INTERVAL));
@@ -114,7 +118,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         changedAt.plusSeconds(1),
                         changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
@@ -137,7 +141,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         Instant completedAt = BASE_TIME.plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
-                        CheckObservation.forHttpStatus(200),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
@@ -199,7 +203,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         Instant completedAt = BASE_TIME.plusSeconds(1);
         checkWorkPersistence.finalizeCheck(finalization(
                 claimed,
-                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT),
+                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),
                 completedAt,
                 completedAt.plus(INTERVAL)));
 
@@ -227,7 +231,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         Instant completedAt = BASE_TIME.plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
-                        CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT),
+                        CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);

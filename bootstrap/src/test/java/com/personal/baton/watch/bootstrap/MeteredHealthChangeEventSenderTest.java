@@ -62,7 +62,7 @@ class MeteredHealthChangeEventSenderTest {
             }
         });
         MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
-                ignored -> EventDeliveryObservation.delivered(204),
+                ignored -> EventDeliveryObservation.forHttpStatus(204),
                 new MonitoringMetrics(registry));
 
         EventDeliveryObservation observation = sender.send(null);

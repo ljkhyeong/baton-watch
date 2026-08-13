@@ -28,10 +28,6 @@ public record CheckObservation(
         }
     }
 
-    public static CheckObservation forHttpStatus(int httpStatusCode) {
-        return forHttpStatus(httpStatusCode, Duration.ZERO, 0, 0);
-    }
-
     public static CheckObservation forHttpStatus(
             int httpStatusCode, Duration duration, long responseBytes, int redirectCount) {
         if (httpStatusCode >= 200 && httpStatusCode <= 399) {
@@ -46,10 +42,6 @@ public record CheckObservation(
                     CheckOutcome.HTTP_SERVER_ERROR, httpStatusCode, duration, responseBytes, redirectCount);
         }
         throw new IllegalArgumentException("unsupported final HTTP status");
-    }
-
-    public static CheckObservation failure(CheckOutcome outcome) {
-        return failure(outcome, Duration.ZERO, 0, 0);
     }
 
     public static CheckObservation failure(
