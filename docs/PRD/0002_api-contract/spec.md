@@ -2,7 +2,7 @@
 
 상태: 유지 관리 계약
 
-수정일: 2026-08-11
+수정일: 2026-08-14
 
 ## 시스템 상태
 
@@ -30,7 +30,8 @@
   반환하며, 없으면 HTTP 404를 반환한다.
 
 두 경로 모두 `Authorization: Bearer <token>`이 필요하다. 구성된 토큰은
-패딩이 아닌 RFC 6750 `token68` 문자 32개 이상을 포함하며 Spring Security의
+RFC 6750 `token68` 문자로 구성되고 패딩 제외 문자가 32자 이상이며 전체 길이는
+200자 이하이다. Spring Security의
 표준 Bearer 리졸버가 이를 파싱한다. PUT은 `resourceReference`와
 `sourceRevision`의 조합으로 멱등성을 보장하므로 별도의 멱등성 키를 받지
 않는다. 참조는 `A-Z`, `a-z`, `0-9`, `.`, `_`, `:` 및 `-`로 구성된
@@ -45,7 +46,12 @@ Bearer 인증 스킴은 HTTP 인증 의미에 따라 대소문자를 구분하�
 통과한다. 이 경계는 서블릿 컨텍스트를 기준으로 적용되므로 WATCH를 컨텍스트
 경로 아래에 배포하더라도 모니터링 경로가 노출되지 않는다.
 
-PUT은 `application/json`을 받는다. 활성 스냅샷은 다음과 같다.
+PUT은 `application/json`을 받는다. 정확한 모니터 PUT 경로의 JSON
+본문은 16 KiB까지 허용하며, `Content-Length`가 이 한도를 초과하거나
+스트림 본문이 이 한도를 넘으면 Jackson 객체화 전에 HTTP 413으로
+거부한다. 이 제한은 인증 성공 뒤에 적용되므로, 자격 증명이 없거나
+유효하지 않은 대용량 요청은 본문 크기나 JSON을 판단하기 전에 기존
+HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 
 ~~~json
 {
@@ -74,18 +80,21 @@ PUT과 GET은 `application/json`을 반환한다.
 ~~~
 
 검증 실패는 HTTP 400, 오래된 리비전 또는 같은 리비전의 페이로드 충돌은
-HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 존재하지 않는 모니터는
-HTTP 404, 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
+HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 인증된 JSON PUT의 16 KiB
+본문 한도 초과는 HTTP 413, 존재하지 않는 모니터는 HTTP 404,
+누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
 안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 오류는 안정적인 `type`,
 `title`, `status`, `code` 필드를 포함하는 `application/problem+json`을
 사용한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
 인가 결정을 포함해서는 안 된다.
 
-인증에 성공한 뒤 Spring MVC가 요청을 거부할 때도 다음과 같이 동일한 안정적
-문제 계약을 사용한다.
+인증에 성공한 뒤 본문 제한 필터나 Spring MVC가 요청을 거부할 때도
+다음과 같이 동일한 안정적 문제 계약을 사용한다.
 
 - 잘못된 JSON 또는 요청 검증 실패: HTTP 400,
   `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`
+- JSON PUT 본문 한도 초과: HTTP 413,
+  `urn:baton-watch:problem:payload-too-large`, `PAYLOAD_TOO_LARGE`
 - 알 수 없는 `/api/v1/**` 경로: HTTP 404,
   `urn:baton-watch:problem:route-not-found`, `ROUTE_NOT_FOUND`
 - 지원하지 않는 메서드: HTTP 405,
@@ -105,7 +114,8 @@ HTTP 404, 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예�
 유지하고 두 번째 문제 본문을 작성하지 않으며, 메시지나 스택 트레이스 없이
 예외 클래스만 기록한다.
 
-이러한 라우팅, 본문 및 미디어 타입 판단보다 인증이 계속 먼저 수행되므로
+이러한 라우팅, 본문 크기·JSON 파싱 및 미디어 타입 판단보다 인증이
+계속 먼저 수행되므로
 자격 증명이 없거나 유효하지 않으면 기존 HTTP 401 문제를 반환한다. `Allow`와
 `Accept`처럼 HTTP가 정의한 기능 헤더는 보존한다. 문제 응답의 `instance`가
 있다면 원시 요청 경로가 아니라 고정된 비식별 URN

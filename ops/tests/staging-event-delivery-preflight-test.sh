@@ -146,8 +146,13 @@ if [[ "$(cat "$CURL_CALLS")" != $'watch\nreceiver' ]]; then
 fi
 
 assert_failure_contains \
-    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters" \
+    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters" \
     WATCH_API_TOKEN="monitor:api:token:0123456789:abcdef"
+printf -v long_monitor_token '%*s' 201 ''
+long_monitor_token="${long_monitor_token// /a}"
+assert_failure_contains \
+    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters" \
+    WATCH_API_TOKEN="$long_monitor_token"
 assert_failure_contains \
     "must be distinct" \
     WATCH_EVENT_DELIVERY_TOKEN="monitor-api-token-0123456789-abcdef"
@@ -170,4 +175,4 @@ assert_failure_contains \
     "must reject the unauthenticated preflight with HTTP 401, got 400" \
     FAKE_RECEIVER_STATUS="400"
 
-printf '[staging-event-delivery-preflight-test] 9 cases and curl request contract passed\n'
+printf '[staging-event-delivery-preflight-test] 10개 사례와 curl 요청 계약이 통과했습니다\n'

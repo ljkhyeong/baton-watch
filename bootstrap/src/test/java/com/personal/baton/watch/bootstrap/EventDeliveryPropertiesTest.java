@@ -3,6 +3,7 @@ package com.personal.baton.watch.bootstrap;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,16 @@ class EventDeliveryPropertiesTest {
                 "a-separate-delivery-token-longer-than-32-characters",
                 Duration.ofSeconds(50),
                 10));
+    }
+
+    @Test
+    void rejectsInstantOffsetsAboveTheApplicationHardCeiling() {
+        assertThrows(IllegalArgumentException.class, () -> properties(
+                false,
+                URI.create(""),
+                "",
+                TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET.plusNanos(1),
+                1));
     }
 
     @Test

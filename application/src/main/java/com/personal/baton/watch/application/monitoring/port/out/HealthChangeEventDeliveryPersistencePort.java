@@ -4,12 +4,13 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChange
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
 public interface HealthChangeEventDeliveryPersistencePort {
 
-    List<ClaimedHealthChangeEvent> claimPendingEvents(Instant claimedAt, Instant leaseUntil, int limit);
+    List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit);
 
     EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization);
 

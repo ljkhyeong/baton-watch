@@ -26,15 +26,30 @@ render_config() {
 
     env \
         -u WATCH_COMPOSE_PROJECT_NAME \
-        -u WATCH_DB_PASSWORD_FILE \
+        -u WATCH_DB_OWNER_PASSWORD_FILE \
+        -u WATCH_DB_RUNTIME_PASSWORD_FILE \
         -u WATCH_API_TOKEN_FILE \
         -u WATCH_TUNNEL_TOKEN_FILE \
         -u WATCH_DB_NAME \
-        -u WATCH_DB_USER \
+        -u WATCH_DB_OWNER_USER \
+        -u WATCH_DB_RUNTIME_USER \
+        -u WATCH_DB_MAXIMUM_POOL_SIZE \
+        -u WATCH_DB_MINIMUM_IDLE \
+        -u WATCH_DB_CONNECTION_TIMEOUT_MILLIS \
+        -u WATCH_DB_VALIDATION_TIMEOUT_MILLIS \
+        -u WATCH_DB_IDLE_TIMEOUT_MILLIS \
+        -u WATCH_DB_MAX_LIFETIME_MILLIS \
+        -u WATCH_DB_KEEPALIVE_TIME_MILLIS \
+        -u WATCH_DB_INITIALIZATION_FAIL_TIMEOUT_MILLIS \
+        -u WATCH_DB_CONNECT_TIMEOUT_SECONDS \
+        -u WATCH_DB_LOGIN_TIMEOUT_SECONDS \
+        -u WATCH_DB_SOCKET_TIMEOUT_SECONDS \
+        -u WATCH_DB_CANCEL_SIGNAL_TIMEOUT_SECONDS \
+        -u WATCH_DB_TCP_KEEP_ALIVE \
         -u WATCH_JAVA_TOOL_OPTIONS \
         -u WATCH_PERSISTENCE_TRANSACTION_TIMEOUT \
         -u WATCH_PERSISTENCE_LOCK_TIMEOUT \
-        -u SPRING_JDBC_TEMPLATE_QUERY_TIMEOUT \
+        -u WATCH_PERSISTENCE_QUERY_TIMEOUT \
         WATCH_IMAGE_REVISION=0000000000000000000000000000000000000001 \
         WATCH_POSTGRES_VOLUME_NAME=baton-watch-compose-policy-test \
         docker compose \
@@ -80,9 +95,13 @@ def assert_no_host_ports(configuration: dict, label: str) -> None:
 base = load(sys.argv[1])
 tunnel = load(sys.argv[2])
 
-require(set(base["services"]) == {"postgres", "watch"}, "base services changed")
 require(
-    set(tunnel["services"]) == {"postgres", "watch", "cloudflared"},
+    set(base["services"]) == {"postgres", "database-role-init", "migrate", "watch"},
+    "base services changed",
+)
+require(
+    set(tunnel["services"])
+    == {"postgres", "database-role-init", "migrate", "watch", "cloudflared"},
     "tunnel services changed",
 )
 assert_no_host_ports(base, "base")
@@ -96,6 +115,8 @@ require(
 )
 expected_networks = {
     "postgres": {"watch-db"},
+    "database-role-init": {"watch-db"},
+    "migrate": {"watch-db"},
     "watch": {"watch-db", "watch-edge"},
     "cloudflared": {"watch-edge"},
 }
@@ -104,6 +125,8 @@ for service_name, expected in expected_networks.items():
     require(actual == expected, f"{service_name} network boundary changed: {actual}")
 
 postgres = tunnel["services"]["postgres"]
+database_role_init = tunnel["services"]["database-role-init"]
+migrate = tunnel["services"]["migrate"]
 watch = tunnel["services"]["watch"]
 cloudflared = tunnel["services"]["cloudflared"]
 
@@ -118,11 +141,37 @@ require(
 )
 require(watch.get("pull_policy") == "never", "WATCH image must be the locally selected immutable tag")
 require(
+    migrate.get("image")
+    == "baton-watch-migrations:0000000000000000000000000000000000000001",
+    "migration image revision interpolation changed",
+)
+require(
+    migrate.get("pull_policy") == "never",
+    "migration image must be the locally selected immutable tag",
+)
+require(
+    migrate["environment"].get("WATCH_DB_RUNTIME_USER") == "baton_watch_runtime",
+    "migration callback must target the runtime database role",
+)
+require(
     cloudflared.get("image")
     == "cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf",
     "cloudflared image digest changed",
 )
 require("@sha256:" in postgres.get("image", ""), "PostgreSQL image must be digest-pinned")
+require(
+    database_role_init.get("image")
+    == "baton-watch-database-operations:0000000000000000000000000000000000000001",
+    "database role initialization image revision interpolation changed",
+)
+require(
+    database_role_init.get("pull_policy") == "never",
+    "database role initialization must use the locally selected immutable tag",
+)
+require(
+    not database_role_init.get("volumes"),
+    "database role initialization must not bind executable code from the worktree",
+)
 
 watch_environment = watch["environment"]
 require(
@@ -132,6 +181,14 @@ require(
 require(
     watch_environment.get("MANAGEMENT_SERVER_ADDRESS") == "127.0.0.1",
     "management server must remain container-loopback only",
+)
+require(
+    watch_environment.get("SPRING_DATASOURCE_USERNAME") == "baton_watch_runtime",
+    "WATCH must use the runtime database role",
+)
+require(
+    watch_environment.get("SPRING_FLYWAY_ENABLED") == "false",
+    "WATCH runtime must not retain schema migration authority",
 )
 require(
     watch_environment.get("SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE") == "30s",
@@ -147,7 +204,7 @@ require(
 )
 require(
     postgres["environment"].get("POSTGRES_PASSWORD_FILE")
-    == "/run/secrets/spring.datasource.password",
+    == "/run/secrets/postgres-owner-password",
     "PostgreSQL must consume its password from a file secret",
 )
 
@@ -160,13 +217,26 @@ def secret_targets(service: dict) -> set[tuple[str, str]]:
 
 require(
     secret_targets(postgres)
-    == {("watch-db-password", "spring.datasource.password")},
+    == {("watch-db-owner-password", "postgres-owner-password")},
     "PostgreSQL secret target changed",
+)
+require(
+    secret_targets(database_role_init)
+    == {
+        ("watch-db-owner-password", "postgres-owner-password"),
+        ("watch-db-runtime-password", "postgres-runtime-password"),
+    },
+    "database role initialization secret targets changed",
+)
+require(
+    secret_targets(migrate)
+    == {("watch-db-owner-password", "postgres-owner-password")},
+    "migration secret target changed",
 )
 require(
     secret_targets(watch)
     == {
-        ("watch-db-password", "spring.datasource.password"),
+        ("watch-db-runtime-password", "spring.datasource.password"),
         ("watch-api-token", "watch.api-token"),
     },
     "WATCH secret targets changed",
@@ -178,8 +248,10 @@ require(
 )
 
 expected_secret_files = {
-    "watch-db-password": Path.home()
-    / ".config/baton-watch/staging/secrets/postgres-password",
+    "watch-db-owner-password": Path.home()
+    / ".config/baton-watch/staging/secrets/postgres-owner-password",
+    "watch-db-runtime-password": Path.home()
+    / ".config/baton-watch/staging/secrets/postgres-runtime-password",
     "watch-api-token": Path.home()
     / ".config/baton-watch/staging/secrets/watch-api-token",
     "cloudflare-tunnel-token": Path.home()
@@ -205,12 +277,12 @@ require(
 
 expected_resource_limits = {
     "postgres": {"cpus": 1, "memory": "805306368", "pids": 128},
+    "database-role-init": {"cpus": 0.25, "memory": "134217728", "pids": 64},
+    "migrate": {"cpus": 0.5, "memory": "402653184", "pids": 128},
     "watch": {"cpus": 1, "memory": "805306368", "pids": 256},
     "cloudflared": {"cpus": 0.5, "memory": "268435456", "pids": 128},
 }
 for service_name, service in tunnel["services"].items():
-    require(service.get("healthcheck"), f"{service_name} healthcheck is required")
-    require(service.get("restart") == "unless-stopped", f"{service_name} restart policy changed")
     require(service.get("read_only") is True, f"{service_name} root filesystem must be read-only")
     require(
         service.get("privileged", False) is False,
@@ -239,6 +311,16 @@ for service_name, service in tunnel["services"].items():
         logging_options == {"max-size": "10m", "max-file": "3"},
         f"{service_name} log rotation limits changed",
     )
+
+for service_name in ("postgres", "watch", "cloudflared"):
+    service = tunnel["services"][service_name]
+    require(service.get("healthcheck"), f"{service_name} healthcheck is required")
+    require(service.get("restart") == "unless-stopped", f"{service_name} restart policy changed")
+
+for service_name in ("database-role-init", "migrate"):
+    service = tunnel["services"][service_name]
+    require(not service.get("healthcheck"), f"{service_name} must remain a one-shot job")
+    require(service.get("restart") == "no", f"{service_name} must not restart after success")
 
 require(
     watch["healthcheck"].get("test")
@@ -278,6 +360,16 @@ require(
     "PostgreSQL tmpfs boundary changed",
 )
 require(
+    database_role_init.get("tmpfs")
+    == ["/tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=70,mode=0700"],
+    "database role initialization tmpfs boundary changed",
+)
+require(
+    migrate.get("tmpfs")
+    == ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700"],
+    "migration tmpfs boundary changed",
+)
+require(
     postgres["healthcheck"].get("test")
     == ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'],
     "PostgreSQL healthcheck changed",
@@ -295,6 +387,21 @@ require(
 require(
     watch.get("depends_on", {}).get("postgres", {}).get("condition") == "service_healthy",
     "WATCH must wait for healthy PostgreSQL",
+)
+require(
+    database_role_init.get("depends_on", {}).get("postgres", {}).get("condition")
+    == "service_healthy",
+    "database role initialization must wait for PostgreSQL",
+)
+require(
+    migrate.get("depends_on", {}).get("database-role-init", {}).get("condition")
+    == "service_completed_successfully",
+    "migration must wait for runtime role initialization",
+)
+require(
+    watch.get("depends_on", {}).get("migrate", {}).get("condition")
+    == "service_completed_successfully",
+    "WATCH must wait for successful schema migration",
 )
 require(
     cloudflared.get("depends_on", {}).get("watch", {}).get("condition") == "service_healthy",

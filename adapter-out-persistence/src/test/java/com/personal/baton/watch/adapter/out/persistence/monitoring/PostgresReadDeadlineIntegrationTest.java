@@ -44,7 +44,7 @@ class PostgresReadDeadlineIntegrationTest
                         JdbcClient.create(boundedJdbc), newTransactionOperations());
 
         assertReadTimesOutWhileTableIsLocked(
-                "watch_health_change_event", boundedReads::getBacklogSnapshot);
+                "watch_health_change_event_backlog", boundedReads::getBacklogSnapshot);
 
         assertThat(boundedReads.getBacklogSnapshot().pendingCount()).isZero();
     }
@@ -88,6 +88,8 @@ class PostgresReadDeadlineIntegrationTest
             case "watch_monitor" -> "LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE";
             case "watch_health_change_event" ->
                 "LOCK TABLE watch_health_change_event IN ACCESS EXCLUSIVE MODE";
+            case "watch_health_change_event_backlog" ->
+                "LOCK TABLE watch_health_change_event_backlog IN ACCESS EXCLUSIVE MODE";
             default -> throw new IllegalArgumentException("unsupported lock table");
         };
         TransactionTemplate holder = new TransactionTemplate(

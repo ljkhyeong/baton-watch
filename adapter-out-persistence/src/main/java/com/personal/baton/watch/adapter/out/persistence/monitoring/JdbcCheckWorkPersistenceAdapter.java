@@ -10,6 +10,7 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalizationSt
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.HealthDerivationPolicy;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
@@ -17,7 +18,9 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -44,16 +47,16 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     }
 
     @Override
-    public List<ClaimedCheck> claimDueChecks(
-            Instant claimedAt, Instant leaseUntil, int limit) {
-        Objects.requireNonNull(claimedAt, "claimedAt");
-        Objects.requireNonNull(leaseUntil, "leaseUntil");
+    public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
+        Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
+                leaseDuration, "leaseDuration");
         Assert.isTrue(limit > 0, "limit must be positive");
-        if (!leaseUntil.isAfter(claimedAt)) {
-            throw new IllegalArgumentException("lease must expire after it is claimed");
-        }
-        return transactions.execute(
-                ignored -> claimInTransaction(claimedAt, leaseUntil, limit));
+        return transactions.execute(ignored -> {
+            Instant claimedAt = transactionTime();
+            Instant leaseUntil = TimeBoundaryPolicy.add(
+                    claimedAt, supportedLease, "leaseDuration");
+            return claimInTransaction(claimedAt, leaseUntil, limit);
+        });
     }
 
     @Override
@@ -67,25 +70,49 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
         Objects.requireNonNull(completedBefore, "completedBefore");
         Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> jdbc.update("""
-                DELETE FROM watch_attempt
-                WHERE attempt_id IN (
-                    SELECT attempt.attempt_id
+                WITH completed_candidates AS MATERIALIZED (
+                    SELECT attempt.attempt_id, result.completed_at AS retention_at
+                    FROM watch_result result
+                    JOIN watch_attempt attempt ON attempt.attempt_id = result.attempt_id
+                    WHERE result.completed_at < ?
+                    ORDER BY result.completed_at, result.attempt_id
+                    LIMIT ?
+                    FOR UPDATE OF attempt SKIP LOCKED
+                ),
+                abandoned_candidates AS MATERIALIZED (
+                    SELECT attempt.attempt_id, attempt.claimed_at AS retention_at
                     FROM watch_attempt attempt
-                    LEFT JOIN watch_result result ON result.attempt_id = attempt.attempt_id
-                    WHERE (result.completed_at < ?)
-                       OR (
-                           result.attempt_id IS NULL
-                           AND attempt.claimed_at < ?
-                           AND NOT EXISTS (
-                               SELECT 1
-                               FROM watch_monitor monitor
-                               WHERE monitor.lease_attempt_id = attempt.attempt_id
-                           )
-                       )
-                    ORDER BY COALESCE(result.completed_at, attempt.claimed_at), attempt.attempt_id
+                    WHERE attempt.claimed_at < ?
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM watch_result result
+                          WHERE result.attempt_id = attempt.attempt_id
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM watch_monitor monitor
+                          WHERE monitor.lease_attempt_id = attempt.attempt_id
+                      )
+                    ORDER BY attempt.claimed_at, attempt.attempt_id
+                    LIMIT ?
+                    FOR UPDATE OF attempt SKIP LOCKED
+                ),
+                candidates AS (
+                    SELECT attempt_id, retention_at FROM completed_candidates
+                    UNION ALL
+                    SELECT attempt_id, retention_at FROM abandoned_candidates
+                    ORDER BY retention_at, attempt_id
                     LIMIT ?
                 )
-                """, databaseTime(completedBefore), databaseTime(completedBefore), limit));
+                DELETE FROM watch_attempt attempt
+                USING candidates
+                WHERE attempt.attempt_id = candidates.attempt_id
+                """,
+                databaseTime(completedBefore),
+                limit,
+                databaseTime(completedBefore),
+                limit,
+                limit));
     }
 
     private List<ClaimedCheck> claimInTransaction(
@@ -140,9 +167,16 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
             claimed.add(new ClaimedCheck(
                     attemptId,
                     leaseToken,
-                    new TargetUrl(monitor.targetUrl())));
+                    new TargetUrl(monitor.targetUrl()),
+                    claimedAt));
         }
         return claimed;
+    }
+
+    private Instant transactionTime() {
+        OffsetDateTime value = jdbc.queryForObject(
+                "SELECT transaction_timestamp()", OffsetDateTime.class);
+        return Objects.requireNonNull(value, "database transaction time").toInstant();
     }
 
     private CheckFinalizationStatus finalizeInTransaction(

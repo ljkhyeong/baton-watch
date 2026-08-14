@@ -94,5 +94,11 @@ jobs:
       - name: Validate staging deployment policy
         run: ./ops/tests/staging-compose-policy-test.sh
 
-      - name: Build pinned runtime image
-        run: docker build --tag baton-watch:verify .
+      - name: Validate staging database operations
+        run: ./ops/tests/staging-database-operation-test.sh
+
+      - name: Build pinned runtime images
+        run: |
+          docker build --target database-operations --tag baton-watch-database-operations:verify .
+          docker build --target migrations --tag baton-watch-migrations:verify .
+          docker build --tag baton-watch:verify .

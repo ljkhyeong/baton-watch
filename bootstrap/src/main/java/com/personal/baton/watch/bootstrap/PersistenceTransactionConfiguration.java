@@ -19,6 +19,7 @@ class PersistenceTransactionConfiguration {
             PlatformTransactionManager transactionManager,
             JdbcTemplate jdbcTemplate,
             PersistenceProperties properties) {
+        jdbcTemplate.setQueryTimeout(properties.queryTimeoutSeconds());
         TransactionTemplate transactions = new TransactionTemplate(transactionManager);
         transactions.setName("baton-watch-persistence");
         transactions.setTimeout(properties.transactionTimeoutSeconds());

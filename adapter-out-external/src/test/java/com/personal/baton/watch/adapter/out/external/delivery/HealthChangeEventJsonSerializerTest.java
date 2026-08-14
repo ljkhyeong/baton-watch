@@ -13,6 +13,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.PropertyNamingStrategies;
 
 class HealthChangeEventJsonSerializerTest {
 
@@ -59,6 +60,33 @@ class HealthChangeEventJsonSerializerTest {
 
         assertEquals(Long.MAX_VALUE, json.required("sourceRevision").longValue());
         assertEquals("2026-08-02T01:02:03.123456789Z", json.required("changedAt").stringValue());
+    }
+
+    @Test
+    void keepsTheAdoptedFieldNamesUnderAGlobalNamingStrategy() throws Exception {
+        ObjectMapper snakeCaseMapper = new ObjectMapper()
+                .rebuild()
+                .propertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE)
+                .build();
+        HealthChangeEventJsonSerializer snakeCaseSerializer =
+                new HealthChangeEventJsonSerializer(snakeCaseMapper);
+
+        JsonNode json = snakeCaseMapper.readTree(snakeCaseSerializer.apply(
+                payload(
+                        Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000003")),
+                        42,
+                        Instant.parse("2026-08-02T01:02:03Z"))));
+
+        assertEquals(8, json.size());
+        assertEquals("00000000-0000-0000-0000-000000000001", json.required("eventId").stringValue());
+        assertEquals("RESOURCE_HEALTH_CHANGED", json.required("eventType").stringValue());
+        assertEquals("role-resource-123", json.required("resourceReference").stringValue());
+        assertEquals(42, json.required("sourceRevision").longValue());
+        assertEquals("00000000-0000-0000-0000-000000000003", json.required("attemptId").stringValue());
+        assertEquals("DEGRADED", json.required("previousHealth").stringValue());
+        assertEquals("BROKEN", json.required("currentHealth").stringValue());
+        assertEquals("2026-08-02T01:02:03Z", json.required("changedAt").stringValue());
+        assertFalse(json.has("event_id"));
     }
 
     private static HealthChangeEventPayload payload(

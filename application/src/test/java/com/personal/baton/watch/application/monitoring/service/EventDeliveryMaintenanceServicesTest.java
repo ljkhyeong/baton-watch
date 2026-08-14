@@ -54,7 +54,7 @@ class EventDeliveryMaintenanceServicesTest {
         private EventDeliveryBacklogSnapshot snapshot;
 
         @Override
-        public List<ClaimedHealthChangeEvent> claimPendingEvents(Instant claimedAt, Instant leaseUntil, int limit) {
+        public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
             throw new UnsupportedOperationException();
         }
 

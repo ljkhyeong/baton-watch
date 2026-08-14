@@ -1,5 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
+import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
@@ -15,6 +16,8 @@ import org.springframework.stereotype.Component;
 final class MonitoringMetrics {
 
     private static final String CHECK_CLAIMED = "baton.watch.check.claimed";
+    private static final String CHECK_ATTEMPTS = "baton.watch.check.attempts";
+    private static final String CHECK_DURATION = "baton.watch.check.duration";
     private static final String CHECK_FINALIZATIONS = "baton.watch.check.finalizations";
     private static final String DELIVERY_CLAIMED = "baton.watch.event.delivery.claimed";
     private static final String DELIVERY_ATTEMPTS = "baton.watch.event.delivery.attempts";
@@ -41,6 +44,12 @@ final class MonitoringMetrics {
         increment(CHECK_FINALIZATIONS, "status", "applied", result.applied());
         increment(CHECK_FINALIZATIONS, "status", "already_finalized", result.alreadyFinalized());
         increment(CHECK_FINALIZATIONS, "status", "stale_claim", result.staleClaims());
+    }
+
+    void recordCheckAttempt(CheckObservation observation) {
+        String outcome = observation.outcome().name().toLowerCase(Locale.ROOT);
+        increment(CHECK_ATTEMPTS, "outcome", outcome, 1);
+        registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
     }
 
     void recordEventDeliveryBatch(EventDeliveryBatchResult result) {

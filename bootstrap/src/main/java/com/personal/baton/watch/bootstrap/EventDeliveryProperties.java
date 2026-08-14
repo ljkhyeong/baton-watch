@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -32,6 +33,8 @@ public record EventDeliveryProperties(
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
 
     public EventDeliveryProperties {
+        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "event delivery leaseDuration");
+        retention = requireSupportedOffsetIfPositive(retention, "event delivery retention");
         if (http != null
                 && leaseDuration != null
                 && leaseDuration.isPositive()
@@ -79,5 +82,11 @@ public record EventDeliveryProperties(
                 throw new IllegalArgumentException("event delivery HTTP phase timeout cannot exceed totalTimeout");
             }
         }
+    }
+
+    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
+        return duration != null && duration.isPositive()
+                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
+                : duration;
     }
 }

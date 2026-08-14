@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -29,11 +30,18 @@ public record WatchProperties(
 
     static final int MAX_CHECK_BATCH_SIZE = 100;
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
+    static final int MAX_API_TOKEN_LENGTH = 200;
     private static final Pattern BEARER_TOKEN =
             Pattern.compile("[A-Za-z0-9\\-._~+/]{32,}=*");
 
     public WatchProperties {
         apiToken = requireToken(apiToken);
+        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "leaseDuration");
+        checkInterval = requireSupportedOffsetIfPositive(checkInterval, "checkInterval");
+        internalFailureRetryInterval = requireSupportedOffsetIfPositive(
+                internalFailureRetryInterval, "internalFailureRetryInterval");
+        staleAfter = requireSupportedOffsetIfPositive(staleAfter, "staleAfter");
+        retention = requireSupportedOffsetIfPositive(retention, "retention");
         if (http != null
                 && leaseDuration != null
                 && leaseDuration.isPositive()
@@ -97,11 +105,17 @@ public record WatchProperties(
     private static String requireToken(String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
         Objects.requireNonNull(token, "apiToken");
-        if (!BEARER_TOKEN.matcher(token).matches()) {
+        if (token.length() > MAX_API_TOKEN_LENGTH || !BEARER_TOKEN.matcher(token).matches()) {
             throw new IllegalArgumentException(
-                    "apiToken must contain at least 32 non-padding RFC 6750 token68 characters");
+                    "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
         return token;
+    }
+
+    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
+        return duration != null && duration.isPositive()
+                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
+                : duration;
     }
 
 }

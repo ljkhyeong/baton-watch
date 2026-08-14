@@ -3,13 +3,16 @@ package com.personal.baton.watch.bootstrap;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class MonitoringMetricsTest {
@@ -20,6 +23,11 @@ class MonitoringMetricsTest {
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
         metrics.recordCheckBatch(new DueCheckBatchResult(3, 1, 1, 1));
+        metrics.recordCheckAttempt(CheckObservation.failure(
+                CheckOutcome.CONNECT_TIMEOUT,
+                Duration.ofMillis(125),
+                0,
+                0));
         metrics.recordEventDeliveryBatch(new EventDeliveryBatchResult(
                 4,
                 1,
@@ -29,6 +37,18 @@ class MonitoringMetricsTest {
         metrics.recordEventDeliveryAttempt(EventDeliveryOutcome.CONNECT_TIMEOUT);
 
         assertEquals(3.0, registry.get("baton.watch.check.claimed").counter().count());
+        assertEquals(
+                1.0,
+                registry.get("baton.watch.check.attempts")
+                        .tag("outcome", "connect_timeout")
+                        .counter()
+                        .count());
+        assertEquals(
+                125.0,
+                registry.get("baton.watch.check.duration")
+                        .tag("outcome", "connect_timeout")
+                        .timer()
+                        .totalTime(TimeUnit.MILLISECONDS));
         assertEquals(
                 1.0,
                 registry.get("baton.watch.check.finalizations")
@@ -49,6 +69,12 @@ class MonitoringMetricsTest {
                         .count());
         assertTrue(registry.find("baton.watch.event.delivery.finalizations").meters().stream()
                 .allMatch(meter -> meter.getId().getTag("resourceReference") == null));
+        assertTrue(registry.find("baton.watch.check.attempts").meters().stream()
+                .allMatch(meter -> meter.getId().getTags().stream()
+                        .allMatch(tag -> tag.getKey().equals("outcome"))));
+        assertTrue(registry.find("baton.watch.check.duration").meters().stream()
+                .allMatch(meter -> meter.getId().getTags().stream()
+                        .allMatch(tag -> tag.getKey().equals("outcome"))));
     }
 
     @Test

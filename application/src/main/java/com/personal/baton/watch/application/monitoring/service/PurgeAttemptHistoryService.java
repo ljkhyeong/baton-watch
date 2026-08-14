@@ -18,7 +18,7 @@ public final class PurgeAttemptHistoryService implements PurgeAttemptHistoryUseC
             CheckWorkPersistencePort persistence, Clock clock, Duration retention, int batchSize) {
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.retention = requirePositive(retention);
+        this.retention = TimeBoundaryPolicy.requireSupportedOffset(retention, "retention");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -27,15 +27,7 @@ public final class PurgeAttemptHistoryService implements PurgeAttemptHistoryUseC
 
     @Override
     public int purgeAttemptHistory() {
-        Instant completedBefore = clock.instant().minus(retention);
+        Instant completedBefore = TimeBoundaryPolicy.subtract(clock.instant(), retention, "retention");
         return persistence.purgeAttempts(completedBefore, batchSize);
-    }
-
-    private Duration requirePositive(Duration duration) {
-        Objects.requireNonNull(duration, "retention");
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException("retention must be positive");
-        }
-        return duration;
     }
 }

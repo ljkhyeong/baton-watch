@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 class ApacheHealthChangeEventSenderTest {
@@ -27,6 +29,47 @@ class ApacheHealthChangeEventSenderTest {
                 () -> sender(
                         URI.create("https://events.example.com/callback"),
                         "unsafe token 0123456789abcdef0123456789abcdef"));
+    }
+
+    @Test
+    void acceptsTheInclusiveBearerTokenLengthBoundariesAndUrlSafePunctuation() {
+        assertDoesNotThrow(() -> {
+            try (ApacheHealthChangeEventSender ignored = sender(
+                    URI.create("https://events.example.com/callback"),
+                    "._~-" + "A".repeat(28))) {
+                // 32자 하한과 허용 구두점을 함께 검증한다.
+            }
+        });
+        assertDoesNotThrow(() -> {
+            try (ApacheHealthChangeEventSender ignored = sender(
+                    URI.create("https://events.example.com/callback"),
+                    "A".repeat(200))) {
+                // 200자 상한을 검증한다.
+            }
+        });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAé"
+    })
+    void rejectsBearerTokensOutsideTheUrlSafeSyntax(String token) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sender(URI.create("https://events.example.com/callback"), token));
+    }
+
+    @Test
+    void rejectsBearerTokensAboveTheMaximumLength() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> sender(
+                        URI.create("https://events.example.com/callback"),
+                        "A".repeat(201)));
     }
 
     @Test

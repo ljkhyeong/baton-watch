@@ -47,26 +47,32 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void deliveryLeaseRecoversAtExpiryAndFinalizationIsTokenSafeAndIdempotent() {
-        UUID eventId = createDeliveryEvent("resource:delivery-lease", BASE_TIME);
-        Instant dueAt = BASE_TIME.plusSeconds(1);
+        UUID eventId = createDeliveryEvent("resource:delivery-lease");
 
-        ClaimedHealthChangeEvent first = claimOneDelivery(dueAt);
+        ClaimedHealthChangeEvent first = claimOneDelivery();
 
         assertThat(first.payload().eventId()).isEqualTo(eventId);
         assertThat(first.deliveryAttempt()).isEqualTo(1);
         assertThat(first.payload().attemptId()).isPresent();
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
-        assertThat(deliveryAdapter.claimPendingEvents(dueAt.plusSeconds(29), dueAt.plusSeconds(59), 1))
+        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
                 .isEmpty();
 
-        ClaimedHealthChangeEvent recovered = claimOneDelivery(dueAt.plusSeconds(30));
+        jdbc.update("""
+                UPDATE watch_health_change_event
+                SET next_attempt_at = changed_at,
+                    delivery_lease_expires_at = changed_at + INTERVAL '1 microsecond'
+                WHERE event_id = ?
+                """, eventId);
+        ClaimedHealthChangeEvent recovered = claimOneDelivery();
+        Instant recoveredAt = deliveryClaimedAt(recovered);
         assertThat(recovered.payload()).isEqualTo(first.payload());
         assertThat(recovered.deliveryAttempt()).isEqualTo(2);
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
 
-        assertThat(deliveryAdapter.finalizeDelivery(deliveredFinalization(first, dueAt.plusSeconds(31))))
+        assertThat(deliveryAdapter.finalizeDelivery(deliveredFinalization(first, recoveredAt.plusSeconds(1))))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);
-        EventDeliveryFinalization delivered = deliveredFinalization(recovered, dueAt.plusSeconds(32));
+        EventDeliveryFinalization delivered = deliveredFinalization(recovered, recoveredAt.plusSeconds(2));
         assertThat(deliveryAdapter.finalizeDelivery(delivered))
                 .isEqualTo(EventDeliveryFinalizationStatus.APPLIED);
         assertThat(deliveryAdapter.finalizeDelivery(delivered))
@@ -75,7 +81,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryBacklogSnapshot deliveredBacklog = deliveryAdapter.getBacklogSnapshot();
         assertThat(deliveredBacklog.pendingCount()).isZero();
         assertThat(deliveredBacklog.oldestChangedAt()).isEmpty();
-        assertThat(deliveryAdapter.claimPendingEvents(dueAt.plusSeconds(60), dueAt.plusSeconds(90), 1))
+        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
                 .isEmpty();
         assertThat(jdbc.queryForMap("""
                         SELECT delivery_status, delivery_attempt, last_delivery_outcome, last_http_status_code
@@ -90,10 +96,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void failedDeliveryPersistsBoundedOutcomeAndBecomesClaimableAtRetryBoundary() {
-        UUID eventId = createDeliveryEvent("resource:delivery-retry", BASE_TIME);
-        Instant dueAt = BASE_TIME.plusSeconds(1);
-        ClaimedHealthChangeEvent first = claimOneDelivery(dueAt);
-        Instant completedAt = dueAt.plusSeconds(1);
+        UUID eventId = createDeliveryEvent("resource:delivery-retry");
+        ClaimedHealthChangeEvent first = claimOneDelivery();
+        Instant completedAt = deliveryClaimedAt(first).plusSeconds(1);
         Instant retryAt = completedAt.plusSeconds(30);
 
         EventDeliveryFinalization failed = new EventDeliveryFinalization(
@@ -106,11 +111,16 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 .isEqualTo(EventDeliveryFinalizationStatus.APPLIED);
         EventDeliveryBacklogSnapshot retryBacklog = deliveryAdapter.getBacklogSnapshot();
         assertThat(retryBacklog.pendingCount()).isEqualTo(1);
-        assertThat(retryBacklog.oldestChangedAt()).contains(dueAt);
+        assertThat(retryBacklog.oldestChangedAt()).contains(first.payload().changedAt());
 
-        assertThat(deliveryAdapter.claimPendingEvents(retryAt.minusNanos(1_000), retryAt.plusSeconds(30), 1))
+        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
                 .isEmpty();
-        ClaimedHealthChangeEvent retried = claimOneDelivery(retryAt);
+        jdbc.update("""
+                UPDATE watch_health_change_event
+                SET next_attempt_at = transaction_timestamp()
+                WHERE event_id = ?
+                """, eventId);
+        ClaimedHealthChangeEvent retried = claimOneDelivery();
         assertThat(retried.payload().eventId()).isEqualTo(eventId);
         assertThat(retried.deliveryAttempt()).isEqualTo(2);
         assertThat(jdbc.queryForMap("""
@@ -125,9 +135,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void concurrentDeliveryClaimersReceiveDisjointEvents() throws Exception {
-        UUID firstEvent = createDeliveryEvent("resource:delivery-concurrent-1", BASE_TIME);
-        UUID secondEvent = createDeliveryEvent("resource:delivery-concurrent-2", BASE_TIME.plusSeconds(2));
-        Instant claimedAt = BASE_TIME.plusSeconds(10);
+        UUID firstEvent = createDeliveryEvent("resource:delivery-concurrent-1");
+        UUID secondEvent = createDeliveryEvent("resource:delivery-concurrent-2");
         JdbcHealthChangeEventDeliveryAdapter anotherAdapter = newDeliveryAdapter();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -136,9 +145,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         Future<List<ClaimedHealthChangeEvent>> second = null;
         try {
             first = executor.submit(
-                    () -> claimDeliveriesConcurrently(deliveryAdapter, claimedAt, ready, start));
+                    () -> claimDeliveriesConcurrently(deliveryAdapter, ready, start));
             second = executor.submit(
-                    () -> claimDeliveriesConcurrently(anotherAdapter, claimedAt, ready, start));
+                    () -> claimDeliveriesConcurrently(anotherAdapter, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
             List<ClaimedHealthChangeEvent> firstClaims =
@@ -161,10 +170,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void claimPendingEventsSkipsLockedLeadingEventWithoutWaiting() throws Exception {
-        UUID lockedEvent = createDeliveryEvent("resource:delivery-locked-leading", BASE_TIME);
-        UUID followingEvent = createDeliveryEvent(
-                "resource:delivery-after-locked", BASE_TIME.plusSeconds(2));
-        Instant claimedAt = BASE_TIME.plusSeconds(10);
+        UUID lockedEvent = createDeliveryEvent("resource:delivery-locked-leading");
+        UUID followingEvent = createDeliveryEvent("resource:delivery-after-locked");
         DataSourceTransactionManager lockTransactionManager =
                 new DataSourceTransactionManager(testDataSource);
         JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
@@ -174,9 +181,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<List<ClaimedHealthChangeEvent>> claimFuture = null;
         try {
-            assertThat(lockLeadingDueEvent(lockJdbc, claimedAt)).isEqualTo(lockedEvent);
-            claimFuture = executor.submit(() -> competingAdapter.claimPendingEvents(
-                    claimedAt, claimedAt.plus(LEASE), 1));
+            assertThat(lockLeadingDueEvent(lockJdbc)).isEqualTo(lockedEvent);
+            claimFuture = executor.submit(() -> competingAdapter.claimPendingEvents(LEASE, 1));
 
             List<ClaimedHealthChangeEvent> claims = claimFuture.get(
                     CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -198,10 +204,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void sameLeaseConcurrentFinalizationAppliesOnceAndTokenMustMatch() throws Exception {
-        UUID eventId = createDeliveryEvent("resource:delivery-concurrent-finalize", BASE_TIME);
-        Instant dueAt = BASE_TIME.plusSeconds(1);
-        ClaimedHealthChangeEvent claimed = claimOneDelivery(dueAt);
-        Instant completedAt = dueAt.plusSeconds(1);
+        UUID eventId = createDeliveryEvent("resource:delivery-concurrent-finalize");
+        ClaimedHealthChangeEvent claimed = claimOneDelivery();
+        Instant completedAt = deliveryClaimedAt(claimed).plusSeconds(1);
         EventDeliveryFinalization valid = deliveredFinalization(claimed, completedAt);
         EventDeliveryFinalization wrongToken = new EventDeliveryFinalization(
                 eventId,
@@ -249,18 +254,15 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     @Test
     void batchClaimRollsBackEveryLeaseWhenLaterUpdateFails() {
-        UUID firstEvent = createDeliveryEvent("resource:delivery-batch-rollback-1", BASE_TIME);
-        UUID secondEvent = createDeliveryEvent(
-                "resource:delivery-batch-rollback-2", BASE_TIME.plusSeconds(2));
-        Instant claimedAt = BASE_TIME.plusSeconds(10);
+        UUID firstEvent = createDeliveryEvent("resource:delivery-batch-rollback-1");
+        UUID secondEvent = createDeliveryEvent("resource:delivery-batch-rollback-2");
         jdbc.execute("""
                 ALTER TABLE watch_health_change_event
                 ADD CONSTRAINT ck_test_delivery_claim_failure
                 CHECK (event_id <> '%s'::uuid OR delivery_attempt = 0)
                 """.formatted(secondEvent));
 
-        assertThatThrownBy(() -> deliveryAdapter.claimPendingEvents(
-                        claimedAt, claimedAt.plus(LEASE), 2))
+        assertThatThrownBy(() -> deliveryAdapter.claimPendingEvents(LEASE, 2))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         assertThat(jdbc.queryForObject("""
@@ -278,8 +280,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 ALTER TABLE watch_health_change_event
                 DROP CONSTRAINT ck_test_delivery_claim_failure
                 """);
-        assertThat(deliveryAdapter.claimPendingEvents(
-                        claimedAt, claimedAt.plus(LEASE), 2))
+        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 2))
                 .extracting(claim -> claim.payload().eventId())
                 .containsExactlyInAnyOrder(firstEvent, secondEvent);
     }
@@ -295,8 +296,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         UUID following = insertPendingEvent(
                 "resource:saturated-attempt", BASE_TIME.minusSeconds(1), 3);
 
-        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(
-                BASE_TIME, BASE_TIME.plus(LEASE), 2);
+        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(LEASE, 2);
 
         assertThat(claims)
                 .extracting(
@@ -331,7 +331,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(retainedBacklog.pendingCount()).isEqualTo(1);
         assertThat(retainedBacklog.oldestChangedAt())
                 .contains(BASE_TIME.minus(Duration.ofDays(90)));
-        ClaimedHealthChangeEvent pendingClaim = claimOneDelivery(cutoff.plusSeconds(1));
+        ClaimedHealthChangeEvent pendingClaim = claimOneDelivery();
         assertThat(pendingClaim.payload().eventId()).isEqualTo(pending);
         assertThat(pendingClaim.payload().attemptId()).isEmpty();
     }
@@ -341,10 +341,10 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 JdbcClient.create(testDataSource), newTransactionOperations());
     }
 
-    private UUID createDeliveryEvent(String reference, Instant claimedAt) {
-        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", claimedAt);
-        ClaimedCheck check = claimOne(claimedAt);
-        Instant changedAt = claimedAt.plusSeconds(1);
+    private UUID createDeliveryEvent(String reference) {
+        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
+        ClaimedCheck check = claimOne();
+        Instant changedAt = claimedAt(check);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         check,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
@@ -358,11 +358,20 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 """, UUID.class, reference, databaseTime(changedAt));
     }
 
-    private ClaimedHealthChangeEvent claimOneDelivery(Instant claimedAt) {
-        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(
-                claimedAt, claimedAt.plus(LEASE), 1);
+    private ClaimedHealthChangeEvent claimOneDelivery() {
+        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(LEASE, 1);
         assertThat(claims).hasSize(1);
         return claims.getFirst();
+    }
+
+    private Instant deliveryClaimedAt(ClaimedHealthChangeEvent event) {
+        Instant storedClaimedAt = jdbc.queryForObject("""
+                SELECT delivery_lease_expires_at - INTERVAL '30 seconds'
+                FROM watch_health_change_event
+                WHERE event_id = ?
+                """, java.time.OffsetDateTime.class, event.payload().eventId()).toInstant();
+        assertThat(event.claimedAt()).isEqualTo(storedClaimedAt);
+        return storedClaimedAt;
     }
 
     private EventDeliveryFinalization deliveredFinalization(
@@ -377,12 +386,11 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
     private List<ClaimedHealthChangeEvent> claimDeliveriesConcurrently(
             JdbcHealthChangeEventDeliveryAdapter claimingAdapter,
-            Instant claimedAt,
             CountDownLatch ready,
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return claimingAdapter.claimPendingEvents(claimedAt, claimedAt.plus(LEASE), 1);
+        return claimingAdapter.claimPendingEvents(LEASE, 1);
     }
 
     private EventDeliveryFinalizationStatus finalizeDeliveryConcurrently(
@@ -395,20 +403,18 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         return finalizingAdapter.finalizeDelivery(finalization);
     }
 
-    private UUID lockLeadingDueEvent(JdbcTemplate lockJdbc, Instant claimedAt) {
+    private UUID lockLeadingDueEvent(JdbcTemplate lockJdbc) {
         return lockJdbc.queryForObject("""
                 SELECT event_id
                 FROM watch_health_change_event
                 WHERE delivery_status = 'PENDING'
-                  AND next_attempt_at <= ?
-                  AND (delivery_lease_expires_at IS NULL OR delivery_lease_expires_at <= ?)
+                  AND next_attempt_at <= transaction_timestamp()
+                  AND (delivery_lease_expires_at IS NULL OR delivery_lease_expires_at <= transaction_timestamp())
                 ORDER BY next_attempt_at, changed_at, event_id
                 LIMIT 1
                 FOR UPDATE
                 """,
-                UUID.class,
-                databaseTime(claimedAt),
-                databaseTime(claimedAt));
+                UUID.class);
     }
 
     private UUID insertDeliveredEvent(String reference, Instant changedAt, Instant deliveredAt) {

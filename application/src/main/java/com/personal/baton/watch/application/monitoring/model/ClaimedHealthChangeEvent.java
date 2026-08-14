@@ -1,12 +1,14 @@
 package com.personal.baton.watch.application.monitoring.model;
 
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
 public record ClaimedHealthChangeEvent(
         HealthChangeEventPayload payload,
         UUID leaseToken,
-        int deliveryAttempt) {
+        int deliveryAttempt,
+        Instant claimedAt) {
 
     public ClaimedHealthChangeEvent {
         Objects.requireNonNull(payload, "payload");
@@ -14,5 +16,6 @@ public record ClaimedHealthChangeEvent(
         if (deliveryAttempt <= 0) {
             throw new IllegalArgumentException("delivery attempt must be positive");
         }
+        Objects.requireNonNull(claimedAt, "claimedAt");
     }
 }

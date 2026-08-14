@@ -51,8 +51,7 @@ class RunEventDeliveriesServiceTest {
         assertEquals(
                 new EventDeliveryBatchResult(1, 1, 0, 0, 0),
                 result);
-        assertEquals(NOW, persistence.claimedAt);
-        assertEquals(NOW.plus(LEASE), persistence.leaseUntil);
+        assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(5, persistence.limit);
         assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
         assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
@@ -93,6 +92,19 @@ class RunEventDeliveriesServiceTest {
         assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, persistence.finalization.observation().outcome());
     }
 
+    @Test
+    void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
+        Instant databaseClaimedAt = NOW.plusSeconds(5);
+        RecordingPersistence persistence = new RecordingPersistence(
+                new ArrayList<>(), claimed(1, databaseClaimedAt));
+
+        service(persistence, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE))
+                .runEventDeliveries();
+
+        assertEquals(databaseClaimedAt, persistence.finalization.completedAt());
+        assertEquals(databaseClaimedAt.plus(INITIAL_BACKOFF), persistence.finalization.nextAttemptAt());
+    }
+
     private RunEventDeliveriesService service(
             RecordingPersistence persistence,
             com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender sender) {
@@ -106,6 +118,10 @@ class RunEventDeliveriesServiceTest {
     }
 
     private ClaimedHealthChangeEvent claimed(int deliveryAttempt) {
+        return claimed(deliveryAttempt, NOW);
+    }
+
+    private ClaimedHealthChangeEvent claimed(int deliveryAttempt, Instant claimedAt) {
         return new ClaimedHealthChangeEvent(
                 new HealthChangeEventPayload(
                         UUID.fromString("00000000-0000-0000-0000-000000000001"),
@@ -116,15 +132,15 @@ class RunEventDeliveriesServiceTest {
                         Health.HEALTHY,
                         NOW.minusSeconds(1)),
                 UUID.fromString("00000000-0000-0000-0000-000000000003"),
-                deliveryAttempt);
+                deliveryAttempt,
+                claimedAt);
     }
 
     private static final class RecordingPersistence implements HealthChangeEventDeliveryPersistencePort {
 
         private final List<String> calls;
         private final ClaimedHealthChangeEvent claimed;
-        private Instant claimedAt;
-        private Instant leaseUntil;
+        private Duration leaseDuration;
         private int limit;
         private EventDeliveryFinalization finalization;
         private EventDeliveryFinalizationStatus status = EventDeliveryFinalizationStatus.APPLIED;
@@ -135,10 +151,9 @@ class RunEventDeliveriesServiceTest {
         }
 
         @Override
-        public List<ClaimedHealthChangeEvent> claimPendingEvents(Instant claimedAt, Instant leaseUntil, int limit) {
+        public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
             calls.add("claim");
-            this.claimedAt = claimedAt;
-            this.leaseUntil = leaseUntil;
+            this.leaseDuration = leaseDuration;
             this.limit = limit;
             return List.of(claimed);
         }

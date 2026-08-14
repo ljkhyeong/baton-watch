@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
  * 하나의 PostgreSQL 컨테이너를 JUnit 루트 컨텍스트 전체에서 공유한다.
@@ -17,7 +18,9 @@ final class SharedPostgresExtension implements BeforeAllCallback {
             ExtensionContext.Namespace.create(SharedPostgresExtension.class);
     private static final String RESOURCE_KEY = "shared-postgres";
 
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine")
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
+                    "postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15")
+            .asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("baton_watch")
             .withUsername("baton_watch")
             .withPassword("integration-test");

@@ -28,7 +28,8 @@ class RunDueChecksServiceTest {
     private static final ClaimedCheck CLAIM = new ClaimedCheck(
             UUID.fromString("00000000-0000-0000-0000-000000000001"),
             UUID.fromString("00000000-0000-0000-0000-000000000002"),
-            new TargetUrl("https://example.com/health"));
+            new TargetUrl("https://example.com/health"),
+            NOW);
 
     @Test
     void claimsThenChecksThenFinalizesOutsideTheClaimOperation() {
@@ -50,8 +51,7 @@ class RunDueChecksServiceTest {
 
         assertEquals(List.of("claim", "check", "finalize"), calls);
         assertEquals(new DueCheckBatchResult(1, 1, 0, 0), result);
-        assertEquals(NOW, persistence.claimedAt);
-        assertEquals(NOW.plus(LEASE), persistence.leaseUntil);
+        assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(5, persistence.limit);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
@@ -77,25 +77,48 @@ class RunDueChecksServiceTest {
         assertEquals(NOW.plus(INTERNAL_RETRY), persistence.finalization.nextCheckAt());
     }
 
+    @Test
+    void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
+        Instant databaseClaimedAt = NOW.plusSeconds(5);
+        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
+        persistence.claim = new ClaimedCheck(
+                CLAIM.attemptId(),
+                CLAIM.leaseToken(),
+                CLAIM.targetUrl(),
+                databaseClaimedAt);
+        RunDueChecksService service = new RunDueChecksService(
+                persistence,
+                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                LEASE,
+                INTERVAL,
+                INTERNAL_RETRY,
+                1);
+
+        service.runDueChecks();
+
+        assertEquals(databaseClaimedAt, persistence.finalization.completedAt());
+        assertEquals(databaseClaimedAt.plus(INTERVAL), persistence.finalization.nextCheckAt());
+    }
+
     private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
 
         private final List<String> calls;
-        private Instant claimedAt;
-        private Instant leaseUntil;
+        private Duration leaseDuration;
         private int limit;
         private CheckFinalization finalization;
+        private ClaimedCheck claim = CLAIM;
 
         private RecordingWorkPersistence(List<String> calls) {
             this.calls = calls;
         }
 
         @Override
-        public List<ClaimedCheck> claimDueChecks(Instant claimedAt, Instant leaseUntil, int limit) {
+        public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
             calls.add("claim");
-            this.claimedAt = claimedAt;
-            this.leaseUntil = leaseUntil;
+            this.leaseDuration = leaseDuration;
             this.limit = limit;
-            return List.of(CLAIM);
+            return List.of(claim);
         }
 
         @Override

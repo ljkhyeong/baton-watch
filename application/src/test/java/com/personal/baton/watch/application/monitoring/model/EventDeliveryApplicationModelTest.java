@@ -41,7 +41,7 @@ class EventDeliveryApplicationModelTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ClaimedHealthChangeEvent(
-                        payload(Health.UNKNOWN, Health.HEALTHY), UUID.randomUUID(), 0));
+                        payload(Health.UNKNOWN, Health.HEALTHY), UUID.randomUUID(), 0, Instant.now()));
 
         assertTrue(claimed(Health.UNKNOWN, Health.HEALTHY, 1).payload().attemptId().isEmpty());
     }
@@ -50,7 +50,8 @@ class EventDeliveryApplicationModelTest {
         return new ClaimedHealthChangeEvent(
                 payload(previous, current),
                 UUID.randomUUID(),
-                deliveryAttempt);
+                deliveryAttempt,
+                Instant.parse("2026-08-01T00:00:01Z"));
     }
 
     private HealthChangeEventPayload payload(Health previous, Health current) {

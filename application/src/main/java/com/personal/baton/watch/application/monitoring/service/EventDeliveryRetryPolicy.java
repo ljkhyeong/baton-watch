@@ -6,17 +6,11 @@ import java.util.Objects;
 
 public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay) {
 
-    public static final Duration MAX_SUPPORTED_DELAY = Duration.ofDays(30);
-
     public EventDeliveryRetryPolicy {
-        initialDelay = requirePositive(initialDelay, "initialDelay");
-        maxDelay = requirePositive(maxDelay, "maxDelay");
+        initialDelay = TimeBoundaryPolicy.requireEventDeliveryRetryDelay(initialDelay, "initialDelay");
+        maxDelay = TimeBoundaryPolicy.requireEventDeliveryRetryDelay(maxDelay, "maxDelay");
         if (initialDelay.compareTo(maxDelay) > 0) {
             throw new IllegalArgumentException("initialDelay must not exceed maxDelay");
-        }
-        if (maxDelay.compareTo(MAX_SUPPORTED_DELAY) > 0) {
-            throw new IllegalArgumentException(
-                    "maxDelay must not exceed " + MAX_SUPPORTED_DELAY.toDays() + " days");
         }
     }
 
@@ -33,14 +27,6 @@ public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay)
             delay = doubled.compareTo(maxDelay) > 0 ? maxDelay : doubled;
             remainingDoublings--;
         }
-        return completedAt.plus(delay);
-    }
-
-    private static Duration requirePositive(Duration duration, String name) {
-        Objects.requireNonNull(duration, name);
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-        return duration;
+        return TimeBoundaryPolicy.add(completedAt, delay, "retry delay");
     }
 }
