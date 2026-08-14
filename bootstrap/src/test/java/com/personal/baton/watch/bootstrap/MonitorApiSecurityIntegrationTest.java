@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProject
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
+import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -326,8 +327,7 @@ class MonitorApiSecurityIntegrationTest {
                 new ResourceReference("resource-1"),
                 new SourceRevision(42),
                 MonitoringState.INACTIVE,
-                Health.UNKNOWN,
-                0,
+                new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty());

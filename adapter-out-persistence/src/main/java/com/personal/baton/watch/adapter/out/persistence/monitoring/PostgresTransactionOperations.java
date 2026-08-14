@@ -32,9 +32,7 @@ public final class PostgresTransactionOperations implements TransactionOperation
                     "WATCH persistence must not join an existing transaction");
         }
         return transactions.execute(status -> {
-            Objects.requireNonNull(
-                    jdbc.queryForObject(APPLY_LOCK_TIMEOUT, String.class, lockTimeoutSetting),
-                    "PostgreSQL lock timeout setting");
+            jdbc.queryForObject(APPLY_LOCK_TIMEOUT, String.class, lockTimeoutSetting);
             return action.doInTransaction(status);
         });
     }

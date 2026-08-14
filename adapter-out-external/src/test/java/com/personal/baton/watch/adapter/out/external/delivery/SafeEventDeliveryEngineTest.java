@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookupException;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
@@ -144,9 +145,9 @@ class SafeEventDeliveryEngineTest {
     @ParameterizedTest
     @MethodSource("transportFailures")
     void mapsTransportFailuresToBoundedOutcomes(
-            DeliveryTransportFailure.Kind kind, EventDeliveryOutcome expected) throws Exception {
+            OutboundHttpFailure.Kind kind, EventDeliveryOutcome expected) throws Exception {
         DeliveryTransport transport = (request, remaining) -> {
-            throw new DeliveryTransportFailure(kind);
+            throw new OutboundHttpFailure(kind, 0);
         };
 
         EventDeliveryObservation observation = engine(
@@ -251,13 +252,10 @@ class SafeEventDeliveryEngineTest {
 
     private static Stream<Arguments> dnsFailures() {
         return Stream.of(
-                Arguments.of(DnsLookupException.Reason.NOT_FOUND, EventDeliveryOutcome.DNS_FAILURE),
-                Arguments.of(DnsLookupException.Reason.TIMED_OUT, EventDeliveryOutcome.DNS_FAILURE),
+                Arguments.of(DnsLookupException.Reason.DNS_FAILURE, EventDeliveryOutcome.DNS_FAILURE),
                 Arguments.of(
-                        DnsLookupException.Reason.CAPACITY_EXHAUSTED,
-                        EventDeliveryOutcome.INTERNAL_FAILURE),
-                Arguments.of(DnsLookupException.Reason.INTERRUPTED, EventDeliveryOutcome.INTERNAL_FAILURE),
-                Arguments.of(DnsLookupException.Reason.FAILED, EventDeliveryOutcome.INTERNAL_FAILURE));
+                        DnsLookupException.Reason.INTERNAL_FAILURE,
+                        EventDeliveryOutcome.INTERNAL_FAILURE));
     }
 
     private static Stream<Arguments> httpStatuses() {
@@ -273,15 +271,15 @@ class SafeEventDeliveryEngineTest {
     private static Stream<Arguments> transportFailures() {
         return Stream.of(
                 Arguments.of(
-                        DeliveryTransportFailure.Kind.CONNECT_TIMEOUT,
+                        OutboundHttpFailure.Kind.CONNECT_TIMEOUT,
                         EventDeliveryOutcome.CONNECT_TIMEOUT),
-                Arguments.of(DeliveryTransportFailure.Kind.READ_TIMEOUT, EventDeliveryOutcome.READ_TIMEOUT),
-                Arguments.of(DeliveryTransportFailure.Kind.TLS_FAILURE, EventDeliveryOutcome.TLS_FAILURE),
+                Arguments.of(OutboundHttpFailure.Kind.READ_TIMEOUT, EventDeliveryOutcome.READ_TIMEOUT),
+                Arguments.of(OutboundHttpFailure.Kind.TLS_FAILURE, EventDeliveryOutcome.TLS_FAILURE),
                 Arguments.of(
-                        DeliveryTransportFailure.Kind.RESPONSE_TOO_LARGE,
+                        OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE,
                         EventDeliveryOutcome.RESPONSE_TOO_LARGE),
-                Arguments.of(DeliveryTransportFailure.Kind.NETWORK_FAILURE, EventDeliveryOutcome.NETWORK_FAILURE),
-                Arguments.of(DeliveryTransportFailure.Kind.INTERNAL_FAILURE, EventDeliveryOutcome.INTERNAL_FAILURE));
+                Arguments.of(OutboundHttpFailure.Kind.NETWORK_FAILURE, EventDeliveryOutcome.NETWORK_FAILURE),
+                Arguments.of(OutboundHttpFailure.Kind.INTERNAL_FAILURE, EventDeliveryOutcome.INTERNAL_FAILURE));
     }
 
     private static final class RecordingDnsLookup implements DnsLookup {

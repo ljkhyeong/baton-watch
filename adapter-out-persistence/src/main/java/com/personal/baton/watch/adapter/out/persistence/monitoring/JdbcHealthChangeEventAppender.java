@@ -4,7 +4,6 @@ import static com.personal.baton.watch.adapter.out.persistence.monitoring.Monito
 
 import com.personal.baton.watch.domain.monitoring.Health;
 import java.time.Instant;
-import java.util.Objects;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -14,7 +13,7 @@ final class JdbcHealthChangeEventAppender {
     private final JdbcTemplate jdbc;
 
     JdbcHealthChangeEventAppender(JdbcTemplate jdbc) {
-        this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
+        this.jdbc = jdbc;
     }
 
     void append(

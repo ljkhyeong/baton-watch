@@ -25,6 +25,7 @@ import java.util.UUID;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.util.Assert;
 
 /** 점검 선점, 완료 처리, 제한된 시도 보존을 담당하는 JDBC 어댑터다. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
@@ -47,7 +48,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
             Instant claimedAt, Instant leaseUntil, int limit) {
         Objects.requireNonNull(claimedAt, "claimedAt");
         Objects.requireNonNull(leaseUntil, "leaseUntil");
-        requirePositiveLimit(limit);
+        Assert.isTrue(limit > 0, "limit must be positive");
         if (!leaseUntil.isAfter(claimedAt)) {
             throw new IllegalArgumentException("lease must expire after it is claimed");
         }
@@ -64,7 +65,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
         Objects.requireNonNull(completedBefore, "completedBefore");
-        requirePositiveLimit(limit);
+        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> jdbc.update("""
                 DELETE FROM watch_attempt
                 WHERE attempt_id IN (
@@ -162,16 +163,16 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
             throw new IllegalArgumentException("completion cannot precede claim");
         }
 
-        MonitorRow monitor = DataAccessUtils.singleResult(jdbc.query(
+        MonitorRow monitor = jdbc.queryForObject(
                 "SELECT " + MONITOR_COLUMNS
                         + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                 MonitoringJdbcRows::mapMonitor,
-                attempt.resourceReference()));
+                attempt.resourceReference());
 
         if (resultExists(finalization.attemptId())) {
             return CheckFinalizationStatus.ALREADY_FINALIZED;
         }
-        if (monitor == null || !monitorOwnsClaim(monitor, attempt, finalization)) {
+        if (!monitorOwnsClaim(monitor, attempt, finalization)) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
 
@@ -259,12 +260,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 new SourceRevision(resultSet.getLong("source_revision")),
                 resultSet.getObject("lease_token", UUID.class),
                 instant(resultSet, "claimed_at"));
-    }
-
-    private static void requirePositiveLimit(int limit) {
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be positive");
-        }
     }
 
     private record AttemptRow(

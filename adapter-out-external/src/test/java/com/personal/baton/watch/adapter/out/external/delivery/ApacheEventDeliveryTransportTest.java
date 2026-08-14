@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -106,13 +107,13 @@ class ApacheEventDeliveryTransportTest {
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8), 1, 1)) {
-            DeliveryTransportFailure failure = assertThrows(
-                    DeliveryTransportFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> transport.execute(
                             request("/callback", "{}".getBytes(StandardCharsets.UTF_8)),
                             Duration.ofSeconds(2)));
 
-            assertEquals(DeliveryTransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
         }
     }
 
@@ -128,13 +129,13 @@ class ApacheEventDeliveryTransportTest {
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1)) {
-            DeliveryTransportFailure failure = assertThrows(
-                    DeliveryTransportFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> transport.execute(
                             request("/callback", "{}".getBytes(StandardCharsets.UTF_8)),
                             Duration.ofSeconds(2)));
 
-            assertEquals(DeliveryTransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
         }
     }
 

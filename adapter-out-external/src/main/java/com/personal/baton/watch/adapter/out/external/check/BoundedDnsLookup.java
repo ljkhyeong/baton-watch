@@ -14,6 +14,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.apache.hc.core5.io.IOFunction;
 
 /**
  * 제한된 실행기에서 JVM 리졸버를 실행한다. Future를 취소해도 플랫폼 리졸버 자체를 강제로
@@ -22,23 +23,19 @@ import java.util.concurrent.TimeoutException;
  */
 public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
-    @FunctionalInterface
-    interface HostResolver {
-        InetAddress[] resolve(String hostname) throws UnknownHostException;
-    }
-
     private final ExecutorService executor;
-    private final HostResolver resolver;
+    private final IOFunction<String, InetAddress[]> resolver;
 
     public BoundedDnsLookup(int threadCount, int queueCapacity) {
         this(threadCount, queueCapacity, InetAddress::getAllByName);
     }
 
-    BoundedDnsLookup(int threadCount, int queueCapacity, HostResolver resolver) {
+    BoundedDnsLookup(
+            int threadCount, int queueCapacity, IOFunction<String, InetAddress[]> resolver) {
         this(createExecutor(threadCount, queueCapacity), resolver);
     }
 
-    BoundedDnsLookup(ExecutorService executor, HostResolver resolver) {
+    BoundedDnsLookup(ExecutorService executor, IOFunction<String, InetAddress[]> resolver) {
         this.executor = Objects.requireNonNull(executor, "executor");
         this.resolver = Objects.requireNonNull(resolver, "resolver");
     }
@@ -48,34 +45,34 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
         Objects.requireNonNull(hostname, "hostname");
         Objects.requireNonNull(timeout, "timeout");
         if (!timeout.isPositive()) {
-            throw new DnsLookupException(DnsLookupException.Reason.TIMED_OUT);
+            throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
         }
 
         Future<InetAddress[]> future;
         try {
-            future = executor.submit(() -> resolver.resolve(hostname));
+            future = executor.submit(() -> resolver.apply(hostname));
         } catch (RejectedExecutionException exception) {
-            throw new DnsLookupException(DnsLookupException.Reason.CAPACITY_EXHAUSTED);
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         }
 
         try {
             InetAddress[] resolved = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
             if (resolved == null || resolved.length == 0) {
-                throw new DnsLookupException(DnsLookupException.Reason.NOT_FOUND);
+                throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
             }
             return List.of(resolved);
         } catch (TimeoutException exception) {
             future.cancel(true);
-            throw new DnsLookupException(DnsLookupException.Reason.TIMED_OUT);
+            throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
         } catch (InterruptedException exception) {
             future.cancel(true);
             Thread.currentThread().interrupt();
-            throw new DnsLookupException(DnsLookupException.Reason.INTERRUPTED);
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof UnknownHostException) {
-                throw new DnsLookupException(DnsLookupException.Reason.NOT_FOUND);
+                throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
             }
-            throw new DnsLookupException(DnsLookupException.Reason.FAILED);
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         }
     }
 

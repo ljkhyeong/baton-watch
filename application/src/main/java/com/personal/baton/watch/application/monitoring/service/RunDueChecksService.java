@@ -69,8 +69,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     observation,
                     completedAt,
                     completedAt.plus(interval));
-            CheckFinalizationStatus status = Objects.requireNonNull(
-                    persistence.finalizeCheck(finalization), "finalization status");
+            CheckFinalizationStatus status = persistence.finalizeCheck(finalization);
             switch (status) {
                 case APPLIED -> applied++;
                 case ALREADY_FINALIZED -> alreadyFinalized++;

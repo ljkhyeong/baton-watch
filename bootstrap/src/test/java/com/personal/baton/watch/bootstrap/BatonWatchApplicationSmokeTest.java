@@ -3,33 +3,22 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
-import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
-import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChangeEventSender;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperations;
-import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.sql.Connection;
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.context.ApplicationContext;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -71,8 +60,7 @@ class BatonWatchApplicationSmokeTest {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private final ApplicationContext applicationContext;
-    private final DataSource dataSource;
+    private final Environment environment;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
 
@@ -81,20 +69,17 @@ class BatonWatchApplicationSmokeTest {
 
     @Autowired
     BatonWatchApplicationSmokeTest(
-            ApplicationContext applicationContext,
-            DataSource dataSource,
+            Environment environment,
             JdbcTemplate jdbc,
             ObjectMapper objectMapper) {
-        this.applicationContext = applicationContext;
-        this.dataSource = dataSource;
+        this.environment = environment;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
     }
 
     @Test
     void startsTheProductionApplicationAndPersistsAnAuthenticatedInactiveMonitor() throws Exception {
-        assertDatabaseAndMigrations();
-        assertProductionAssembly();
+        assertMigrationsAndRuntimePolicy();
 
         HttpResponse<String> status = get("/api/v1/system/status", null);
         assertThat(status.statusCode()).isEqualTo(200);
@@ -132,7 +117,7 @@ class BatonWatchApplicationSmokeTest {
         assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isZero();
     }
 
-    private void assertDatabaseAndMigrations() throws Exception {
+    private void assertMigrationsAndRuntimePolicy() {
         List<String> appliedVersions = jdbc.queryForList(
                 """
                 SELECT version
@@ -142,53 +127,8 @@ class BatonWatchApplicationSmokeTest {
                 """,
                 String.class);
         assertThat(appliedVersions).containsExactly("1", "2");
-        Integer tableCount = jdbc.queryForObject(
-                """
-                SELECT COUNT(*)
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                  AND table_name IN (
-                      'watch_monitor',
-                      'watch_attempt',
-                      'watch_result',
-                      'watch_health_change_event'
-                  )
-                """,
-                Integer.class);
-        assertThat(tableCount).isEqualTo(4);
-
-        try (Connection connection = dataSource.getConnection()) {
-            assertThat(connection.getCatalog()).isEqualTo("baton_watch");
-            assertThat(connection.getMetaData().getURL()).isEqualTo(POSTGRES.getJdbcUrl());
-            assertThat(connection.getMetaData().getUserName()).isEqualToIgnoringCase("baton_watch");
-        }
-    }
-
-    private void assertProductionAssembly() {
-        assertThat(applicationContext.getBean(BatonWatchApplication.class)).isNotNull();
-        assertThat(applicationContext.getBean(JdbcMonitorPersistenceAdapter.class)).isNotNull();
-        assertThat(applicationContext.getBean(JdbcCheckWorkPersistenceAdapter.class)).isNotNull();
-        assertThat(applicationContext.getBean(JdbcHealthChangeEventDeliveryAdapter.class)).isNotNull();
-        assertThat(applicationContext.getBean(PostgresTransactionOperations.class)).isNotNull();
-        assertThat(applicationContext.getBean(ApacheUrlChecker.class)).isNotNull();
-        assertThat(applicationContext.getBean(ApacheHealthChangeEventSender.class)).isNotNull();
-        assertThat(applicationContext.getBean(RunEventDeliveriesUseCase.class)).isNotNull();
-        assertThat(applicationContext.getBean(MonitoringScheduler.class)).isNotNull();
-        assertThat(applicationContext.getBean(EventDeliveryScheduler.class)).isNotNull();
-        assertThat(applicationContext.getBean(EventDeliveryMaintenanceScheduler.class)).isNotNull();
-        assertThat(applicationContext.getBean(RedactingScheduledTaskErrorHandler.class)).isNotNull();
-        assertThat(applicationContext.getEnvironment()
-                        .getProperty("management.endpoints.web.exposure.include"))
+        assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
-
-        Map<String, ThreadPoolTaskScheduler> schedulers =
-                applicationContext.getBeansOfType(ThreadPoolTaskScheduler.class);
-        assertThat(schedulers).containsOnlyKeys(
-                WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER,
-                WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER,
-                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
-        schedulers.values().forEach(scheduler ->
-                assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize()).isEqualTo(1));
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {

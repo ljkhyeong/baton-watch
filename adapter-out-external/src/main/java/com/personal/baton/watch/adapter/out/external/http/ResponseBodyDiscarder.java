@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.function.LongConsumer;
+import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.util.Args;
 
 /**
  * 제한된 바이트만 소비하고 응답 본문 내용을 절대 보관하지 않는다. 실패한 스트림은 열린 상태로
@@ -14,22 +16,19 @@ public final class ResponseBodyDiscarder {
 
     private static final int BUFFER_SIZE = 8 * 1024;
 
-    public long discard(HttpEntity entity, long limit, LongConsumer progress)
-            throws IOException, ResponseTooLargeException {
+    public long discard(HttpEntity entity, long limit, LongConsumer progress) throws IOException {
         Objects.requireNonNull(entity, "entity");
         Objects.requireNonNull(progress, "progress");
-        if (limit < 0) {
-            throw new IllegalArgumentException("response byte limit must be non-negative");
-        }
+        Args.notNegative(limit, "response byte limit");
         long declaredLength = entity.getContentLength();
         if (declaredLength > limit) {
-            throw new ResponseTooLargeException(0);
+            throw tooLarge();
         }
         if (limit == 0) {
             if (declaredLength == 0) {
                 return closeCompleted(entity.getContent(), 0);
             }
-            throw new ResponseTooLargeException(0);
+            throw tooLarge();
         }
 
         long consumed = 0;
@@ -43,7 +42,7 @@ public final class ResponseBodyDiscarder {
                 }
                 // 길이를 알 수 없는 스트림은 상한을 초과해 소비하지 않고는 탐색할 수 없으므로,
                 // 상한에 도달하면 보수적으로 거부한다.
-                throw new ResponseTooLargeException(consumed);
+                throw tooLarge();
             }
             int read = input.read(buffer, 0, requested);
             if (read == -1) {
@@ -62,17 +61,7 @@ public final class ResponseBodyDiscarder {
         return consumed;
     }
 
-    public static final class ResponseTooLargeException extends IOException {
-
-        private final long consumedWithinLimit;
-
-        ResponseTooLargeException(long consumedWithinLimit) {
-            super("response exceeded byte limit");
-            this.consumedWithinLimit = consumedWithinLimit;
-        }
-
-        public long consumedWithinLimit() {
-            return consumedWithinLimit;
-        }
+    private static ContentTooLongException tooLarge() {
+        return new ContentTooLongException("response exceeded byte limit");
     }
 }

@@ -23,6 +23,7 @@ import java.util.Optional;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.util.Assert;
 
 /** 모니터 동기화, 프로젝션 조회, 오래된 프로젝션 처리를 담당하는 JDBC 어댑터다. */
 public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePort {
@@ -63,7 +64,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
     public int markStaleUnknown(Instant staleBefore, Instant markedAt, int limit) {
         Objects.requireNonNull(staleBefore, "staleBefore");
         Objects.requireNonNull(markedAt, "markedAt");
-        requirePositiveLimit(limit);
+        Assert.isTrue(limit > 0, "limit must be positive");
         if (staleBefore.isAfter(markedAt)) {
             throw new IllegalArgumentException("stale cutoff cannot follow marked time");
         }
@@ -85,15 +86,11 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 return new SynchronizationResult(
                         SynchronizationStatus.APPLIED, toProjection(inserted));
             }
-            existing = DataAccessUtils.singleResult(jdbc.query(
+            existing = jdbc.queryForObject(
                     "SELECT " + MONITOR_COLUMNS
                             + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
                     MonitoringJdbcRows::mapMonitor,
-                    command.resourceReference().value()));
-            if (existing == null) {
-                throw new IllegalStateException(
-                        "conflicting monitor disappeared during synchronization");
-            }
+                    command.resourceReference().value());
         }
 
         int revisionComparison = command.sourceRevision().compareTo(existing.sourceRevision());
@@ -123,7 +120,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 ? null
                 : targetOrStateChanged ? synchronizedAt : existing.nextCheckAt();
 
-        MonitorRow updated = DataAccessUtils.requiredSingleResult(jdbc.query("""
+        MonitorRow updated = jdbc.queryForObject("""
                 UPDATE watch_monitor
                 SET source_revision = ?,
                     monitor_status = ?,
@@ -152,7 +149,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 databaseTime(lastConclusiveAt),
                 databaseTime(nextCheckAt),
                 databaseTime(synchronizedAt),
-                command.resourceReference().value()));
+                command.resourceReference().value());
 
         if (existing.health() != derivation.health()) {
             eventAppender.append(
@@ -242,17 +239,10 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 new ResourceReference(monitor.resourceReference()),
                 monitor.sourceRevision(),
                 monitor.monitoringState(),
-                monitor.health(),
-                monitor.consecutiveFailures(),
+                monitor.derivation(),
                 Optional.ofNullable(monitor.lastOutcome()),
                 Optional.ofNullable(monitor.lastCheckedAt()),
                 Optional.ofNullable(monitor.nextCheckAt()));
-    }
-
-    private static void requirePositiveLimit(int limit) {
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be positive");
-        }
     }
 
 }

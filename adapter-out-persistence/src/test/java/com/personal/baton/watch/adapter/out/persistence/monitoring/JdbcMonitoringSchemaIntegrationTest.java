@@ -3,8 +3,8 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
@@ -74,16 +74,14 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
 
         Flyway.configure().dataSource(testDataSource).load().migrate();
 
-        assertThat(jdbc.queryForMap(
-                        "SELECT delivery_status, delivery_attempt, next_attempt_at FROM watch_health_change_event WHERE event_id = ?",
-                        eventId))
+        var migratedEvent = jdbc.queryForMap(
+                "SELECT delivery_status, delivery_attempt, next_attempt_at FROM watch_health_change_event WHERE event_id = ?",
+                eventId);
+        assertThat(migratedEvent)
                 .containsEntry("delivery_status", "PENDING")
                 .containsEntry("delivery_attempt", 0);
-        assertThat(jdbc.queryForObject(
-                        "SELECT next_attempt_at FROM watch_health_change_event WHERE event_id = ?",
-                        OffsetDateTime.class,
-                        eventId)
-                .toInstant()).isEqualTo(changedAt);
+        assertThat(((Timestamp) migratedEvent.get("next_attempt_at")).toInstant())
+                .isEqualTo(changedAt);
     }
 
     private int characterMaximum(String table, String column) {

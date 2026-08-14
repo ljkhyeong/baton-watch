@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -10,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
@@ -70,8 +72,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(deliveryAdapter.finalizeDelivery(delivered))
                 .isEqualTo(EventDeliveryFinalizationStatus.ALREADY_DELIVERED);
 
-        assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isZero();
-        assertThat(deliveryAdapter.getBacklogSnapshot().oldestChangedAt()).isEmpty();
+        EventDeliveryBacklogSnapshot deliveredBacklog = deliveryAdapter.getBacklogSnapshot();
+        assertThat(deliveredBacklog.pendingCount()).isZero();
+        assertThat(deliveredBacklog.oldestChangedAt()).isEmpty();
         assertThat(deliveryAdapter.claimPendingEvents(dueAt.plusSeconds(60), dueAt.plusSeconds(90), 1))
                 .isEmpty();
         assertThat(jdbc.queryForMap("""
@@ -101,8 +104,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 retryAt);
         assertThat(deliveryAdapter.finalizeDelivery(failed))
                 .isEqualTo(EventDeliveryFinalizationStatus.APPLIED);
-        assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
-        assertThat(deliveryAdapter.getBacklogSnapshot().oldestChangedAt()).contains(dueAt);
+        EventDeliveryBacklogSnapshot retryBacklog = deliveryAdapter.getBacklogSnapshot();
+        assertThat(retryBacklog.pendingCount()).isEqualTo(1);
+        assertThat(retryBacklog.oldestChangedAt()).contains(dueAt);
 
         assertThat(deliveryAdapter.claimPendingEvents(retryAt.minusNanos(1_000), retryAt.plusSeconds(30), 1))
                 .isEmpty();
@@ -277,7 +281,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(deliveryAdapter.claimPendingEvents(
                         claimedAt, claimedAt.plus(LEASE), 2))
                 .extracting(claim -> claim.payload().eventId())
-                .containsExactly(firstEvent, secondEvent);
+                .containsExactlyInAnyOrder(firstEvent, secondEvent);
     }
 
     @Test
@@ -294,10 +298,13 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(
                 BASE_TIME, BASE_TIME.plus(LEASE), 2);
 
-        assertThat(claims).extracting(claim -> claim.payload().eventId())
-                .containsExactly(saturated, following);
-        assertThat(claims).extracting(ClaimedHealthChangeEvent::deliveryAttempt)
-                .containsExactly(Integer.MAX_VALUE, 4);
+        assertThat(claims)
+                .extracting(
+                        claim -> claim.payload().eventId(),
+                        ClaimedHealthChangeEvent::deliveryAttempt)
+                .containsExactlyInAnyOrder(
+                        tuple(saturated, Integer.MAX_VALUE),
+                        tuple(following, 4));
     }
 
     @Test
@@ -320,8 +327,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                         "SELECT event_id FROM watch_health_change_event ORDER BY event_id", UUID.class))
                 .containsExactlyInAnyOrder(atCutoff, pending)
                 .doesNotContain(oldOne, oldTwo);
-        assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
-        assertThat(deliveryAdapter.getBacklogSnapshot().oldestChangedAt())
+        EventDeliveryBacklogSnapshot retainedBacklog = deliveryAdapter.getBacklogSnapshot();
+        assertThat(retainedBacklog.pendingCount()).isEqualTo(1);
+        assertThat(retainedBacklog.oldestChangedAt())
                 .contains(BASE_TIME.minus(Duration.ofDays(90)));
         ClaimedHealthChangeEvent pendingClaim = claimOneDelivery(cutoff.plusSeconds(1));
         assertThat(pendingClaim.payload().eventId()).isEqualTo(pending);

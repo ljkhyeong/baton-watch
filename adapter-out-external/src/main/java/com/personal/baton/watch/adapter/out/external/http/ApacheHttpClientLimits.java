@@ -23,10 +23,9 @@ public record ApacheHttpClientLimits(
             Duration remainingTime,
             int maxHeaderCount,
             int maxHeaderLineLength) {
-        Duration deadline = requirePositive(remainingTime, "remainingTime");
         return new ApacheHttpClientLimits(
-                min(connectTimeout, deadline),
-                min(responseTimeout, deadline),
+                min(connectTimeout, remainingTime),
+                min(responseTimeout, remainingTime),
                 maxHeaderCount,
                 maxHeaderLineLength);
     }

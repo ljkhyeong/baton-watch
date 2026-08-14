@@ -8,8 +8,7 @@ public record MonitorProjection(
         ResourceReference resourceReference,
         SourceRevision sourceRevision,
         MonitoringState monitoringState,
-        Health health,
-        int consecutiveFailures,
+        HealthDerivation derivation,
         Optional<CheckOutcome> lastOutcome,
         Optional<Instant> lastCheckedAt,
         Optional<Instant> nextCheckAt) {
@@ -18,15 +17,20 @@ public record MonitorProjection(
         Objects.requireNonNull(resourceReference, "resourceReference");
         Objects.requireNonNull(sourceRevision, "sourceRevision");
         Objects.requireNonNull(monitoringState, "monitoringState");
-        Objects.requireNonNull(health, "health");
+        Objects.requireNonNull(derivation, "derivation");
         Objects.requireNonNull(lastOutcome, "lastOutcome");
         Objects.requireNonNull(lastCheckedAt, "lastCheckedAt");
         Objects.requireNonNull(nextCheckAt, "nextCheckAt");
-        if (consecutiveFailures < 0) {
-            throw new IllegalArgumentException("consecutive failures must be non-negative");
-        }
         if (monitoringState == MonitoringState.INACTIVE && nextCheckAt.isPresent()) {
             throw new IllegalArgumentException("inactive monitor cannot have a next check time");
         }
+    }
+
+    public Health health() {
+        return derivation.health();
+    }
+
+    public int consecutiveFailures() {
+        return derivation.consecutiveFailures();
     }
 }

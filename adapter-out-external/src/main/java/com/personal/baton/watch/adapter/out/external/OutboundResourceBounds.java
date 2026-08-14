@@ -1,5 +1,7 @@
 package com.personal.baton.watch.adapter.out.external;
 
+import org.apache.hc.core5.util.Args;
+
 /** 운영자가 구성할 수 있는 아웃바운드 HTTP 리소스의 강제 상한. */
 public final class OutboundResourceBounds {
 
@@ -15,42 +17,21 @@ public final class OutboundResourceBounds {
     private OutboundResourceBounds() {}
 
     public static void requireResponseBytes(long value, long maximum) {
-        if (value <= 0 || value > maximum) {
-            throw new IllegalArgumentException(
-                    "maxResponseBytes must be between 1 and " + maximum);
-        }
+        Args.checkRange(value, 1, maximum, "maxResponseBytes");
     }
 
     public static void requireHeaderBounds(int count, int lineLength) {
-        if (count <= 0 || count > MAX_HEADER_COUNT) {
-            throw new IllegalArgumentException(
-                    "maxHeaderCount must be between 1 and " + MAX_HEADER_COUNT);
-        }
-        if (lineLength <= 0 || lineLength > MAX_HEADER_LINE_LENGTH) {
-            throw new IllegalArgumentException(
-                    "maxHeaderLineLength must be between 1 and " + MAX_HEADER_LINE_LENGTH);
-        }
+        Args.checkRange(count, 1, MAX_HEADER_COUNT, "maxHeaderCount");
+        Args.checkRange(lineLength, 1, MAX_HEADER_LINE_LENGTH, "maxHeaderLineLength");
     }
 
     public static void requireDnsExecutorBounds(int threadCount, int queueCapacity) {
-        if (threadCount <= 0 || threadCount > MAX_DNS_THREADS) {
-            throw new IllegalArgumentException(
-                    "DNS thread count must be between 1 and " + MAX_DNS_THREADS);
-        }
-        if (queueCapacity <= 0 || queueCapacity > MAX_DNS_QUEUE_CAPACITY) {
-            throw new IllegalArgumentException(
-                    "DNS queue capacity must be between 1 and " + MAX_DNS_QUEUE_CAPACITY);
-        }
+        Args.checkRange(threadCount, 1, MAX_DNS_THREADS, "DNS thread count");
+        Args.checkRange(queueCapacity, 1, MAX_DNS_QUEUE_CAPACITY, "DNS queue capacity");
     }
 
     public static void requireRequestExecutorBounds(int threadCount, int queueCapacity) {
-        if (threadCount <= 0 || threadCount > MAX_REQUEST_THREADS) {
-            throw new IllegalArgumentException(
-                    "HTTP thread count must be between 1 and " + MAX_REQUEST_THREADS);
-        }
-        if (queueCapacity <= 0 || queueCapacity > MAX_REQUEST_QUEUE_CAPACITY) {
-            throw new IllegalArgumentException(
-                    "HTTP queue capacity must be between 1 and " + MAX_REQUEST_QUEUE_CAPACITY);
-        }
+        Args.checkRange(threadCount, 1, MAX_REQUEST_THREADS, "HTTP thread count");
+        Args.checkRange(queueCapacity, 1, MAX_REQUEST_QUEUE_CAPACITY, "HTTP queue capacity");
     }
 }

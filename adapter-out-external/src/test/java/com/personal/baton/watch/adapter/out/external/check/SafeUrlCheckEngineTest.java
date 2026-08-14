@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
@@ -216,11 +217,11 @@ class SafeUrlCheckEngineTest {
     @ParameterizedTest
     @MethodSource("transportFailures")
     void mapsTransportFailuresWithoutExceptionDetails(
-            TransportFailure.Kind transportKind, CheckOutcome expected) throws Exception {
+            OutboundHttpFailure.Kind transportKind, CheckOutcome expected) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        TransportFailure scriptedFailure = new TransportFailure(transportKind, 3);
+        OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(transportKind, 3);
         transport.add(scriptedFailure);
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
@@ -236,7 +237,7 @@ class SafeUrlCheckEngineTest {
     void mapsDnsFailureWithoutCallingTheTransport() {
         MutableNanoClock clock = new MutableNanoClock();
         DnsLookup dns = (hostname, timeout) -> {
-            throw new DnsLookupException(DnsLookupException.Reason.NOT_FOUND);
+            throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
@@ -247,12 +248,11 @@ class SafeUrlCheckEngineTest {
         assertEquals(0, transport.targets.size());
     }
 
-    @ParameterizedTest
-    @MethodSource("infrastructureDnsFailures")
-    void mapsResolverInfrastructureFailuresToInternalFailure(DnsLookupException.Reason reason) {
+    @Test
+    void mapsResolverInfrastructureFailuresToInternalFailure() {
         MutableNanoClock clock = new MutableNanoClock();
         DnsLookup dns = (hostname, timeout) -> {
-            throw new DnsLookupException(reason);
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         };
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
 
@@ -271,7 +271,7 @@ class SafeUrlCheckEngineTest {
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
         transport.add(redirect(302, "/next", 6));
-        transport.add(new TransportFailure(TransportFailure.Kind.RESPONSE_TOO_LARGE, 4));
+        transport.add(new OutboundHttpFailure(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, 4));
 
         CheckObservation observation = engine(limits, dns, transport, clock)
                 .check(new TargetUrl("https://bytes.example/start"));
@@ -395,19 +395,12 @@ class SafeUrlCheckEngineTest {
 
     private static java.util.stream.Stream<Arguments> transportFailures() {
         return java.util.stream.Stream.of(
-                Arguments.of(TransportFailure.Kind.CONNECT_TIMEOUT, CheckOutcome.CONNECT_TIMEOUT),
-                Arguments.of(TransportFailure.Kind.READ_TIMEOUT, CheckOutcome.READ_TIMEOUT),
-                Arguments.of(TransportFailure.Kind.TLS_FAILURE, CheckOutcome.TLS_FAILURE),
-                Arguments.of(TransportFailure.Kind.RESPONSE_TOO_LARGE, CheckOutcome.RESPONSE_TOO_LARGE),
-                Arguments.of(TransportFailure.Kind.NETWORK_FAILURE, CheckOutcome.NETWORK_FAILURE),
-                Arguments.of(TransportFailure.Kind.INTERNAL_FAILURE, CheckOutcome.INTERNAL_FAILURE));
-    }
-
-    private static java.util.stream.Stream<DnsLookupException.Reason> infrastructureDnsFailures() {
-        return java.util.stream.Stream.of(
-                DnsLookupException.Reason.CAPACITY_EXHAUSTED,
-                DnsLookupException.Reason.INTERRUPTED,
-                DnsLookupException.Reason.FAILED);
+                Arguments.of(OutboundHttpFailure.Kind.CONNECT_TIMEOUT, CheckOutcome.CONNECT_TIMEOUT),
+                Arguments.of(OutboundHttpFailure.Kind.READ_TIMEOUT, CheckOutcome.READ_TIMEOUT),
+                Arguments.of(OutboundHttpFailure.Kind.TLS_FAILURE, CheckOutcome.TLS_FAILURE),
+                Arguments.of(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, CheckOutcome.RESPONSE_TOO_LARGE),
+                Arguments.of(OutboundHttpFailure.Kind.NETWORK_FAILURE, CheckOutcome.NETWORK_FAILURE),
+                Arguments.of(OutboundHttpFailure.Kind.INTERNAL_FAILURE, CheckOutcome.INTERNAL_FAILURE));
     }
 
     private static final class MutableNanoClock implements LongSupplier {
@@ -448,7 +441,7 @@ class SafeUrlCheckEngineTest {
         private final List<Long> remainingByteBudgets = new ArrayList<>();
         private final MutableNanoClock clock;
         private final Duration timePerHop;
-        private TransportFailure lastFailure;
+        private OutboundHttpFailure lastFailure;
 
         private ScriptedTransport(MutableNanoClock clock, Duration timePerHop) {
             this.clock = clock;
@@ -461,12 +454,12 @@ class SafeUrlCheckEngineTest {
 
         @Override
         public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
-                throws TransportFailure {
+                throws OutboundHttpFailure {
             targets.add(target);
             remainingByteBudgets.add(remainingBytes);
             clock.advance(timePerHop);
             Object next = script.removeFirst();
-            if (next instanceof TransportFailure failure) {
+            if (next instanceof OutboundHttpFailure failure) {
                 lastFailure = failure;
                 throw failure;
             }

@@ -98,12 +98,12 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
     void mapsATrustedCertificateHostnameMismatchToTlsFailure() {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-pinned-tls-")) {
-            ApacheHttpFailure failure = assertThrows(
-                    ApacheHttpFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> executor.execute(
                             Duration.ofSeconds(5), ignored -> execute(MISMATCHED_HOSTNAME)));
 
-            assertEquals(ApacheHttpFailure.Kind.TLS_FAILURE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.TLS_FAILURE, failure.kind());
             assertEquals(0, failure.responseBytes());
             assertEquals(0, handlerCalls.get());
         }
@@ -115,7 +115,6 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
         try (CloseableHttpClient client = clientFactory.open(
                 hostname, List.of(LOOPBACK), clientLimits())) {
             HttpGet request = new HttpGet(uri);
-            request.setHeader(HttpHeaders.CONNECTION, "close");
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(uri), request, response -> response.getCode());
         }

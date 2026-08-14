@@ -10,6 +10,7 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.core5.http.ClassicHttpRequest;
+import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.message.BasicClassicHttpResponse;
 import org.apache.hc.core5.http.protocol.HttpContext;
@@ -40,9 +41,9 @@ class ApacheResponseLifecycleTest {
         HttpGet request = new HttpGet("https://example.com/");
 
         assertThrows(
-                ResponseBodyDiscarder.ResponseTooLargeException.class,
+                ContentTooLongException.class,
                 () -> ApacheResponseLifecycle.execute(client, TARGET, request, ignored -> {
-                    throw new ResponseBodyDiscarder.ResponseTooLargeException(8);
+                    throw new ContentTooLongException("response exceeded byte limit");
                 }));
 
         assertEquals(CloseMode.IMMEDIATE, closeMode.get());

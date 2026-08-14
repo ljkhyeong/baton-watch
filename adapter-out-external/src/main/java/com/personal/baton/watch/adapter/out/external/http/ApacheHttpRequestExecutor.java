@@ -20,16 +20,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
+import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.MessageConstraintException;
+import org.apache.hc.core5.io.IOFunction;
 
 /** 제한된 HTTP 실행기를 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
-
-    @FunctionalInterface
-    public interface Operation<T> {
-
-        T execute(Progress progress) throws IOException;
-    }
 
     public interface Progress {
 
@@ -54,18 +50,19 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
-    public <T> T execute(Duration timeout, Operation<T> operation) throws ApacheHttpFailure {
+    public <T> T execute(Duration timeout, IOFunction<Progress, T> operation)
+            throws OutboundHttpFailure {
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
         if (!timeout.isPositive()) {
-            throw failure(ApacheHttpFailure.Kind.CONNECT_TIMEOUT, 0);
+            throw failure(OutboundHttpFailure.Kind.CONNECT_TIMEOUT, 0);
         }
 
         long timeoutNanos;
         try {
             timeoutNanos = timeout.toNanos();
         } catch (ArithmeticException exception) {
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, 0);
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, 0);
         }
 
         RequestProgress progress = new RequestProgress();
@@ -73,26 +70,26 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         try {
             future = executor.submit(() -> executeBlocking(operation, progress));
         } catch (RejectedExecutionException exception) {
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, 0);
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, 0);
         }
 
         try {
             return future.get(timeoutNanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException exception) {
             future.cancel(true);
-            ApacheHttpFailure.Kind kind = progress.phase() == Phase.CONNECTING
-                    ? ApacheHttpFailure.Kind.CONNECT_TIMEOUT
-                    : ApacheHttpFailure.Kind.READ_TIMEOUT;
+            OutboundHttpFailure.Kind kind = progress.phase() == Phase.CONNECTING
+                    ? OutboundHttpFailure.Kind.CONNECT_TIMEOUT
+                    : OutboundHttpFailure.Kind.READ_TIMEOUT;
             throw failure(kind, progress.responseBytes());
         } catch (InterruptedException exception) {
             future.cancel(true);
             Thread.currentThread().interrupt();
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         } catch (ExecutionException exception) {
-            if (exception.getCause() instanceof ApacheHttpFailure httpFailure) {
+            if (exception.getCause() instanceof OutboundHttpFailure httpFailure) {
                 throw httpFailure;
             }
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         }
     }
 
@@ -101,37 +98,33 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         executor.shutdownNow();
     }
 
-    private static <T> T executeBlocking(Operation<T> operation, RequestProgress progress)
-            throws ApacheHttpFailure {
+    private static <T> T executeBlocking(
+            IOFunction<Progress, T> operation, RequestProgress progress)
+            throws OutboundHttpFailure {
         try {
-            return operation.execute(progress);
-        } catch (ResponseBodyDiscarder.ResponseTooLargeException exception) {
-            throw failure(
-                    ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE,
-                    Math.max(progress.responseBytes(), exception.consumedWithinLimit()));
-        } catch (MessageConstraintException exception) {
-            throw failure(ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE, progress.responseBytes());
+            return operation.apply(progress);
+        } catch (ContentTooLongException | MessageConstraintException exception) {
+            throw failure(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, progress.responseBytes());
         } catch (ConnectTimeoutException | ConnectionRequestTimeoutException exception) {
-            throw failure(ApacheHttpFailure.Kind.CONNECT_TIMEOUT, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.CONNECT_TIMEOUT, progress.responseBytes());
         } catch (SSLException exception) {
-            throw failure(ApacheHttpFailure.Kind.TLS_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.TLS_FAILURE, progress.responseBytes());
         } catch (SocketTimeoutException exception) {
-            throw failure(ApacheHttpFailure.Kind.READ_TIMEOUT, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.READ_TIMEOUT, progress.responseBytes());
         } catch (UnknownHostException exception) {
             // 고정 리졸버 불일치는 새로운 DNS 조회 사유가 아니라 어댑터 불변식 위반이다.
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         } catch (InterruptedIOException exception) {
             Thread.currentThread().interrupt();
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         } catch (IOException exception) {
-            throw failure(ApacheHttpFailure.Kind.NETWORK_FAILURE, progress.responseBytes());
-        } catch (RuntimeException exception) {
-            throw failure(ApacheHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+            throw failure(OutboundHttpFailure.Kind.NETWORK_FAILURE, progress.responseBytes());
         }
     }
 
-    private static ApacheHttpFailure failure(ApacheHttpFailure.Kind kind, long responseBytes) {
-        return new ApacheHttpFailure(kind, responseBytes);
+    private static OutboundHttpFailure failure(
+            OutboundHttpFailure.Kind kind, long responseBytes) {
+        return new OutboundHttpFailure(kind, responseBytes);
     }
 
     private static ExecutorService createExecutor(
@@ -165,9 +158,6 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
 
         @Override
         public void responseBytes(long currentResponseBytes) {
-            if (currentResponseBytes < 0) {
-                throw new IllegalArgumentException("responseBytes must be non-negative");
-            }
             responseBytes.accumulateAndGet(currentResponseBytes, Math::max);
         }
 

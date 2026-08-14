@@ -1,7 +1,9 @@
 package com.personal.baton.watch.adapter.out.external.http;
 
-/** Apache HTTP 인프라가 공유하는 제한된 실패 분류 체계. */
-public final class ApacheHttpFailure extends Exception {
+import org.apache.hc.core5.util.Args;
+
+/** 아웃바운드 HTTP 계층이 공유하는 제한된 실패 분류 체계. */
+public final class OutboundHttpFailure extends Exception {
 
     public enum Kind {
         CONNECT_TIMEOUT,
@@ -15,11 +17,9 @@ public final class ApacheHttpFailure extends Exception {
     private final Kind kind;
     private final long responseBytes;
 
-    ApacheHttpFailure(Kind kind, long responseBytes) {
-        super("Apache HTTP request failed");
-        if (responseBytes < 0) {
-            throw new IllegalArgumentException("responseBytes must be non-negative");
-        }
+    public OutboundHttpFailure(Kind kind, long responseBytes) {
+        super("outbound HTTP request failed");
+        Args.notNegative(responseBytes, "responseBytes");
         this.kind = kind;
         this.responseBytes = responseBytes;
     }

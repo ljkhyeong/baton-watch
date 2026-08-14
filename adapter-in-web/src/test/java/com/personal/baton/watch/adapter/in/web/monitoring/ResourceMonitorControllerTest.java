@@ -14,6 +14,7 @@ import com.personal.baton.watch.application.monitoring.model.SynchronizationStat
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
+import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -297,8 +298,7 @@ class ResourceMonitorControllerTest {
                 new ResourceReference("resource-1"),
                 new SourceRevision(42),
                 MonitoringState.ACTIVE,
-                Health.UNKNOWN,
-                0,
+                new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(NOW));
