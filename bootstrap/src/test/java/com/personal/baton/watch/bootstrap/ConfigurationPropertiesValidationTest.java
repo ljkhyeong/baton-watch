@@ -44,6 +44,29 @@ class ConfigurationPropertiesValidationTest {
                 });
     }
 
+    @Test
+    void rejectsJdbcQueryTimeoutsOutsideTheWholeSecondOperationalBound() {
+        persistenceContext("watch.persistence.query-timeout=500ms")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .isInstanceOf(IllegalArgumentException.class)
+                            .hasMessageContaining("queryTimeout")
+                            .hasMessageContaining("whole-second");
+                });
+
+        persistenceContext("watch.persistence.query-timeout=31s")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .rootCause()
+                            .isInstanceOf(IllegalArgumentException.class)
+                            .hasMessageContaining("queryTimeout")
+                            .hasMessageContaining("between 1 and 30 seconds");
+                });
+    }
+
     private static ApplicationContextRunner watchContext(String... invalidProperties) {
         return new ApplicationContextRunner()
                 .withUserConfiguration(WatchConfiguration.class)
@@ -100,6 +123,16 @@ class ConfigurationPropertiesValidationTest {
                 .withPropertyValues(invalidProperties);
     }
 
+    private static ApplicationContextRunner persistenceContext(String... invalidProperties) {
+        return new ApplicationContextRunner()
+                .withUserConfiguration(PersistenceConfigurationProperties.class)
+                .withPropertyValues(
+                        "watch.persistence.query-timeout=5s",
+                        "watch.persistence.transaction-timeout=5s",
+                        "watch.persistence.lock-timeout=1s")
+                .withPropertyValues(invalidProperties);
+    }
+
     private static BindValidationException findValidationFailure(Throwable failure) {
         Throwable current = failure;
         while (current != null) {
@@ -127,5 +160,10 @@ class ConfigurationPropertiesValidationTest {
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(EventDeliveryProperties.class)
     static class EventDeliveryConfigurationProperties {
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(PersistenceProperties.class)
+    static class PersistenceConfigurationProperties {
     }
 }

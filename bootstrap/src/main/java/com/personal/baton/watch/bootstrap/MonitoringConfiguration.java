@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCa
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
+import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
@@ -18,6 +19,7 @@ import com.personal.baton.watch.application.monitoring.service.SynchronizeMonito
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -49,7 +51,7 @@ public class MonitoringConfiguration {
     @Bean
     RunDueChecksUseCase runDueChecksUseCase(
             CheckWorkPersistencePort persistence,
-            ApacheUrlChecker checker,
+            UrlChecker checker,
             Clock clock,
             WatchProperties properties) {
         return new RunDueChecksService(
@@ -99,5 +101,11 @@ public class MonitoringConfiguration {
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
                 http.requestQueueCapacity());
+    }
+
+    @Bean
+    @Primary
+    UrlChecker meteredUrlChecker(ApacheUrlChecker checker, MonitoringMetrics metrics) {
+        return new MeteredUrlChecker(checker, metrics);
     }
 }

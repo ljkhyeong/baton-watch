@@ -9,11 +9,13 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -50,15 +52,16 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     }
 
     @Override
-    public List<ClaimedHealthChangeEvent> claimPendingEvents(Instant claimedAt, Instant leaseUntil, int limit) {
-        Objects.requireNonNull(claimedAt, "claimedAt");
-        Objects.requireNonNull(leaseUntil, "leaseUntil");
+    public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
+        Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
+                leaseDuration, "leaseDuration");
         Assert.isTrue(limit > 0, "limit must be positive");
-        if (!leaseUntil.isAfter(claimedAt)) {
-            throw new IllegalArgumentException("lease must expire after it is claimed");
-        }
-        return transactions.execute(
-                ignored -> claimInTransaction(claimedAt, leaseUntil, limit));
+        return transactions.execute(ignored -> {
+            Instant claimedAt = transactionTime();
+            Instant leaseUntil = TimeBoundaryPolicy.add(
+                    claimedAt, supportedLease, "leaseDuration");
+            return claimInTransaction(claimedAt, leaseUntil, limit);
+        });
     }
 
     @Override
@@ -78,9 +81,9 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     @Override
     public EventDeliveryBacklogSnapshot getBacklogSnapshot() {
         return jdbc.sql("""
-                        SELECT COUNT(*) AS pending_count, MIN(changed_at) AS oldest_changed_at
-                        FROM watch_health_change_event
-                        WHERE delivery_status = 'PENDING'
+                        SELECT pending_count, oldest_changed_at
+                        FROM watch_health_change_event_backlog
+                        WHERE singleton
                         """)
                 .query((resultSet, ignoredRow) -> new EventDeliveryBacklogSnapshot(
                         resultSet.getLong("pending_count"),
@@ -129,9 +132,16 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                             event.currentHealth(),
                             event.changedAt()),
                     leaseToken,
-                    deliveryAttempt));
+                    deliveryAttempt,
+                    claimedAt));
         }
         return claimed;
+    }
+
+    private Instant transactionTime() {
+        return jdbc.sql("SELECT transaction_timestamp() AS transaction_time")
+                .query((resultSet, ignoredRow) -> instant(resultSet, "transaction_time"))
+                .single();
     }
 
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
@@ -196,15 +206,18 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
 
     private int purgeDeliveredInTransaction(Instant deliveredBefore, int limit) {
         return jdbc.sql("""
-                        DELETE FROM watch_health_change_event
-                        WHERE event_id IN (
+                        WITH candidates AS MATERIALIZED (
                             SELECT event_id
                             FROM watch_health_change_event
                             WHERE delivery_status = 'DELIVERED'
                               AND delivered_at < ?
                             ORDER BY delivered_at, event_id
                             LIMIT ?
+                            FOR UPDATE SKIP LOCKED
                         )
+                        DELETE FROM watch_health_change_event event
+                        USING candidates
+                        WHERE event.event_id = candidates.event_id
                         """)
                 .params(databaseTime(deliveredBefore), limit)
                 .update();

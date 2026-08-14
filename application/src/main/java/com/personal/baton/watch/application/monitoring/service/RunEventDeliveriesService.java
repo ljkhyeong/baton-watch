@@ -33,7 +33,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.sender = Objects.requireNonNull(sender, "sender");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.leaseDuration = requirePositive(leaseDuration, "leaseDuration");
+        this.leaseDuration = TimeBoundaryPolicy.requireSupportedOffset(leaseDuration, "leaseDuration");
         this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
@@ -43,9 +43,8 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
 
     @Override
     public EventDeliveryBatchResult runEventDeliveries() {
-        Instant claimedAt = clock.instant();
         List<ClaimedHealthChangeEvent> claimedEvents = List.copyOf(
-                persistence.claimPendingEvents(claimedAt, claimedAt.plus(leaseDuration), batchSize));
+                persistence.claimPendingEvents(leaseDuration, batchSize));
         if (claimedEvents.size() > batchSize) {
             throw new IllegalStateException("persistence returned more events than requested");
         }
@@ -56,7 +55,10 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         int staleClaims = 0;
         for (ClaimedHealthChangeEvent event : claimedEvents) {
             EventDeliveryObservation observation = send(event);
-            Instant completedAt = clock.instant();
+            Instant observedAt = clock.instant();
+            Instant completedAt = observedAt.isBefore(event.claimedAt())
+                    ? event.claimedAt()
+                    : observedAt;
             Instant nextAttemptAt = observation.outcome().isDelivered()
                     ? null
                     : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt());
@@ -95,11 +97,4 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         }
     }
 
-    private static Duration requirePositive(Duration duration, String name) {
-        Objects.requireNonNull(duration, name);
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-        return duration;
-    }
 }

@@ -18,7 +18,7 @@ public final class PurgeDeliveredEventsService implements PurgeDeliveredEventsUs
             HealthChangeEventDeliveryPersistencePort persistence, Clock clock, Duration retention, int batchSize) {
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.retention = requirePositive(retention);
+        this.retention = TimeBoundaryPolicy.requireSupportedOffset(retention, "retention");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -27,15 +27,7 @@ public final class PurgeDeliveredEventsService implements PurgeDeliveredEventsUs
 
     @Override
     public int purgeDeliveredEvents() {
-        Instant deliveredBefore = clock.instant().minus(retention);
+        Instant deliveredBefore = TimeBoundaryPolicy.subtract(clock.instant(), retention, "retention");
         return persistence.purgeDeliveredEvents(deliveredBefore, batchSize);
-    }
-
-    private static Duration requirePositive(Duration duration) {
-        Objects.requireNonNull(duration, "retention");
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException("retention must be positive");
-        }
-        return duration;
     }
 }

@@ -23,6 +23,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -51,8 +52,10 @@ class BatonWatchApplicationSmokeTest {
     private static final String MONITOR_PATH = "/api/v1/resource-monitors/" + RESOURCE_REFERENCE;
 
     @Container
-    @ServiceConnection
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18.4-alpine")
+    @ServiceConnection(name = "postgres")
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
+                    "postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15")
+            .asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("baton_watch")
             .withUsername("baton_watch")
             .withPassword("integration-test");
@@ -126,7 +129,7 @@ class BatonWatchApplicationSmokeTest {
                 ORDER BY installed_rank
                 """,
                 String.class);
-        assertThat(appliedVersions).containsExactly("1", "2");
+        assertThat(appliedVersions).containsExactly("1", "2", "3");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
     }

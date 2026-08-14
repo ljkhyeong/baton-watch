@@ -5,9 +5,6 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
     password: ${SPRING_DATASOURCE_PASSWORD}
-  jdbc:
-    template:
-      query-timeout: 5s
   task:
     scheduling:
       shutdown:
@@ -23,7 +20,22 @@ logging:
 
 watch:
   api-token: ${WATCH_API_TOKEN}
+  database:
+    maximum-pool-size: ${WATCH_DB_MAXIMUM_POOL_SIZE:8}
+    minimum-idle: ${WATCH_DB_MINIMUM_IDLE:2}
+    connection-timeout-millis: ${WATCH_DB_CONNECTION_TIMEOUT_MILLIS:3000}
+    validation-timeout-millis: ${WATCH_DB_VALIDATION_TIMEOUT_MILLIS:1000}
+    idle-timeout-millis: ${WATCH_DB_IDLE_TIMEOUT_MILLIS:600000}
+    max-lifetime-millis: ${WATCH_DB_MAX_LIFETIME_MILLIS:1800000}
+    keepalive-time-millis: ${WATCH_DB_KEEPALIVE_TIME_MILLIS:120000}
+    initialization-fail-timeout-millis: ${WATCH_DB_INITIALIZATION_FAIL_TIMEOUT_MILLIS:5000}
+    connect-timeout-seconds: ${WATCH_DB_CONNECT_TIMEOUT_SECONDS:3}
+    login-timeout-seconds: ${WATCH_DB_LOGIN_TIMEOUT_SECONDS:5}
+    socket-timeout-seconds: ${WATCH_DB_SOCKET_TIMEOUT_SECONDS:10}
+    cancel-signal-timeout-seconds: ${WATCH_DB_CANCEL_SIGNAL_TIMEOUT_SECONDS:3}
+    tcp-keep-alive: ${WATCH_DB_TCP_KEEP_ALIVE:true}
   persistence:
+    query-timeout: ${WATCH_PERSISTENCE_QUERY_TIMEOUT:5s}
     transaction-timeout: ${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:5s}
     lock-timeout: ${WATCH_PERSISTENCE_LOCK_TIMEOUT:1s}
   poll-interval: 1s

@@ -2,7 +2,7 @@
 
 상태: 운영자용 실행 절차서이며, 저장소 산출물은 실제 배포의 증거가 아님
 
-최종 수정일: 2026-08-08
+최종 수정일: 2026-08-14
 
 ## 목적과 현재 경계
 
@@ -24,9 +24,12 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
 - 비밀값이 없는 환경 템플릿인
   [ops/staging.env.example](../../ops/staging.env.example)
-- 로컬에서 빌드한 불변 `baton-watch:<full-git-sha>` 이미지 한 개
+- 로컬에서 빌드한 불변
+  `baton-watch-database-operations:<full-git-sha>` 데이터베이스 작업 이미지,
+  `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
+  `baton-watch:<full-git-sha>` 런타임 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
-- Compose 비밀값으로 마운트하는 권한 모드 `0600` 비밀 파일 세 개
+- Compose 비밀값으로 마운트하는 권한 모드 `0600` 비밀 파일 네 개
 
 이 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다. Compose
 파일은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정합니다. 이 실행 절차서를
@@ -41,6 +44,17 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 
 - PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
   참여합니다.
+- PostgreSQL 소유자 역할은 데이터베이스 초기화와 마이그레이션에만
+  사용합니다. 역할 초기화 스크립트를 내장한 불변 데이터베이스 작업
+  이미지의 일회성 `database-role-init`가 런타임 역할을 설정하고,
+  일회성 `migrate`가 소유자 자격 증명으로 Flyway를 완료한 뒤에만
+  WATCH가 런타임 역할로 시작합니다. 역할 초기화에 워크트리 바인드
+  마운트를 사용하지 않습니다.
+- WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 애플리케이션 테이블에
+  필요한 DML만 사용하고 `flyway_schema_history`를 읽거나 변경할 수 없으며,
+  `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접
+  변경하거나 보호된 트리거 함수를 직접 실행할 수 없습니다. `PUBLIC`과
+  런타임 역할의 데이터베이스 `TEMPORARY` 권한도 회수합니다.
 - WATCH는 호스트 포트를 공개하지 않고 `watch-db`와 `watch-edge`에 참여하며,
   해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
 - 관리 서버는 WATCH 컨테이너 내부의 `127.0.0.1:8081`에 계속 바인딩되며,
@@ -109,18 +123,22 @@ test "$(printf '%s' "$DEPLOY_SHA" | wc -c | tr -d ' ')" = 40
 export DEPLOY_SHA
 export WATCH_IMAGE_REVISION="$DEPLOY_SHA"
 export WATCH_IMAGE="baton-watch:${WATCH_IMAGE_REVISION}"
+export WATCH_DATABASE_OPERATIONS_IMAGE="baton-watch-database-operations:${WATCH_IMAGE_REVISION}"
+export WATCH_MIGRATION_IMAGE="baton-watch-migrations:${WATCH_IMAGE_REVISION}"
 export STAGING_CONFIG_DIR="${HOME}/.config/baton-watch/staging"
 export STAGING_ENV_FILE="${STAGING_CONFIG_DIR}/staging.env"
 export STAGING_STATE_FILE="${STAGING_CONFIG_DIR}/staging-state.env"
 ~~~
 
-비밀값이 없는 환경 파일을 설치하고 비밀 디렉터리를 생성합니다. 다섯 파일을
+비밀값이 없는 환경 파일을 설치하고 비밀 디렉터리를 생성합니다. 여섯 파일을
 모두 저장소 밖에 두세요. 별도의 상태 파일은 운영자 셸이 바뀌거나 저장소가
 업데이트되어도 현재 활성 PostgreSQL 볼륨을 유지합니다. 값을 출력하거나 셸
 히스토리 확장을 활성화하지 말고, 운영자가 통제하는 비밀 관리 시스템에서 비밀
-파일 세 개의 값을 채우세요. WATCH API 토큰은 패딩이 아닌 RFC 6750 `token68`
-문자를 32자 이상 포함해야 하며, 데이터베이스 비밀번호와 터널 토큰은 서로
-독립적인 값이어야 합니다.
+파일 네 개의 값을 채우세요. WATCH API 토큰은 패딩이 아닌 RFC 6750
+`token68` 문자를 32자 이상 포함하고 전체 길이는 200자 이하여야 합니다. 데이터베이스 소유자와
+런타임 비밀번호는 각각 `[A-Za-z0-9._~-]` 문자 32~200개로 구성하고,
+두 데이터베이스 비밀번호·WATCH API 토큰·터널 토큰은 모두 서로 다른
+값으로 관리하세요.
 
 ~~~bash
 install -d -m 0700 "$STAGING_CONFIG_DIR"
@@ -135,8 +153,10 @@ if [[ ! -e "$STAGING_STATE_FILE" ]]; then
   mv "$STATE_TMP" "$STAGING_STATE_FILE"
   unset STATE_TMP
 fi
-test -e "$STAGING_CONFIG_DIR/secrets/postgres-password" || \
-  install -m 0600 /dev/null "$STAGING_CONFIG_DIR/secrets/postgres-password"
+test -e "$STAGING_CONFIG_DIR/secrets/postgres-owner-password" || \
+  install -m 0600 /dev/null "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+test -e "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password" || \
+  install -m 0600 /dev/null "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -e "$STAGING_CONFIG_DIR/secrets/watch-api-token" || \
   install -m 0600 /dev/null "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 test -e "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token" || \
@@ -144,42 +164,59 @@ test -e "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token" || \
 ~~~
 
 이 보호 절차는 없는 자리 표시자만 만들며 기존 비밀값을 절대 잘라내지 않습니다.
-PostgreSQL 비밀번호는 데이터베이스 역할과 파일을 하나의 통제된 변경으로 함께
-갱신하는 별도 절차를 통해서만 교체하세요. 파일만 바꾸면 초기화된 볼륨의 인증이
-실패합니다.
+PostgreSQL 소유자 비밀번호는 데이터베이스 소유자 역할과, 런타임
+비밀번호는 런타임 역할과 파일을 하나의 통제된 변경으로 함께 갱신하는
+별도 절차를 통해서만 교체하세요. 파일만 바꾸면 초기화된 볼륨의 인증이
+실패합니다. 두 역할의 권한과 비밀번호 교체를 하나의 공유 비밀처럼
+처리하지 마세요.
 
 비밀 관리 시스템이 각 값을 마지막 개행 문자 하나와 함께 기록한 뒤, 내용을
 출력하지 않고 메타데이터와 파일이 비어 있지 않은지 검증합니다.
 
 ~~~bash
-chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-password"
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
-test -s "$STAGING_CONFIG_DIR/secrets/postgres-password"
+test -s "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+test -s "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -s "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 test -s "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
-test -O "$STAGING_CONFIG_DIR/secrets/postgres-password"
+test -O "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+test -O "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -O "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 test -O "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
-test -r "$STAGING_CONFIG_DIR/secrets/postgres-password"
+test -r "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+test -r "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -r "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 test -r "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 test -O "$STAGING_ENV_FILE"
 test -O "$STAGING_STATE_FILE"
 test -r "$STAGING_ENV_FILE"
 test -r "$STAGING_STATE_FILE"
-stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/postgres-password"
+stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 stat -f '%Lp %N' "$STAGING_ENV_FILE"
 stat -f '%Lp %N' "$STAGING_STATE_FILE"
+for DATABASE_SECRET_FILE in \
+  "$STAGING_CONFIG_DIR/secrets/postgres-owner-password" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"; do
+  test "$(wc -l < "$DATABASE_SECRET_FILE" | tr -d ' ')" = 1
+  grep -Eq '^[A-Za-z0-9._~-]{32,200}$' "$DATABASE_SECRET_FILE"
+done
+unset DATABASE_SECRET_FILE
 ~~~
 
 각 `stat` 출력 줄은 `600`으로 시작해야 합니다. 환경 템플릿 파일에는
-의도적으로 이미지 리비전, 파일 경로, 데이터베이스 식별자, 제한이 설정된
-애플리케이션 제한 시간 설정만 들어 있습니다. 상태 파일에는 비밀값이 아닌 활성
-볼륨 할당 하나만 정확히 들어 있어야 합니다. 두 파일 중 어느 것도 셸에서
-실행하지 않고 해당 값을 읽어 검증합니다.
+의도적으로 이미지 리비전, 파일 경로, 데이터베이스 식별자·초기 볼륨 이름,
+제한이 설정된 애플리케이션 설정만 들어 있습니다. 활성 볼륨은 상태 파일의
+비밀값이 아닌 할당 하나로 선택하며, 셸에 내보낸 값이 환경 템플릿의 초기 값보다
+우선합니다. 두 파일 중 어느 것도 셸에서
+실행하지 않고 해당 값을 읽어 검증합니다. 데이터베이스 비밀 검사는 파일
+값을 터미널에 출력하지 않으며, 일회성 역할 초기화와 마이그레이션 스크립트도
+같은 문법을 다시 검증합니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -188,10 +225,26 @@ STATE_CONTENT="$(< "$STAGING_STATE_FILE")"
 WATCH_POSTGRES_VOLUME_NAME="${STATE_CONTENT#WATCH_POSTGRES_VOLUME_NAME=}"
 export WATCH_POSTGRES_VOLUME_NAME
 unset STATE_CONTENT
+test "$(grep -Ec '^WATCH_DB_RUNTIME_USER=[a-z_][a-z0-9_]{0,62}$' \
+  "$STAGING_ENV_FILE")" = 1
+WATCH_DB_RUNTIME_USER="$(sed -n 's/^WATCH_DB_RUNTIME_USER=//p' \
+  "$STAGING_ENV_FILE")"
+export WATCH_DB_RUNTIME_USER
 ~~~
 
 셸의 `WATCH_IMAGE_REVISION`은 배포할 깨끗한 커밋을 선택하고, 상태 파일은 Git에
-저장하지 않은 영속 데이터베이스 볼륨을 선택합니다.
+저장하지 않은 영속 데이터베이스 볼륨을 선택합니다. 환경 파일에서 읽은
+`WATCH_DB_RUNTIME_USER`는 비밀값이 아니며 아래 실행 중 권한 검증에만 사용합니다.
+HikariCP 설정은 최대 풀 1~32, 최소 유휴 0~32, 연결·검증 250~30000ms,
+유휴 10000~1800000ms, 최대 수명 30000~3600000ms, 생존 확인
+30000~1800000ms, 초기화 실패 1~30000ms만 허용합니다. 최소 유휴는 최대 풀
+이하, 검증은 연결보다 짧게 설정하세요. 가변 풀의 유휴 제한은 최대 수명보다
+1000ms 이상 짧게, 생존 확인은 최대 수명보다 짧게 설정하세요. pgJDBC
+연결·로그인·취소는 1~30초, 소켓은 1~120초이고
+`WATCH_DB_TCP_KEEP_ALIVE`는 명확성을 위해 `true` 또는 `false`를 사용하세요.
+`SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식으로 지정하고 URL
+쿼리 매개변수를 붙이지 마세요. pgJDBC 제한은 검증되는 `WATCH_DB_*` 설정으로만
+변경합니다.
 
 외부 데이터베이스 볼륨은 한 번만 생성하고, 이후 매 배포 전에 검사합니다.
 
@@ -202,7 +255,8 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 
 ## 정확한 로컬 리비전 빌드
 
-다이제스트로 고정된 두 런타임 의존성을 명시적으로 가져옵니다. WATCH만
+다이제스트로 고정된 PostgreSQL, Cloudflare Tunnel, Flyway 이미지를
+명시적으로 가져옵니다. 데이터베이스 작업·마이그레이션·WATCH 이미지는 세 개 모두
 `pull_policy: never`를 사용하므로 배포 중에 로컬에서 빌드한 SHA 태그 이미지를
 레지스트리 이미지로 몰래 대체할 수 없습니다.
 
@@ -214,17 +268,37 @@ test "$VERIFY_RUN_COUNT" -ge 1
 ./gradlew clean test :bootstrap:bootJar --no-daemon --no-build-cache
 docker pull postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
 docker pull cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+docker pull flyway/flyway:12.4.0-alpine@sha256:b43c3d9b7227687682a9124451ac3dbc9b0003eca65290ad1dcda760345bc680
+docker build --pull --target database-operations \
+  --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
+  --tag "$WATCH_DATABASE_OPERATIONS_IMAGE" \
+  .
+docker build --pull --target migrations \
+  --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
+  --tag "$WATCH_MIGRATION_IMAGE" \
+  .
 docker build --pull \
   --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
   --tag "$WATCH_IMAGE" \
   .
 BUILT_IMAGE_REVISION="$(docker image inspect "$WATCH_IMAGE" \
   --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+BUILT_DATABASE_OPERATIONS_IMAGE_REVISION="$(docker image inspect "$WATCH_DATABASE_OPERATIONS_IMAGE" \
+  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+BUILT_MIGRATION_IMAGE_REVISION="$(docker image inspect "$WATCH_MIGRATION_IMAGE" \
+  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
 test "$BUILT_IMAGE_REVISION" = "$DEPLOY_SHA"
+test "$BUILT_DATABASE_OPERATIONS_IMAGE_REVISION" = "$DEPLOY_SHA"
+test "$BUILT_MIGRATION_IMAGE_REVISION" = "$DEPLOY_SHA"
 ~~~
 
 이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `Verify` 워크플로가 성공했고
-전체 로컬 테스트 작업도 통과해야 합니다. 변경 사항이 남아 있는 작업 트리,
+전체 로컬 테스트 작업도 통과해야 합니다. `Verify`는 공식 SHA-256으로
+고정된 Gradle Wrapper, 고정된 GitHub Actions, PostgreSQL 통합 증거,
+`staging-compose-policy-test.sh`, `staging-database-operation-test.sh`를 검증합니다.
+Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
+업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
+사항이 남아 있는 작업 트리,
 `latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
 
 모든 작업에서 터널 오버레이를 사용하도록 헬퍼 하나를 정의합니다.
@@ -246,10 +320,11 @@ staging_compose config --quiet
 staging_compose config
 ~~~
 
-렌더링된 `postgres`, `watch`, `cloudflared` 서비스를 검사합니다. 어느 서비스에도
+렌더링된 `postgres`, `database-role-init`, `migrate`, `watch`, `cloudflared`
+서비스를 검사합니다. 어느 서비스에도
 `ports` 항목이 있어서는 안 됩니다. 렌더링된 WATCH 환경은
-`WATCH_EVENT_DELIVERY_ENABLED: "false"`를 유지해야 하며, 비밀값 내용이
-나타나서는 안 됩니다.
+`WATCH_EVENT_DELIVERY_ENABLED: "false"`, `SPRING_FLYWAY_ENABLED: "false"`를
+유지해야 하며, 비밀값 내용이 나타나서는 안 됩니다.
 
 ## 업데이트 전 백업
 
@@ -314,15 +389,26 @@ SHA, 복원 테스트 결과만 기록합니다. 격리된 데이터베이스에
 
 ## 배포
 
-전체 스택을 시작하고 세 상태 점검이 모두 통과하도록 요구합니다.
+현재 스테이징은 단일 WATCH 인스턴스의 중단 시간을 감수하는 안전 롤아웃을
+사용합니다. 이전 애플리케이션을 먼저 멈춘 뒤에만 새 마이그레이션을
+실행해야 합니다. Compose의 종속성만으로는 기존 WATCH가 새 스키마 적용 전에
+반드시 정지된다고 보장할 수 없으므로, 이 순서를 생략하지 마세요. 최초
+배포에서 기존 컨테이너가 없다면 정지 명령은 실질적으로 아무 작업도 하지 않습니다.
+정지를 확인한 뒤 전체 스택을 시작합니다. `database-role-init`과 `migrate`는 종료 코드 0으로
+완료되어야 하고, 그 뒤에 PostgreSQL·WATCH·Cloudflare Tunnel 상태 점검이
+모두 통과해야 합니다.
 
 ~~~bash
+staging_compose stop watch cloudflared
+test -z "$(staging_compose ps --status running --services watch cloudflared)"
 staging_compose up -d --no-build --wait --wait-timeout 180
-staging_compose ps
+staging_compose ps -a
 ~~~
 
 명령이 실패하면 디버그 로깅을 활성화하지 말고 범위가 제한된 로그를 검사합니다.
-비정상인 PostgreSQL, WATCH 또는 터널 의존성을 우회하지 마세요.
+비정상인 PostgreSQL, 역할 초기화, 마이그레이션, WATCH 또는 터널
+의존성을 우회하지 마세요. `ps -a` 출력에서 두 일회성 서비스가
+`Exited (0)`이고 나머지 서비스가 정상인지 확인하세요.
 
 WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합니다. 8081 포트는
 호스트와 터널에서 계속 접근할 수 없어야 합니다.
@@ -331,11 +417,31 @@ WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합�
 staging_compose exec -T watch \
   wget -q -O - http://127.0.0.1:8081/actuator/health
 staging_compose exec -T watch sh -c \
-  'test "$WATCH_EVENT_DELIVERY_ENABLED" = false'
+  'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
+MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
+  'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT string_agg(version, chr(44) ORDER BY installed_rank) FROM flyway_schema_history WHERE success"')"
+test "$MIGRATION_EVIDENCE" = 1,2,3
+RUNTIME_PRIVILEGE_EVIDENCE="$(
+  printf '%s\n' \
+    "SELECT concat_ws('|'," \
+    "  has_database_privilege(:'runtime_role', current_database(), 'TEMPORARY')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_monitor', 'SELECT')," \
+    "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event_backlog', 'UPDATE')," \
+    "  has_function_privilege(:'runtime_role', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" |
+  staging_compose exec -T --env WATCH_DB_RUNTIME_USER="$WATCH_DB_RUNTIME_USER" \
+    postgres sh -c \
+    'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --set=runtime_role="$WATCH_DB_RUNTIME_USER"'
+)"
+test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|f|f'
 ~~~
 
-데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달 상태 검증
-명령은 종료 코드 0으로 끝나야 합니다.
+데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
+비활성화 검증과 V1·V2·V3 마이그레이션 증거 검사는 종료 코드 0으로
+끝나야 합니다. WATCH 상태는 런타임 역할의 데이터베이스 연결 성공을
+확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
+`TEMPORARY`·모니터 조회·`flyway_schema_history` 조회·백로그 요약 직접 변경·보호된
+함수 직접 실행 권한이 순서대로 `f|t|f|f|f`인지도 직접 검증합니다.
 
 ## 외부 HTTPS 스모크 테스트
 
@@ -385,7 +491,7 @@ Compose는 기본적으로 각 JSON 로그를 10 MiB 파일 세 개로 제한합
 허용하지 않습니다.
 
 권한 모드 `0700` 임시 디렉터리와 권한 모드 `0600` 로그 파일에 짧은 감사 스냅샷을
-수집합니다. 정확한 비밀값 세 개, `Authorization`, Bearer 값, 대상 URL,
+수집합니다. 정확한 비밀값 네 개, `Authorization`, Bearer 값, 대상 URL,
 리소스 참조, 콜백 URL, 요청 페이로드를 로컬에서 검색합니다. 스캐너는 범주와
 통과/실패 결과만 보고해야 하며, 일치한 줄이나 비밀값은 절대 보고해서는 안
 됩니다. 하나라도 일치하면 배포 실패이며, 비밀값이 노출됐을 가능성이 있으면
@@ -409,26 +515,48 @@ unset AUDIT_DIR
 
 ## 롤백
 
-애플리케이션만 롤백하려면 이전에 검증된 전체 커밋 SHA와 보관 중인 로컬 이미지를
-선택합니다. 다른 작업 트리에서 이전 태그를 다시 빌드하지 마세요.
+롤백에는 이전에 검증한 전체 커밋 SHA와 그 SHA로 이미 빌드하여 보관한
+데이터베이스 작업·마이그레이션·WATCH 이미지 세 개를 모두 사용합니다. 다른 작업 트리에서 이전
+태그를 다시 빌드하지 마세요.
 
 ~~~bash
 export PREVIOUS_SHA=replace-with-previous-verified-40-character-sha
 test "$(printf '%s' "$PREVIOUS_SHA" | wc -c | tr -d ' ')" = 40
 export WATCH_IMAGE_REVISION="$PREVIOUS_SHA"
 export WATCH_IMAGE="baton-watch:${WATCH_IMAGE_REVISION}"
+export WATCH_DATABASE_OPERATIONS_IMAGE="baton-watch-database-operations:${WATCH_IMAGE_REVISION}"
+export WATCH_MIGRATION_IMAGE="baton-watch-migrations:${WATCH_IMAGE_REVISION}"
 ROLLBACK_IMAGE_REVISION="$(docker image inspect "$WATCH_IMAGE" \
   --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+ROLLBACK_DATABASE_OPERATIONS_IMAGE_REVISION="$(docker image inspect "$WATCH_DATABASE_OPERATIONS_IMAGE" \
+  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+ROLLBACK_MIGRATION_IMAGE_REVISION="$(docker image inspect "$WATCH_MIGRATION_IMAGE" \
+  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
 test "$ROLLBACK_IMAGE_REVISION" = "$PREVIOUS_SHA"
-staging_compose up -d --no-build --wait --wait-timeout 180
+test "$ROLLBACK_DATABASE_OPERATIONS_IMAGE_REVISION" = "$PREVIOUS_SHA"
+test "$ROLLBACK_MIGRATION_IMAGE_REVISION" = "$PREVIOUS_SHA"
 ~~~
 
-내부 상태, 외부 상태/401/404, 캐시, TLS, 로그 감사를 반복합니다. 외부
-PostgreSQL 볼륨은 계속 연결되어 있고 전달은 비활성화 상태로 유지됩니다.
+현재 볼륨에 이전 이미지를 바로 덮어 실행하지 마세요. 현재 스키마가
+이전 WATCH와 양방향 호환된다는 것, 이전 마이그레이션 이미지가 현재
+`flyway_schema_history`를 성공적으로 검증한다는 것, 동일한 역할 권한 경계가
+유지된다는 것을 활성 볼륨의 복제본 또는 검증 백업을 복원한 격리 환경에서
+먼저 입증한 경우에만 제자리 애플리케이션 롤백을 허용합니다. 이 호환성 증거가
+있을 때에만 다음을 실행하고 내부 상태, 외부 상태/401/404, 캐시, TLS,
+로그 감사를 반복하세요.
 
-새 릴리스가 이전 이미지에서 읽을 수 없는 스키마를 적용했다면 활성 외부 볼륨을
-제자리에서 다시 쓰지 마세요. 위의 복원 테스트를 통과한 마지막 백업을 선택해
-명시적으로 이름을 지정한 새 볼륨에 복원합니다.
+~~~bash
+staging_compose stop watch cloudflared
+test -z "$(staging_compose ps --status running --services watch cloudflared)"
+staging_compose up -d --no-build --wait --wait-timeout 180
+staging_compose ps -a
+~~~
+
+새 릴리스가 스키마를 전진시켰거나 호환성을 입증하지 못했다면 이전
+애플리케이션만 활성 볼륨에 연결하지 마세요. 위의 복원 테스트를 통과한
+마지막 백업을 선택하여 명시적으로 이름을 지정한 새 볼륨에 복원합니다.
+이 경로에서도 이전 데이터베이스 작업·마이그레이션·WATCH 이미지 세 개의
+SHA 태그를 모두 검증해야 합니다.
 
 ~~~bash
 export BACKUP_FILE=replace-with-last-verified-backup-file
@@ -448,6 +576,7 @@ RESTORED_MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
   'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT count(*) > 0 AND bool_and(success) FROM flyway_schema_history"')"
 test "$RESTORED_MIGRATION_EVIDENCE" = t
 staging_compose up -d --no-build --wait --wait-timeout 180
+staging_compose ps -a
 
 persist_active_volume() {
   local state_tmp
@@ -469,7 +598,9 @@ grep -Fxq \
   "$STAGING_STATE_FILE"
 ~~~
 
-롤백을 승인하기 전에 모든 상태 점검과 외부 스모크 테스트를 반복합니다. 복구를
+신규 볼륨에서 `database-role-init`과 이전 SHA의 `migrate`가 모두 종료 코드
+0이고 WATCH가 정상인지 확인하세요. 롤백을 승인하기 전에 모든 상태 점검과
+외부 스모크 테스트를 반복합니다. 복구를
 되돌릴 수 있도록 두 볼륨 이름을 모두 기록합니다. 복원된 서비스와 백업을 각각
 독립적으로 검증할 때까지 어느 볼륨도 삭제하지 마세요. 복원이나 시작이 실패하면
 새 스택을 중지하고 진단을 위해 두 볼륨을 모두 보존합니다.

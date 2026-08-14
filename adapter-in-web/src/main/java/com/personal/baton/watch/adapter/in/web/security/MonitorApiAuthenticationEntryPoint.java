@@ -3,21 +3,14 @@ package com.personal.baton.watch.adapter.in.web.security;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ProblemDetail;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import tools.jackson.databind.ObjectMapper;
 
 /** 모니터 API에 안정적인 RFC 9457 호환 미인증 응답을 작성한다. */
 public final class MonitorApiAuthenticationEntryPoint implements AuthenticationEntryPoint {
-
-    private static final URI UNAUTHORIZED_TYPE =
-            URI.create("urn:baton-watch:problem:unauthorized");
 
     private final ObjectMapper objectMapper;
 
@@ -30,18 +23,14 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
             HttpServletRequest request,
             HttpServletResponse response,
             AuthenticationException authenticationException) throws IOException {
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setCharacterEncoding(StandardCharsets.UTF_8);
-        objectMapper.writeValue(response.getOutputStream(), unauthorizedProblem());
-    }
-
-    private static ProblemDetail unauthorizedProblem() {
-        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.UNAUTHORIZED);
-        problem.setType(UNAUTHORIZED_TYPE);
-        problem.setTitle("Unauthorized");
-        problem.setProperty("code", "UNAUTHORIZED");
-        return problem;
+        MonitorApiProblemWriter.write(
+                objectMapper,
+                response,
+                HttpStatus.UNAUTHORIZED,
+                "unauthorized",
+                "Unauthorized",
+                "UNAUTHORIZED",
+                false);
     }
 }

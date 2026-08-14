@@ -18,7 +18,8 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
             MonitorPersistencePort persistence, Clock clock, Duration stalenessThreshold, int batchSize) {
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.stalenessThreshold = requirePositive(stalenessThreshold);
+        this.stalenessThreshold = TimeBoundaryPolicy.requireSupportedOffset(
+                stalenessThreshold, "stalenessThreshold");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -28,14 +29,9 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
     @Override
     public int markStaleProjectionsUnknown() {
         Instant markedAt = clock.instant();
-        return persistence.markStaleUnknown(markedAt.minus(stalenessThreshold), markedAt, batchSize);
-    }
-
-    private Duration requirePositive(Duration duration) {
-        Objects.requireNonNull(duration, "stalenessThreshold");
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException("stalenessThreshold must be positive");
-        }
-        return duration;
+        return persistence.markStaleUnknown(
+                TimeBoundaryPolicy.subtract(markedAt, stalenessThreshold, "stalenessThreshold"),
+                markedAt,
+                batchSize);
     }
 }

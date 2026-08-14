@@ -96,6 +96,18 @@ class SafeEventDeliveryEngineTest {
         assertNull(transport.lastRequest);
     }
 
+    @Test
+    void rejectsAzureWireServerBeforeCallbackDelivery() throws Exception {
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("168.63.129.16")));
+        RecordingTransport transport = new RecordingTransport(204);
+
+        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
+
+        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
+        assertNull(observation.httpStatusCode());
+        assertNull(transport.lastRequest);
+    }
+
     @ParameterizedTest
     @MethodSource("dnsFailures")
     void mapsDnsFailuresToBoundedOutcomes(

@@ -95,6 +95,20 @@ class SafeUrlCheckEngineTest {
     }
 
     @Test
+    void rejectsAzureWireServerBeforeTheInitialConnection() throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(InetAddress.getByName("168.63.129.16")));
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
+                .check(new TargetUrl("https://platform-service.example/"));
+
+        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
+        assertEquals(List.of("platform-service.example"), dns.hostnames);
+        assertEquals(0, transport.targets.size());
+    }
+
+    @Test
     void rejectsHttpsDowngradeWithoutResolvingOrConnectingToTheRedirect() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());

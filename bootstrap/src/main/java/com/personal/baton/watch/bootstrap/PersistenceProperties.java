@@ -6,26 +6,36 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** 모든 짧은 PostgreSQL 영속성 트랜잭션과 행 잠금 대기를 제한한다. */
 @ConfigurationProperties("watch.persistence")
-public record PersistenceProperties(Duration transactionTimeout, Duration lockTimeout) {
+public record PersistenceProperties(
+        Duration queryTimeout,
+        Duration transactionTimeout,
+        Duration lockTimeout) {
+
+    private static final long MAX_TIMEOUT_SECONDS = 30;
 
     public PersistenceProperties {
-        transactionTimeout = requireWholeSeconds(transactionTimeout);
+        queryTimeout = requireWholeSeconds(queryTimeout, "queryTimeout");
+        transactionTimeout = requireWholeSeconds(transactionTimeout, "transactionTimeout");
         lockTimeout = requireWholeMilliseconds(lockTimeout);
         if (lockTimeout.compareTo(transactionTimeout) >= 0) {
             throw new IllegalArgumentException("lockTimeout must be shorter than transactionTimeout");
         }
     }
 
+    int queryTimeoutSeconds() {
+        return Math.toIntExact(queryTimeout.getSeconds());
+    }
+
     int transactionTimeoutSeconds() {
         return Math.toIntExact(transactionTimeout.getSeconds());
     }
 
-    private static Duration requireWholeSeconds(Duration value) {
-        Objects.requireNonNull(value, "transactionTimeout");
+    private static Duration requireWholeSeconds(Duration value, String name) {
+        Objects.requireNonNull(value, name);
         long seconds = value.getSeconds();
-        if (seconds < 1 || value.getNano() != 0 || seconds > Integer.MAX_VALUE) {
+        if (seconds < 1 || value.getNano() != 0 || seconds > MAX_TIMEOUT_SECONDS) {
             throw new IllegalArgumentException(
-                    "transactionTimeout must be a positive whole-second duration in the Spring timeout range");
+                    name + " must be a whole-second duration between 1 and 30 seconds");
         }
         return value;
     }

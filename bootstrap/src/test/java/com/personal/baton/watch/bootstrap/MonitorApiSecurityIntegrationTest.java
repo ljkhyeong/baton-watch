@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.personal.baton.watch.adapter.in.web.monitoring.MonitorApiExceptionHandler;
 import com.personal.baton.watch.adapter.in.web.monitoring.ResourceMonitorController;
+import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.system.SystemStatusController;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
@@ -17,12 +18,16 @@ import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.system.SystemStatus;
+import jakarta.servlet.Filter;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -39,6 +44,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -55,16 +62,22 @@ class MonitorApiSecurityIntegrationTest {
     private static final String CONTEXT_PATH = "/watch";
     private static final Instant NOW = Instant.parse("2026-08-02T00:00:00Z");
 
-    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
 
     @LocalServerPort
     private int serverPort;
 
     private final ObjectMapper objectMapper;
+    private final FilterChainProxy filterChainProxy;
 
     @Autowired
-    MonitorApiSecurityIntegrationTest(ObjectMapper objectMapper) {
+    MonitorApiSecurityIntegrationTest(
+            ObjectMapper objectMapper,
+            FilterChainProxy filterChainProxy) {
         this.objectMapper = objectMapper;
+        this.filterChainProxy = filterChainProxy;
     }
 
     @Test
@@ -125,6 +138,95 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @Test
+    void requestBodyLimitRunsAfterSpringSecurityAuthorization() {
+        List<List<Filter>> matchingChains = filterChainProxy.getFilterChains().stream()
+                .map(org.springframework.security.web.SecurityFilterChain::getFilters)
+                .filter(chain -> chain.stream().anyMatch(MonitorApiRequestBodyLimitFilter.class::isInstance))
+                .toList();
+        assertThat(matchingChains).hasSize(1);
+        List<Filter> filters = matchingChains.getFirst();
+
+        int authorization = indexOf(filters, AuthorizationFilter.class);
+        int bodyLimit = indexOf(filters, MonitorApiRequestBodyLimitFilter.class);
+
+        assertThat(authorization).isNotNegative();
+        assertThat(bodyLimit).isGreaterThan(authorization);
+    }
+
+    @Test
+    void authenticationPrecedesContentLengthAndChunkedBodyLimits() throws Exception {
+        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
+
+        HttpResponse<String> contentLength = put(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.APPLICATION_JSON_VALUE,
+                HttpRequest.BodyPublishers.ofString(oversizedBody));
+        HttpResponse<String> chunked = put(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.APPLICATION_JSON_VALUE,
+                chunkedBody);
+
+        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
+        assertUnauthorized(contentLength);
+        assertUnauthorized(chunked);
+    }
+
+    @Test
+    void authenticatedContentLengthAndChunkedBodiesAboveTheLimitReturnStableProblems() throws Exception {
+        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        HttpRequest.BodyPublisher declaredBody = HttpRequest.BodyPublishers.ofString(oversizedBody);
+        HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
+
+        HttpResponse<String> contentLength = put(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                MediaType.APPLICATION_JSON_VALUE,
+                declaredBody);
+        HttpResponse<String> chunked = put(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                MediaType.APPLICATION_JSON_VALUE,
+                chunkedBody);
+
+        assertThat(declaredBody.contentLength())
+                .isEqualTo(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1L);
+        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
+        assertProblem(
+                contentLength,
+                413,
+                "urn:baton-watch:problem:payload-too-large",
+                "Payload too large",
+                "PAYLOAD_TOO_LARGE");
+        assertProblem(
+                chunked,
+                413,
+                "urn:baton-watch:problem:payload-too-large",
+                "Payload too large",
+                "PAYLOAD_TOO_LARGE");
+    }
+
+    @Test
+    void acceptsAJsonBodyAtTheExactByteLimit() throws Exception {
+        String json = "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}";
+        String body = json + " ".repeat(
+                MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES
+                        - json.getBytes(StandardCharsets.UTF_8).length);
+
+        HttpResponse<String> response = put(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                MediaType.APPLICATION_JSON_VALUE,
+                HttpRequest.BodyPublishers.ofString(body));
+
+        assertThat(body.getBytes(StandardCharsets.UTF_8))
+                .hasSize(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES);
+        assertThat(response.statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void everyOtherVersionedApiRequestFailsClosed() throws Exception {
         HttpResponse<String> apiRoot = get("/api/v1", null);
         HttpResponse<String> statusPost = post("/api/v1/system/status", null);
@@ -181,6 +283,11 @@ class MonitorApiSecurityIntegrationTest {
                 API_TOKEN,
                 MediaType.TEXT_PLAIN_VALUE,
                 "{}");
+        HttpResponse<String> oversizedUnsupportedMediaType = put(
+                "/api/v1/resource-monitors/resource-1",
+                API_TOKEN,
+                "application/vnd.baton-watch+json",
+                "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1));
         HttpResponse<String> notAcceptable = get(
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
@@ -205,6 +312,12 @@ class MonitorApiSecurityIntegrationTest {
                 unsupportedMediaType,
                 HttpHeaders.ACCEPT,
                 MediaType.APPLICATION_JSON_VALUE);
+        assertProblem(
+                oversizedUnsupportedMediaType,
+                415,
+                "urn:baton-watch:problem:unsupported-media-type",
+                "Unsupported media type",
+                "UNSUPPORTED_MEDIA_TYPE");
         assertProblem(
                 notAcceptable,
                 406,
@@ -248,10 +361,18 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     private HttpResponse<String> put(String path, String token, String contentType, String body) throws Exception {
+        return put(path, token, contentType, HttpRequest.BodyPublishers.ofString(body));
+    }
+
+    private HttpResponse<String> put(
+            String path,
+            String token,
+            String contentType,
+            HttpRequest.BodyPublisher body) throws Exception {
         return send(
                 HttpRequest.newBuilder(uri(path))
                         .header(HttpHeaders.CONTENT_TYPE, contentType)
-                        .PUT(HttpRequest.BodyPublishers.ofString(body)),
+                        .PUT(body),
                 token);
     }
 
@@ -273,6 +394,20 @@ class MonitorApiSecurityIntegrationTest {
 
     private URI uri(String path) {
         return URI.create("http://127.0.0.1:" + serverPort + CONTEXT_PATH + path);
+    }
+
+    private static HttpRequest.BodyPublisher chunked(String body) {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        return HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(bytes));
+    }
+
+    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
+        for (int index = 0; index < filters.size(); index++) {
+            if (type.isInstance(filters.get(index))) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     private void assertUnauthorized(HttpResponse<String> response) throws Exception {

@@ -36,9 +36,10 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         this.persistence = Objects.requireNonNull(persistence, "persistence");
         this.checker = Objects.requireNonNull(checker, "checker");
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.leaseDuration = requirePositive(leaseDuration, "leaseDuration");
-        this.checkInterval = requirePositive(checkInterval, "checkInterval");
-        this.internalFailureRetryInterval = requirePositive(internalFailureRetryInterval, "internalFailureRetryInterval");
+        this.leaseDuration = TimeBoundaryPolicy.requireSupportedOffset(leaseDuration, "leaseDuration");
+        this.checkInterval = TimeBoundaryPolicy.requireSupportedOffset(checkInterval, "checkInterval");
+        this.internalFailureRetryInterval = TimeBoundaryPolicy.requireSupportedOffset(
+                internalFailureRetryInterval, "internalFailureRetryInterval");
         if (batchSize <= 0) {
             throw new IllegalArgumentException("batchSize must be positive");
         }
@@ -47,9 +48,8 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
 
     @Override
     public DueCheckBatchResult runDueChecks() {
-        Instant claimedAt = clock.instant();
         List<ClaimedCheck> claimedChecks = List.copyOf(
-                persistence.claimDueChecks(claimedAt, claimedAt.plus(leaseDuration), batchSize));
+                persistence.claimDueChecks(leaseDuration, batchSize));
         if (claimedChecks.size() > batchSize) {
             throw new IllegalStateException("persistence returned more work than requested");
         }
@@ -59,7 +59,10 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int staleClaims = 0;
         for (ClaimedCheck claimedCheck : claimedChecks) {
             CheckObservation observation = check(claimedCheck);
-            Instant completedAt = clock.instant();
+            Instant observedAt = clock.instant();
+            Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
+                    ? claimedCheck.claimedAt()
+                    : observedAt;
             Duration interval = observation.outcome() == CheckOutcome.INTERNAL_FAILURE
                     ? internalFailureRetryInterval
                     : checkInterval;
@@ -68,7 +71,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     claimedCheck.leaseToken(),
                     observation,
                     completedAt,
-                    completedAt.plus(interval));
+                    TimeBoundaryPolicy.add(completedAt, interval, "check interval"));
             CheckFinalizationStatus status = persistence.finalizeCheck(finalization);
             switch (status) {
                 case APPLIED -> applied++;
@@ -87,11 +90,4 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         }
     }
 
-    private static Duration requirePositive(Duration duration, String name) {
-        Objects.requireNonNull(duration, name);
-        if (!duration.isPositive()) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-        return duration;
-    }
 }

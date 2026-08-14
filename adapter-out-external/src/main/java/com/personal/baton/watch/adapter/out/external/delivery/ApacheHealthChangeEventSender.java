@@ -8,10 +8,13 @@ import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPa
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.net.URI;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
 
 /** 고정 BATON 상태 변경 콜백 엔드포인트용 운영 송신자. */
 public final class ApacheHealthChangeEventSender implements HealthChangeEventSender, AutoCloseable {
+
+    private static final Pattern BEARER_TOKEN = Pattern.compile("[A-Za-z0-9._~-]{32,200}");
 
     private final SafeEventDeliveryEngine engine;
     private final AutoCloseable dnsLookup;
@@ -61,10 +64,9 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
 
     private static String validateBearerToken(String bearerToken) {
         Objects.requireNonNull(bearerToken, "bearerToken");
-        if (bearerToken.length() < 32
-                || bearerToken.codePoints().anyMatch(codePoint -> codePoint < 0x21 || codePoint > 0x7e)) {
+        if (!BEARER_TOKEN.matcher(bearerToken).matches()) {
             throw new IllegalArgumentException(
-                    "event delivery bearer token must contain at least 32 safe characters");
+                    "event delivery bearer token must contain 32 to 200 URL-safe characters");
         }
         return bearerToken;
     }

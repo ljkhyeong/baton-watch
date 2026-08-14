@@ -81,7 +81,7 @@ class MonitoringMaintenanceServicesTest {
         private int limit;
 
         @Override
-        public List<ClaimedCheck> claimDueChecks(Instant claimedAt, Instant leaseUntil, int limit) {
+        public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
             throw new UnsupportedOperationException();
         }
 

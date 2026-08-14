@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,8 +23,26 @@ class WatchPropertiesTest {
     }
 
     @Test
+    void rejectsInstantOffsetsAboveTheApplicationHardCeiling() {
+        assertThrows(IllegalArgumentException.class, () -> properties(
+                TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET.plusNanos(1), 1));
+    }
+
+    @Test
     void acceptsAnRfc6750Token68ServiceToken() {
         assertDoesNotThrow(() -> properties("01234567890123456789012345678901=="));
+        assertDoesNotThrow(() -> properties("a".repeat(WatchProperties.MAX_API_TOKEN_LENGTH)));
+    }
+
+    @Test
+    void rejectsServiceTokensAboveTheHeaderSafeLimitWithoutExposingThem() {
+        String token = "a".repeat(WatchProperties.MAX_API_TOKEN_LENGTH + 1);
+
+        IllegalArgumentException failure = assertThrows(
+                IllegalArgumentException.class,
+                () -> properties(token));
+
+        assertFalse(failure.getMessage().contains(token));
     }
 
     @ParameterizedTest

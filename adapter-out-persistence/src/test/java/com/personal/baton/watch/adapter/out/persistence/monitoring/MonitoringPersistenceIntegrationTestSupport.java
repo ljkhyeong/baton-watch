@@ -59,11 +59,17 @@ abstract class MonitoringPersistenceIntegrationTestSupport
                 at);
     }
 
-    protected ClaimedCheck claimOne(Instant claimedAt) {
-        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(
-                claimedAt, claimedAt.plus(LEASE), 1);
+    protected ClaimedCheck claimOne() {
+        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(LEASE, 1);
         assertThat(claims).hasSize(1);
         return claims.getFirst();
+    }
+
+    protected Instant claimedAt(ClaimedCheck claimed) {
+        return jdbc.queryForObject(
+                "SELECT claimed_at FROM watch_attempt WHERE attempt_id = ?",
+                java.time.OffsetDateTime.class,
+                claimed.attemptId()).toInstant();
     }
 
     protected CheckFinalization finalization(

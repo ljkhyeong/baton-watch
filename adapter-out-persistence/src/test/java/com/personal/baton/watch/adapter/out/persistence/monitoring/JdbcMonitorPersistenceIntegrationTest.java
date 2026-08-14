@@ -99,8 +99,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     @Test
     void targetChangeResetsProjectionDueNowInvalidatesLeaseAndRecordsHealthChange() {
         synchronize("resource:target-change", 1, "https://one.example/path", BASE_TIME);
-        ClaimedCheck first = claimOne(BASE_TIME);
-        Instant completedAt = BASE_TIME.plusSeconds(1);
+        ClaimedCheck first = claimOne();
+        Instant completedAt = claimedAt(first).plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
                         CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
@@ -108,7 +108,12 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
 
-        ClaimedCheck inFlight = claimOne(completedAt.plus(INTERVAL));
+        jdbc.update("""
+                UPDATE watch_monitor
+                SET next_check_at = transaction_timestamp()
+                WHERE resource_reference = 'resource:target-change'
+                """);
+        ClaimedCheck inFlight = claimOne();
         Instant changedAt = completedAt.plus(INTERVAL).plusSeconds(1);
         SynchronizationResult changed = synchronize(
                 "resource:target-change", 2, "https://two.example/path", changedAt);
@@ -138,8 +143,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         String reference = "resource:sync-event-rollback";
         String originalTarget = "https://original.example/path";
         synchronize(reference, 1, originalTarget, BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
-        Instant completedAt = BASE_TIME.plusSeconds(1);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
@@ -200,8 +205,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     @Test
     void staleSweepTransitionsAtTheCutoffOnceAndPreservesFailureDerivation() {
         synchronize("resource:stale", 1, "https://stale.example/path", BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
-        Instant completedAt = BASE_TIME.plusSeconds(1);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         checkWorkPersistence.finalizeCheck(finalization(
                 claimed,
                 CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),
@@ -228,8 +233,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     void staleProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
         String reference = "resource:stale-event-rollback";
         synchronize(reference, 1, "https://stale-rollback.example/path", BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
-        Instant completedAt = BASE_TIME.plusSeconds(1);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
                         CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),

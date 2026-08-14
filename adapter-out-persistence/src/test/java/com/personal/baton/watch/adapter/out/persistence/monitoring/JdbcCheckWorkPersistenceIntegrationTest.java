@@ -16,6 +16,7 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -33,6 +34,32 @@ import org.springframework.transaction.support.DefaultTransactionDefinition;
 class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
     @Test
+    void leaseWindowStartsFromTheDatabaseTransactionTime() {
+        synchronize("resource:database-time", 1, "https://database-time.example/path", BASE_TIME);
+        Instant beforeClaim = databaseClock();
+
+        ClaimedCheck claimed = claimOne();
+
+        Instant afterClaim = databaseClock();
+        var lease = jdbc.queryForMap("""
+                SELECT claimed_at, lease_expires_at
+                FROM watch_attempt
+                WHERE attempt_id = ?
+                """, claimed.attemptId());
+        Instant claimedAt = ((java.sql.Timestamp) lease.get("claimed_at")).toInstant();
+        Instant leaseExpiresAt = ((java.sql.Timestamp) lease.get("lease_expires_at")).toInstant();
+        assertThat(claimed.claimedAt()).isEqualTo(claimedAt);
+        assertThat(claimedAt).isBetween(beforeClaim, afterClaim);
+        assertThat(leaseExpiresAt).isEqualTo(claimedAt.plus(LEASE));
+        assertThat(jdbc.queryForObject("""
+                        SELECT lease_expires_at
+                        FROM watch_monitor
+                        WHERE resource_reference = 'resource:database-time'
+                        """, OffsetDateTime.class).toInstant())
+                .isEqualTo(leaseExpiresAt);
+    }
+
+    @Test
     void claimsHistoricalUnsafeTargetWithoutRollingBackOtherDueWork() {
         String historicalTarget = "https://legacy.example/%0d%0aHost:internal";
         synchronize("resource:a-legacy", 1, "https://legacy.example/path", BASE_TIME);
@@ -42,8 +69,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 historicalTarget,
                 "resource:a-legacy");
 
-        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(
-                BASE_TIME, BASE_TIME.plus(LEASE), 2);
+        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(LEASE, 2);
 
         assertThat(claims)
                 .extracting(claim -> claim.targetUrl().value())
@@ -66,26 +92,31 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     @Test
     void expiredLeaseCanBeRecoveredAndTheOlderAttemptBecomesStale() {
         synchronize("resource:lease", 1, "https://lease.example/path", BASE_TIME);
-        ClaimedCheck first = claimOne(BASE_TIME);
+        ClaimedCheck first = claimOne();
 
-        assertThat(checkWorkPersistence.claimDueChecks(
-                        BASE_TIME.plusSeconds(29), BASE_TIME.plusSeconds(59), 1))
+        assertThat(checkWorkPersistence.claimDueChecks(LEASE, 1))
                 .isEmpty();
-        ClaimedCheck recovered = claimOne(BASE_TIME.plusSeconds(30));
+        jdbc.update("""
+                UPDATE watch_monitor
+                SET lease_expires_at = transaction_timestamp() - INTERVAL '1 second'
+                WHERE resource_reference = 'resource:lease'
+                """);
+        ClaimedCheck recovered = claimOne();
+        Instant recoveredAt = claimedAt(recovered);
 
         assertThat(recovered.attemptId()).isNotEqualTo(first.attemptId());
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                        BASE_TIME.plusSeconds(31),
-                        BASE_TIME.plusSeconds(91))))
+                        recoveredAt.plusSeconds(1),
+                        recoveredAt.plusSeconds(61))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         recovered,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                        BASE_TIME.plusSeconds(32),
-                        BASE_TIME.plusSeconds(92))))
+                        recoveredAt.plusSeconds(2),
+                        recoveredAt.plusSeconds(62))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
         assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
         assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
@@ -145,9 +176,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         ExecutorService executor = Executors.newSingleThreadExecutor();
         Future<List<ClaimedCheck>> claimFuture = null;
         try {
-            assertThat(lockLeadingDueMonitor(lockJdbc, BASE_TIME)).isEqualTo(lockedReference);
-            claimFuture = executor.submit(() -> competingPersistence.claimDueChecks(
-                    BASE_TIME, BASE_TIME.plus(LEASE), 1));
+            assertThat(lockLeadingDueMonitor(lockJdbc)).isEqualTo(lockedReference);
+            claimFuture = executor.submit(() -> competingPersistence.claimDueChecks(LEASE, 1));
 
             List<ClaimedCheck> claims = claimFuture.get(
                     CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -184,8 +214,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 """);
 
         try {
-            assertThatThrownBy(() -> checkWorkPersistence.claimDueChecks(
-                            BASE_TIME, BASE_TIME.plus(LEASE), 2))
+            assertThatThrownBy(() -> checkWorkPersistence.claimDueChecks(LEASE, 2))
                     .isInstanceOf(DataIntegrityViolationException.class);
 
             assertThat(countRowsInTable(jdbc, "watch_attempt")).isZero();
@@ -206,8 +235,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                     """);
         }
 
-        assertThat(checkWorkPersistence.claimDueChecks(
-                        BASE_TIME, BASE_TIME.plus(LEASE), 2))
+        assertThat(checkWorkPersistence.claimDueChecks(LEASE, 2))
                 .extracting(claim -> claim.targetUrl().value())
                 .containsExactly(
                         "https://batch-one.example/path",
@@ -217,12 +245,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     @Test
     void duplicateAndWrongTokenFinalizationCannotDuplicateResultOrEvent() {
         synchronize("resource:idempotent", 1, "https://idempotent.example/path", BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         CheckFinalization valid = finalization(
                 claimed,
                 CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 42, 1),
-                BASE_TIME.plusSeconds(1),
-                BASE_TIME.plusSeconds(61));
+                completedAt,
+                completedAt.plus(INTERVAL));
         CheckFinalization wrongToken = new CheckFinalization(
                 claimed.attemptId(),
                 UUID.randomUUID(),
@@ -248,12 +277,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     @Test
     void concurrentFinalizationCreatesOneResultAndOneEvent() throws Exception {
         synchronize("resource:concurrent-finalize", 1, "https://finalize.example/path", BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         CheckFinalization finalization = finalization(
                 claimed,
                 CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                BASE_TIME.plusSeconds(1),
-                BASE_TIME.plusSeconds(61));
+                completedAt,
+                completedAt.plus(INTERVAL));
         JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -286,7 +316,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     @Test
     void resultProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
         synchronize("resource:atomic", 1, "https://atomic.example/path", BASE_TIME);
-        ClaimedCheck claimed = claimOne(BASE_TIME);
+        ClaimedCheck claimed = claimOne();
+        Instant completedAt = claimedAt(claimed).plusSeconds(1);
         jdbc.update("""
                 INSERT INTO watch_health_change_event (
                     event_id, resource_reference, source_revision, attempt_id,
@@ -297,14 +328,14 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 "resource:atomic",
                 1L,
                 claimed.attemptId(),
-                databaseTime(BASE_TIME.minusSeconds(1)),
-                databaseTime(BASE_TIME.minusSeconds(1)));
+                databaseTime(completedAt.minusSeconds(1)),
+                databaseTime(completedAt.minusSeconds(1)));
 
         CheckFinalization finalization = finalization(
                 claimed,
                 CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                BASE_TIME.plusSeconds(1),
-                BASE_TIME.plusSeconds(61));
+                completedAt,
+                completedAt.plus(INTERVAL));
         assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
@@ -321,16 +352,16 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
     @Test
     void retentionIsBoundedStrictlyBeforeCutoffAndKeepsOutboxAttemptFacts() {
-        Instant cutoff = BASE_TIME.plus(Duration.ofDays(30));
+        Instant cutoff = Instant.now().plus(Duration.ofDays(1));
         List<ClaimedCheck> attempts = List.of(
-                claimed("resource:abandoned", BASE_TIME),
-                claimed("resource:before", BASE_TIME.plusSeconds(1)),
-                claimed("resource:at", BASE_TIME.plusSeconds(2)),
-                claimed("resource:after", BASE_TIME.plusSeconds(3)));
+                claimed("resource:abandoned"),
+                claimed("resource:before"),
+                claimed("resource:at"),
+                claimed("resource:after"));
         monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
                         new ResourceReference("resource:abandoned"), new SourceRevision(2)),
-                BASE_TIME.plusSeconds(31));
+                cutoff.minusSeconds(30));
 
         finalizeAt(attempts.get(1), cutoff.minusSeconds(1));
         finalizeAt(attempts.get(2), cutoff);
@@ -354,13 +385,53 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 .containsExactly(attempts.get(2).attemptId(), attempts.get(3).attemptId());
     }
 
+    @Test
+    void retentionSkipsALockedOldestAttemptAndPurgesAnotherBoundedCandidate() throws Exception {
+        Instant cutoff = Instant.now().plus(Duration.ofDays(1));
+        ClaimedCheck locked = claimed("resource:purge-locked");
+        ClaimedCheck available = claimed("resource:purge-available");
+        finalizeAt(locked, cutoff.minusSeconds(2));
+        finalizeAt(available, cutoff.minusSeconds(1));
+
+        DataSourceTransactionManager lockTransactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
+        TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
+                new DefaultTransactionDefinition());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Integer> purgeFuture = null;
+        try {
+            assertThat(lockJdbc.queryForObject("""
+                    SELECT attempt_id
+                    FROM watch_attempt
+                    WHERE attempt_id = ?
+                    FOR UPDATE
+                    """, UUID.class, locked.attemptId())).isEqualTo(locked.attemptId());
+
+            JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
+            purgeFuture = executor.submit(() -> competingPersistence.purgeAttempts(cutoff, 1));
+
+            assertThat(purgeFuture.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isEqualTo(1);
+            assertThat(jdbc.queryForList(
+                            "SELECT attempt_id FROM watch_attempt ORDER BY attempt_id", UUID.class))
+                    .contains(locked.attemptId())
+                    .doesNotContain(available.attemptId());
+        } finally {
+            cancelIfRunning(purgeFuture);
+            if (!lockTransaction.isCompleted()) {
+                lockTransactionManager.rollback(lockTransaction);
+            }
+            shutdownAndAwait(executor);
+        }
+    }
+
     private List<ClaimedCheck> claimChecksConcurrently(
             JdbcCheckWorkPersistenceAdapter claimingAdapter,
             CountDownLatch ready,
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return claimingAdapter.claimDueChecks(BASE_TIME, BASE_TIME.plus(LEASE), 1);
+        return claimingAdapter.claimDueChecks(LEASE, 1);
     }
 
     private CheckFinalizationStatus finalizeConcurrently(
@@ -373,26 +444,23 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         return finalizingAdapter.finalizeCheck(finalization);
     }
 
-    private String lockLeadingDueMonitor(
-            JdbcTemplate lockJdbc, Instant claimedAt) {
+    private String lockLeadingDueMonitor(JdbcTemplate lockJdbc) {
         return lockJdbc.queryForObject("""
                 SELECT resource_reference
                 FROM watch_monitor
                 WHERE monitor_status = 'ACTIVE'
-                  AND next_check_at <= ?
-                  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
+                  AND next_check_at <= transaction_timestamp()
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= transaction_timestamp())
                 ORDER BY next_check_at, resource_reference
                 LIMIT 1
                 FOR UPDATE
                 """,
-                String.class,
-                databaseTime(claimedAt),
-                databaseTime(claimedAt));
+                String.class);
     }
 
-    private ClaimedCheck claimed(String reference, Instant claimedAt) {
-        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", claimedAt);
-        return claimOne(claimedAt);
+    private ClaimedCheck claimed(String reference) {
+        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
+        return claimOne();
     }
 
     private void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
@@ -402,5 +470,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
+    }
+
+    private Instant databaseClock() {
+        return jdbc.queryForObject(
+                "SELECT clock_timestamp()", OffsetDateTime.class).toInstant();
     }
 }

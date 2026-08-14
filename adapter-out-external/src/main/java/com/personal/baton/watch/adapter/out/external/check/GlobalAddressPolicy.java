@@ -45,6 +45,7 @@ public final class GlobalAddressPolicy {
             cidr("10.0.0.0", 8),
             cidr("100.64.0.0", 10),
             cidr("127.0.0.0", 8),
+            cidr("168.63.129.16", 32),
             cidr("169.254.0.0", 16),
             cidr("172.16.0.0", 12),
             cidr("192.0.0.0", 24),
