@@ -19,18 +19,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
 import org.apache.hc.core5.http.MessageConstraintException;
+import org.apache.hc.core5.io.IOFunction;
 import org.junit.jupiter.api.Test;
 
 class ApacheHttpRequestExecutorTest {
 
     @Test
     void reportsConnectTimeoutAndCancelsWorkBeforeAResponseStarts() throws Exception {
-        assertTimedOut(false, ApacheHttpFailure.Kind.CONNECT_TIMEOUT);
+        assertTimedOut(false, OutboundHttpFailure.Kind.CONNECT_TIMEOUT);
     }
 
     @Test
     void reportsReadTimeoutAndCancelsWorkAfterAResponseStarts() throws Exception {
-        assertTimedOut(true, ApacheHttpFailure.Kind.READ_TIMEOUT);
+        assertTimedOut(true, OutboundHttpFailure.Kind.READ_TIMEOUT);
     }
 
     @Test
@@ -38,7 +39,7 @@ class ApacheHttpRequestExecutorTest {
         CountDownLatch operationStarted = new CountDownLatch(1);
         CountDownLatch workerInterrupted = new CountDownLatch(1);
         CountDownLatch block = new CountDownLatch(1);
-        AtomicReference<ApacheHttpFailure.Kind> failureKind = new AtomicReference<>();
+        AtomicReference<OutboundHttpFailure.Kind> failureKind = new AtomicReference<>();
         AtomicBoolean callerInterruptRestored = new AtomicBoolean();
 
         try (ApacheHttpRequestExecutor executor =
@@ -55,7 +56,7 @@ class ApacheHttpRequestExecutorTest {
                         }
                         return null;
                     });
-                } catch (ApacheHttpFailure failure) {
+                } catch (OutboundHttpFailure failure) {
                     failureKind.set(failure.kind());
                     callerInterruptRestored.set(Thread.currentThread().isInterrupted());
                 }
@@ -67,7 +68,7 @@ class ApacheHttpRequestExecutorTest {
             caller.join(1_000);
 
             assertFalse(caller.isAlive());
-            assertEquals(ApacheHttpFailure.Kind.INTERNAL_FAILURE, failureKind.get());
+            assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failureKind.get());
             assertTrue(callerInterruptRestored.get());
             assertTrue(workerInterrupted.await(1, TimeUnit.SECONDS));
         }
@@ -79,11 +80,11 @@ class ApacheHttpRequestExecutorTest {
         rejectedExecutor.shutdownNow();
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(rejectedExecutor)) {
-            ApacheHttpFailure failure = assertThrows(
-                    ApacheHttpFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> executor.execute(Duration.ofSeconds(1), progress -> null));
 
-            assertEquals(ApacheHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
         }
 
         ExecutorService ownedExecutor = Executors.newSingleThreadExecutor();
@@ -109,32 +110,32 @@ class ApacheHttpRequestExecutorTest {
     @Test
     void preservesTheBoundedBlockingFailureTaxonomy() {
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.TLS_FAILURE,
+                OutboundHttpFailure.Kind.TLS_FAILURE,
                 progress -> {
                     throw new SSLException("sensitive TLS detail");
                 });
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.READ_TIMEOUT,
+                OutboundHttpFailure.Kind.READ_TIMEOUT,
                 progress -> {
                     throw new SocketTimeoutException("sensitive timeout detail");
                 });
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.INTERNAL_FAILURE,
+                OutboundHttpFailure.Kind.INTERNAL_FAILURE,
                 progress -> {
                     throw new UnknownHostException("pinned resolver mismatch");
                 });
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.NETWORK_FAILURE,
+                OutboundHttpFailure.Kind.NETWORK_FAILURE,
                 progress -> {
                     throw new IOException("sensitive network detail");
                 });
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.RESPONSE_TOO_LARGE,
+                OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE,
                 progress -> {
                     throw new MessageConstraintException("sensitive parser detail");
                 });
         assertBlockingFailure(
-                ApacheHttpFailure.Kind.INTERNAL_FAILURE,
+                OutboundHttpFailure.Kind.INTERNAL_FAILURE,
                 progress -> {
                     throw new IllegalStateException("sensitive adapter detail");
                 });
@@ -163,11 +164,11 @@ class ApacheHttpRequestExecutorTest {
     }
 
     private static void assertTimedOut(
-            boolean responseStarted, ApacheHttpFailure.Kind expectedKind) throws Exception {
+            boolean responseStarted, OutboundHttpFailure.Kind expectedKind) throws Exception {
         CountDownLatch operationStarted = new CountDownLatch(1);
         CountDownLatch interrupted = new CountDownLatch(1);
         CountDownLatch block = new CountDownLatch(1);
-        AtomicReference<ApacheHttpFailure> observedFailure = new AtomicReference<>();
+        AtomicReference<OutboundHttpFailure> observedFailure = new AtomicReference<>();
 
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
@@ -186,7 +187,7 @@ class ApacheHttpRequestExecutorTest {
                         }
                         return null;
                     });
-                } catch (ApacheHttpFailure failure) {
+                } catch (OutboundHttpFailure failure) {
                     observedFailure.set(failure);
                 }
             }, "test-timeout-caller");
@@ -202,16 +203,16 @@ class ApacheHttpRequestExecutorTest {
     }
 
     private static void assertBlockingFailure(
-            ApacheHttpFailure.Kind expectedKind,
-            ApacheHttpRequestExecutor.Operation<Void> operation) {
+            OutboundHttpFailure.Kind expectedKind,
+            IOFunction<ApacheHttpRequestExecutor.Progress, Void> operation) {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
-            ApacheHttpFailure failure = assertThrows(
-                    ApacheHttpFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> executor.execute(Duration.ofSeconds(1), operation));
 
             assertEquals(expectedKind, failure.kind());
-            assertEquals("Apache HTTP request failed", failure.getMessage());
+            assertEquals("outbound HTTP request failed", failure.getMessage());
         }
     }
 }

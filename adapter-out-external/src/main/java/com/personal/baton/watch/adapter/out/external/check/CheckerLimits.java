@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
 import java.util.Objects;
+import org.apache.hc.core5.util.Args;
 
 /** 단일 아웃바운드 URL 점검의 런타임 제한. 어떤 제한도 비활성화할 수 없다. */
 public record CheckerLimits(
@@ -18,14 +19,10 @@ public record CheckerLimits(
         connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         responseTimeout = requirePositive(responseTimeout, "responseTimeout");
         totalTimeout = requirePositive(totalTimeout, "totalTimeout");
-        requireNanosRepresentable(connectTimeout, "connectTimeout");
-        requireNanosRepresentable(responseTimeout, "responseTimeout");
         requireNanosRepresentable(totalTimeout, "totalTimeout");
         OutboundResourceBounds.requireResponseBytes(
                 maxResponseBytes, OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
-        if (maxRedirects < 0 || maxRedirects > 3) {
-            throw new IllegalArgumentException("maxRedirects must be between zero and three");
-        }
+        Args.checkRange(maxRedirects, 0, 3, "maxRedirects");
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 

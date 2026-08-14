@@ -4,6 +4,7 @@ import com.personal.baton.watch.adapter.out.external.check.AddressPolicyExceptio
 import com.personal.baton.watch.adapter.out.external.check.DnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.DnsLookupException;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
@@ -58,9 +59,8 @@ final class SafeEventDeliveryEngine {
                 resolved = dnsLookup.resolve(endpoint.hostname(), remaining);
             } catch (DnsLookupException exception) {
                 return switch (exception.reason()) {
-                    case NOT_FOUND, TIMED_OUT -> failure(EventDeliveryOutcome.DNS_FAILURE);
-                    case CAPACITY_EXHAUSTED, INTERRUPTED, FAILED ->
-                            EventDeliveryObservation.internalFailure();
+                    case DNS_FAILURE -> failure(EventDeliveryOutcome.DNS_FAILURE);
+                    case INTERNAL_FAILURE -> EventDeliveryObservation.internalFailure();
                 };
             }
 
@@ -85,7 +85,7 @@ final class SafeEventDeliveryEngine {
             int statusCode;
             try {
                 statusCode = transport.execute(request, remaining);
-            } catch (DeliveryTransportFailure exception) {
+            } catch (OutboundHttpFailure exception) {
                 return transportFailure(exception.kind());
             }
             if (statusCode < 200 || statusCode > 599) {
@@ -97,7 +97,7 @@ final class SafeEventDeliveryEngine {
         }
     }
 
-    private EventDeliveryObservation transportFailure(DeliveryTransportFailure.Kind kind) {
+    private EventDeliveryObservation transportFailure(OutboundHttpFailure.Kind kind) {
         EventDeliveryOutcome outcome = switch (kind) {
             case CONNECT_TIMEOUT -> EventDeliveryOutcome.CONNECT_TIMEOUT;
             case READ_TIMEOUT -> EventDeliveryOutcome.READ_TIMEOUT;

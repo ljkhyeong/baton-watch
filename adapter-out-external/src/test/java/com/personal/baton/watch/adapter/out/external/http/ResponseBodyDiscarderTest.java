@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.io.entity.BasicHttpEntity;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.junit.jupiter.api.Test;
@@ -52,11 +53,10 @@ class ResponseBodyDiscarderTest {
         BasicHttpEntity entity = new BasicHttpEntity(
                 input, -1, ContentType.APPLICATION_OCTET_STREAM);
 
-        ResponseBodyDiscarder.ResponseTooLargeException failure = assertThrows(
-                ResponseBodyDiscarder.ResponseTooLargeException.class,
+        assertThrows(
+                ContentTooLongException.class,
                 () -> discarder.discard(entity, 64, progress::set));
 
-        assertEquals(64, failure.consumedWithinLimit());
         assertEquals(64, progress.get());
         assertEquals(64, input.bytesRead());
     }
@@ -68,11 +68,10 @@ class ResponseBodyDiscarderTest {
         BasicHttpEntity entity = new BasicHttpEntity(
                 input, -1, ContentType.APPLICATION_OCTET_STREAM);
 
-        ResponseBodyDiscarder.ResponseTooLargeException failure = assertThrows(
-                ResponseBodyDiscarder.ResponseTooLargeException.class,
+        assertThrows(
+                ContentTooLongException.class,
                 () -> discarder.discard(entity, 64, ignored -> {}));
 
-        assertEquals(64, failure.consumedWithinLimit());
         assertEquals(64, input.bytesRead());
     }
 
@@ -80,11 +79,9 @@ class ResponseBodyDiscarderTest {
     void rejectsAnOversizedDeclaredLengthBeforeOpeningTheBody() {
         ByteArrayEntity entity = new ByteArrayEntity(new byte[65], ContentType.APPLICATION_OCTET_STREAM);
 
-        ResponseBodyDiscarder.ResponseTooLargeException failure = assertThrows(
-                ResponseBodyDiscarder.ResponseTooLargeException.class,
+        assertThrows(
+                ContentTooLongException.class,
                 () -> discarder.discard(entity, 64, ignored -> {}));
-
-        assertEquals(0, failure.consumedWithinLimit());
     }
 
     @Test

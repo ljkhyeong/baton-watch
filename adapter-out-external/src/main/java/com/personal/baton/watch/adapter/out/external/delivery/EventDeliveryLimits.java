@@ -17,8 +17,6 @@ public record EventDeliveryLimits(
         connectTimeout = requirePositive(connectTimeout, "connectTimeout");
         responseTimeout = requirePositive(responseTimeout, "responseTimeout");
         totalTimeout = requirePositive(totalTimeout, "totalTimeout");
-        requireNanosRepresentable(connectTimeout, "connectTimeout");
-        requireNanosRepresentable(responseTimeout, "responseTimeout");
         requireNanosRepresentable(totalTimeout, "totalTimeout");
         OutboundResourceBounds.requireResponseBytes(
                 maxResponseBytes, OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);

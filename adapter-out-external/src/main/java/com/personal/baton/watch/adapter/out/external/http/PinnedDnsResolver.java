@@ -5,6 +5,7 @@ import java.net.UnknownHostException;
 import java.util.List;
 import java.util.Objects;
 import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.core5.util.Args;
 
 /** 승인된 요청 대상 하나로 범위가 제한된 리졸버이며 DNS 조회를 절대 수행하지 않는다. */
 final class PinnedDnsResolver implements DnsResolver {
@@ -14,10 +15,8 @@ final class PinnedDnsResolver implements DnsResolver {
 
     PinnedDnsResolver(String expectedHostname, List<InetAddress> approvedAddresses) {
         this.expectedHostname = Objects.requireNonNull(expectedHostname, "expectedHostname");
-        if (approvedAddresses == null || approvedAddresses.isEmpty()) {
-            throw new IllegalArgumentException("approved address set must not be empty");
-        }
-        this.approvedAddresses = approvedAddresses.toArray(InetAddress[]::new);
+        this.approvedAddresses = Args.notEmpty(approvedAddresses, "approvedAddresses")
+                .toArray(InetAddress[]::new);
     }
 
     @Override

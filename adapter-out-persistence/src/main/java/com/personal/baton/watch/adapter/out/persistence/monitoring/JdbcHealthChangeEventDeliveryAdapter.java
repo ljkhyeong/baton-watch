@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.util.Assert;
 
 /** 내구성 있는 상태 변경 이벤트 전달 생명주기를 담당하는 JDBC 어댑터다. */
 public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeEventDeliveryPersistencePort {
@@ -52,7 +53,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     public List<ClaimedHealthChangeEvent> claimPendingEvents(Instant claimedAt, Instant leaseUntil, int limit) {
         Objects.requireNonNull(claimedAt, "claimedAt");
         Objects.requireNonNull(leaseUntil, "leaseUntil");
-        requirePositiveLimit(limit);
+        Assert.isTrue(limit > 0, "limit must be positive");
         if (!leaseUntil.isAfter(claimedAt)) {
             throw new IllegalArgumentException("lease must expire after it is claimed");
         }
@@ -69,7 +70,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     @Override
     public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
         Objects.requireNonNull(deliveredBefore, "deliveredBefore");
-        requirePositiveLimit(limit);
+        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(
                 ignored -> purgeDeliveredInTransaction(deliveredBefore, limit));
     }
@@ -221,12 +222,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 DeliveryStatus.valueOf(resultSet.getString("delivery_status")),
                 resultSet.getInt("delivery_attempt"),
                 resultSet.getObject("delivery_lease_token", UUID.class));
-    }
-
-    private static void requirePositiveLimit(int limit) {
-        if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be positive");
-        }
     }
 
     private enum DeliveryStatus {

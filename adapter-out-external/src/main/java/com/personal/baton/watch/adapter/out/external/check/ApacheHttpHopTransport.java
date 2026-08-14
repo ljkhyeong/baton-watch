@@ -1,9 +1,9 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
-import com.personal.baton.watch.adapter.out.external.http.ApacheHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
 import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
@@ -44,24 +44,11 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
 
     @Override
     public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
-            throws TransportFailure {
-        Objects.requireNonNull(target, "target");
-        Objects.requireNonNull(remainingTime, "remainingTime");
-        if (!remainingTime.isPositive()) {
-            throw new TransportFailure(TransportFailure.Kind.CONNECT_TIMEOUT, 0);
-        }
-        if (remainingBytes < 0) {
-            throw new TransportFailure(TransportFailure.Kind.RESPONSE_TOO_LARGE, 0);
-        }
-
-        try {
-            return requestExecutor.execute(
-                    remainingTime,
-                    progress -> executeBlocking(
-                            target, remainingTime, remainingBytes, progress));
-        } catch (ApacheHttpFailure failure) {
-            throw toTransportFailure(failure);
-        }
+            throws OutboundHttpFailure {
+        return requestExecutor.execute(
+                remainingTime,
+                progress -> executeBlocking(
+                        target, remainingTime, remainingBytes, progress));
     }
 
     @Override
@@ -85,7 +72,6 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
         try (CloseableHttpClient client = clientFactory.open(
                 target.target().hostname(), target.addresses(), clientLimits)) {
             HttpGet request = new HttpGet(target.target().uri());
-            request.setHeader(HttpHeaders.CONNECTION, "close");
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(target.target().uri()), request, response -> {
                         progress.responseStarted();
@@ -105,15 +91,4 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
         }
     }
 
-    private static TransportFailure toTransportFailure(ApacheHttpFailure failure) {
-        TransportFailure.Kind kind = switch (failure.kind()) {
-            case CONNECT_TIMEOUT -> TransportFailure.Kind.CONNECT_TIMEOUT;
-            case READ_TIMEOUT -> TransportFailure.Kind.READ_TIMEOUT;
-            case TLS_FAILURE -> TransportFailure.Kind.TLS_FAILURE;
-            case RESPONSE_TOO_LARGE -> TransportFailure.Kind.RESPONSE_TOO_LARGE;
-            case NETWORK_FAILURE -> TransportFailure.Kind.NETWORK_FAILURE;
-            case INTERNAL_FAILURE -> TransportFailure.Kind.INTERNAL_FAILURE;
-        };
-        return new TransportFailure(kind, failure.responseBytes());
-    }
 }

@@ -5,8 +5,6 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
     password: ${SPRING_DATASOURCE_PASSWORD}
-  flyway:
-    enabled: true
   jdbc:
     template:
       query-timeout: 5s
@@ -78,8 +76,6 @@ management:
     port: 8081
   endpoint:
     health:
-      probes:
-        enabled: true
       show-details: never
   endpoints:
     web:

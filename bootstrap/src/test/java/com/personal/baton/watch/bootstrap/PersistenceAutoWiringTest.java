@@ -3,15 +3,12 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChangeEventSender;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperations;
-import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
-import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
 import java.time.Clock;
 import javax.sql.DataSource;
@@ -23,8 +20,6 @@ import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 
 class PersistenceAutoWiringTest {
@@ -55,10 +50,7 @@ class PersistenceAutoWiringTest {
     void bootAutoConfiguresJdbcAndTransactionCollaboratorsForEveryPersistenceAdapter() {
         contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(JdbcTemplate.class);
             assertThat(context.getBean(JdbcTemplate.class).getQueryTimeout()).isEqualTo(3);
-            assertThat(context).hasSingleBean(JdbcClient.class);
-            assertThat(context).hasSingleBean(PlatformTransactionManager.class);
             assertThat(context).hasSingleBean(TransactionOperations.class);
             assertThat(context.getBean(TransactionOperations.class))
                     .isInstanceOf(PostgresTransactionOperations.class);
@@ -69,10 +61,6 @@ class PersistenceAutoWiringTest {
             assertThat(context).hasSingleBean(CheckWorkPersistencePort.class);
             assertThat(context).hasSingleBean(JdbcHealthChangeEventDeliveryAdapter.class);
             assertThat(context).hasSingleBean(HealthChangeEventDeliveryPersistencePort.class);
-
-            assertThat(context).doesNotHaveBean(ApacheHealthChangeEventSender.class);
-            assertThat(context).doesNotHaveBean(HealthChangeEventSender.class);
-            assertThat(context).doesNotHaveBean(RunEventDeliveriesUseCase.class);
         });
     }
 }

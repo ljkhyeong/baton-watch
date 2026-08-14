@@ -16,8 +16,6 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -299,8 +297,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 "resource:atomic",
                 1L,
                 claimed.attemptId(),
-                OffsetDateTime.ofInstant(BASE_TIME.minusSeconds(1), ZoneOffset.UTC),
-                OffsetDateTime.ofInstant(BASE_TIME.minusSeconds(1), ZoneOffset.UTC));
+                databaseTime(BASE_TIME.minusSeconds(1)),
+                databaseTime(BASE_TIME.minusSeconds(1)));
 
         CheckFinalization finalization = finalization(
                 claimed,

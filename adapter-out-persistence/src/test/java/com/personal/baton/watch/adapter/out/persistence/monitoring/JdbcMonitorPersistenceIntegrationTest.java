@@ -278,18 +278,11 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     private static void assertUniqueConstraintViolation(
             Throwable failure, String constraintName) {
         assertThat(failure).isInstanceOf(DataIntegrityViolationException.class);
-        assertThat(rootCause(failure))
+        assertThat(failure).rootCause()
                 .isInstanceOfSatisfying(SQLException.class, sqlFailure -> {
                     assertThat(sqlFailure.getSQLState()).isEqualTo("23505");
                     assertThat(sqlFailure.getMessage()).contains(constraintName);
                 });
     }
 
-    private static Throwable rootCause(Throwable failure) {
-        Throwable root = failure;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root;
-    }
 }

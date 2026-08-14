@@ -22,8 +22,7 @@ public final class GetEventDeliveryBacklogService implements GetEventDeliveryBac
 
     @Override
     public EventDeliveryBacklog getEventDeliveryBacklog() {
-        EventDeliveryBacklogSnapshot snapshot = Objects.requireNonNull(
-                persistence.getBacklogSnapshot(), "delivery backlog snapshot");
+        EventDeliveryBacklogSnapshot snapshot = persistence.getBacklogSnapshot();
         Instant observedAt = clock.instant();
         Optional<Duration> oldestAge = snapshot.oldestChangedAt()
                 .map(changedAt -> changedAt.isAfter(observedAt)

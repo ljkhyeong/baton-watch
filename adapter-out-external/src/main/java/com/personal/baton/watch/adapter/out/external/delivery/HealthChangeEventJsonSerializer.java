@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
-import java.util.Objects;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -14,10 +13,11 @@ final class HealthChangeEventJsonSerializer implements Function<HealthChangeEven
     private final ObjectWriter writer;
 
     HealthChangeEventJsonSerializer(ObjectMapper objectMapper) {
-        writer = Objects.requireNonNull(objectMapper, "objectMapper")
+        writer = objectMapper
                 .writerFor(HealthChangeEventRequest.class)
-                .without(SerializationFeature.INDENT_OUTPUT)
-                .without(SerializationFeature.WRAP_ROOT_VALUE);
+                .without(
+                        SerializationFeature.INDENT_OUTPUT,
+                        SerializationFeature.WRAP_ROOT_VALUE);
     }
 
     @Override

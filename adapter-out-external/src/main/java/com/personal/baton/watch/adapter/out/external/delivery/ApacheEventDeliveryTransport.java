@@ -1,9 +1,9 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
-import com.personal.baton.watch.adapter.out.external.http.ApacheHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
 import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
@@ -45,20 +45,10 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
     @Override
     public int execute(ApprovedDeliveryRequest request, Duration remainingTime)
-            throws DeliveryTransportFailure {
-        Objects.requireNonNull(request, "request");
-        Objects.requireNonNull(remainingTime, "remainingTime");
-        if (!remainingTime.isPositive()) {
-            throw new DeliveryTransportFailure(DeliveryTransportFailure.Kind.CONNECT_TIMEOUT);
-        }
-
-        try {
-            return requestExecutor.execute(
-                    remainingTime,
-                    progress -> executeBlocking(request, remainingTime, progress));
-        } catch (ApacheHttpFailure failure) {
-            throw toTransportFailure(failure);
-        }
+            throws OutboundHttpFailure {
+        return requestExecutor.execute(
+                remainingTime,
+                progress -> executeBlocking(request, remainingTime, progress));
     }
 
     @Override
@@ -84,7 +74,6 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + delivery.bearerToken());
             request.setHeader(IDEMPOTENCY_KEY, delivery.idempotencyKey());
             request.setHeader(HttpHeaders.ACCEPT_ENCODING, "identity");
-            request.setHeader(HttpHeaders.CONNECTION, "close");
             request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
 
             return ApacheResponseLifecycle.execute(
@@ -102,15 +91,4 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
         }
     }
 
-    private static DeliveryTransportFailure toTransportFailure(ApacheHttpFailure failure) {
-        DeliveryTransportFailure.Kind kind = switch (failure.kind()) {
-            case CONNECT_TIMEOUT -> DeliveryTransportFailure.Kind.CONNECT_TIMEOUT;
-            case READ_TIMEOUT -> DeliveryTransportFailure.Kind.READ_TIMEOUT;
-            case TLS_FAILURE -> DeliveryTransportFailure.Kind.TLS_FAILURE;
-            case RESPONSE_TOO_LARGE -> DeliveryTransportFailure.Kind.RESPONSE_TOO_LARGE;
-            case NETWORK_FAILURE -> DeliveryTransportFailure.Kind.NETWORK_FAILURE;
-            case INTERNAL_FAILURE -> DeliveryTransportFailure.Kind.INTERNAL_FAILURE;
-        };
-        return new DeliveryTransportFailure(kind);
-    }
 }

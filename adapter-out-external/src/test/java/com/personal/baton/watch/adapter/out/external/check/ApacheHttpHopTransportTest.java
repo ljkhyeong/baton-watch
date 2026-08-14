@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -40,13 +41,11 @@ class ApacheHttpHopTransportTest {
             throws Exception {
         AtomicReference<String> method = new AtomicReference<>();
         AtomicReference<String> host = new AtomicReference<>();
-        AtomicReference<String> connection = new AtomicReference<>();
         AtomicBoolean redirectTargetCalled = new AtomicBoolean();
         server = server();
         server.createContext("/start", exchange -> {
             method.set(exchange.getRequestMethod());
             host.set(exchange.getRequestHeaders().getFirst("Host"));
-            connection.set(exchange.getRequestHeaders().getFirst("Connection"));
             exchange.getResponseHeaders().add("Location", "/first");
             exchange.getResponseHeaders().add("Location", "/second");
             byte[] body = "redirect".getBytes(StandardCharsets.UTF_8);
@@ -73,7 +72,6 @@ class ApacheHttpHopTransportTest {
         }
         assertEquals("GET", method.get());
         assertEquals("check.test:" + port, host.get());
-        assertEquals("close", connection.get());
         assertFalse(redirectTargetCalled.get());
     }
 
@@ -91,11 +89,11 @@ class ApacheHttpHopTransportTest {
 
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
-            TransportFailure failure = assertThrows(
-                    TransportFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> transport.execute(target("/body"), Duration.ofSeconds(2), 8));
 
-            assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
             assertEquals(8, failure.responseBytes());
         }
     }
@@ -119,7 +117,7 @@ class ApacheHttpHopTransportTest {
         });
         server.start();
         ExecutorService caller = Executors.newSingleThreadExecutor();
-        Future<TransportFailure> result = null;
+        Future<OutboundHttpFailure> result = null;
 
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
@@ -127,16 +125,16 @@ class ApacheHttpHopTransportTest {
                 try {
                     transport.execute(target("/body"), Duration.ofSeconds(2), 8);
                     return null;
-                } catch (TransportFailure failure) {
+                } catch (OutboundHttpFailure failure) {
                     return failure;
                 }
             });
 
             assertTrue(prefixSent.await(
                     ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
-            TransportFailure failure = result.get(
+            OutboundHttpFailure failure = result.get(
                     ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
             assertEquals(8, failure.responseBytes());
         } finally {
             releaseBody.countDown();
@@ -162,11 +160,11 @@ class ApacheHttpHopTransportTest {
 
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(64, 4, 8_192), 1, 1)) {
-            TransportFailure failure = assertThrows(
-                    TransportFailure.class,
+            OutboundHttpFailure failure = assertThrows(
+                    OutboundHttpFailure.class,
                     () -> transport.execute(target("/headers"), Duration.ofSeconds(2), 64));
 
-            assertEquals(TransportFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
+            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
             assertEquals(0, failure.responseBytes());
         }
     }

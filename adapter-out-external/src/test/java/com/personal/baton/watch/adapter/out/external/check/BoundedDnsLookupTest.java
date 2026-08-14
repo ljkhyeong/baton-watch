@@ -47,7 +47,7 @@ class BoundedDnsLookupTest {
                     DnsLookupException.class,
                     () -> lookup.resolve("sensitive-host.example", Duration.ofMillis(10)));
 
-            assertEquals(DnsLookupException.Reason.TIMED_OUT, failure.reason());
+            assertEquals(DnsLookupException.Reason.DNS_FAILURE, failure.reason());
             assertFalse(failure.getMessage().contains("sensitive-host.example"));
         } finally {
             release.countDown();
@@ -66,7 +66,7 @@ class BoundedDnsLookupTest {
             DnsLookupException failure = assertThrows(
                     DnsLookupException.class,
                     () -> lookup.resolve("missing.example", Duration.ofSeconds(1)));
-            assertEquals(DnsLookupException.Reason.NOT_FOUND, failure.reason());
+            assertEquals(DnsLookupException.Reason.DNS_FAILURE, failure.reason());
         } finally {
             lookup.close();
         }

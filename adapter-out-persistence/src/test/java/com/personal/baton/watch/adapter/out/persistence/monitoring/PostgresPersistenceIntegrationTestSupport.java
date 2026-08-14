@@ -8,11 +8,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.parallel.ResourceLock;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @ExtendWith(SharedPostgresExtension.class)
-@Testcontainers(disabledWithoutDocker = false)
 @ResourceLock("baton-watch-postgres")
 abstract class PostgresPersistenceIntegrationTestSupport {
 

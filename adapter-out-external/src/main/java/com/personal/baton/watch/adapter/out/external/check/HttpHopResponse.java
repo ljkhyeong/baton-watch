@@ -1,13 +1,12 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
 import java.util.List;
+import org.apache.hc.core5.util.Args;
 
 record HttpHopResponse(int statusCode, List<String> locations, long responseBytes) {
 
     HttpHopResponse {
         locations = List.copyOf(locations);
-        if (responseBytes < 0) {
-            throw new IllegalArgumentException("responseBytes must be non-negative");
-        }
+        Args.notNegative(responseBytes, "responseBytes");
     }
 }

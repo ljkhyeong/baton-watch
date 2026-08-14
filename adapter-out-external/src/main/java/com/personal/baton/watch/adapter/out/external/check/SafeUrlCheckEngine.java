@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.InetAddress;
@@ -64,8 +65,8 @@ final class SafeUrlCheckEngine {
                     resolved = dnsLookup.resolve(current.hostname(), remaining);
                 } catch (DnsLookupException exception) {
                     return switch (exception.reason()) {
-                        case NOT_FOUND, TIMED_OUT -> failure(CheckOutcome.DNS_FAILURE, startedAt, state);
-                        case CAPACITY_EXHAUSTED, INTERRUPTED, FAILED -> internalFailure(startedAt, state);
+                        case DNS_FAILURE -> failure(CheckOutcome.DNS_FAILURE, startedAt, state);
+                        case INTERNAL_FAILURE -> internalFailure(startedAt, state);
                     };
                 }
 
@@ -82,14 +83,11 @@ final class SafeUrlCheckEngine {
                 }
 
                 long remainingBytes = limits.maxResponseBytes() - state.responseBytes;
-                if (remainingBytes < 0) {
-                    return failure(CheckOutcome.RESPONSE_TOO_LARGE, startedAt, state);
-                }
 
                 HttpHopResponse response;
                 try {
                     response = transport.execute(new ApprovedTarget(current, approved), remaining, remainingBytes);
-                } catch (TransportFailure exception) {
+                } catch (OutboundHttpFailure exception) {
                     state.addBytes(exception.responseBytes(), limits.maxResponseBytes());
                     return transportFailure(exception.kind(), startedAt, state);
                 }
@@ -137,7 +135,8 @@ final class SafeUrlCheckEngine {
                 status, elapsed(startedAt), state.responseBytes, state.redirectCount);
     }
 
-    private CheckObservation transportFailure(TransportFailure.Kind kind, long startedAt, CheckState state) {
+    private CheckObservation transportFailure(
+            OutboundHttpFailure.Kind kind, long startedAt, CheckState state) {
         CheckOutcome outcome = switch (kind) {
             case CONNECT_TIMEOUT -> CheckOutcome.CONNECT_TIMEOUT;
             case READ_TIMEOUT -> CheckOutcome.READ_TIMEOUT;
@@ -189,7 +188,7 @@ final class SafeUrlCheckEngine {
         private int redirectCount;
 
         private boolean addBytes(long additionalBytes, long maximum) {
-            if (additionalBytes < 0 || additionalBytes > maximum - responseBytes) {
+            if (additionalBytes > maximum - responseBytes) {
                 responseBytes = maximum;
                 return false;
             }

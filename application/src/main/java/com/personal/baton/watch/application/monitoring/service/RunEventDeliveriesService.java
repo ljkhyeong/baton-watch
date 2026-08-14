@@ -60,14 +60,13 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             Instant nextAttemptAt = observation.outcome().isDelivered()
                     ? null
                     : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt());
-            EventDeliveryFinalizationStatus status = Objects.requireNonNull(
-                    persistence.finalizeDelivery(new EventDeliveryFinalization(
+            EventDeliveryFinalizationStatus status = persistence.finalizeDelivery(
+                    new EventDeliveryFinalization(
                             event.payload().eventId(),
                             event.leaseToken(),
                             observation,
                             completedAt,
-                            nextAttemptAt)),
-                    "delivery finalization status");
+                            nextAttemptAt));
             switch (status) {
                 case APPLIED -> {
                     if (observation.outcome().isDelivered()) {

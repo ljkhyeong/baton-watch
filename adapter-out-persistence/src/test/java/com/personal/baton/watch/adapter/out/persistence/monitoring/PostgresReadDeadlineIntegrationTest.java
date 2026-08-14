@@ -111,16 +111,8 @@ class PostgresReadDeadlineIntegrationTest
 
     private static void assertSqlState(Throwable failure, String expectedState) {
         assertThat(failure).isNotNull();
-        assertThat(rootCause(failure))
+        assertThat(failure).rootCause()
                 .isInstanceOfSatisfying(SQLException.class, sqlFailure ->
                         assertThat(sqlFailure.getSQLState()).isEqualTo(expectedState));
-    }
-
-    private static Throwable rootCause(Throwable failure) {
-        Throwable root = failure;
-        while (root.getCause() != null) {
-            root = root.getCause();
-        }
-        return root;
     }
 }

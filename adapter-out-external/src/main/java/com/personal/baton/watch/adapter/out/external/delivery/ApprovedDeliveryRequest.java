@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 import java.net.InetAddress;
 import java.util.List;
 import java.util.Objects;
+import org.apache.hc.core5.util.Args;
 
 final class ApprovedDeliveryRequest {
 
@@ -19,13 +20,10 @@ final class ApprovedDeliveryRequest {
             String bearerToken,
             String idempotencyKey) {
         this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
-        this.addresses = List.copyOf(addresses);
+        this.addresses = List.copyOf(Args.notEmpty(addresses, "approvedAddresses"));
         this.payload = Objects.requireNonNull(payload, "payload").clone();
         this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
         this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey");
-        if (this.addresses.isEmpty()) {
-            throw new IllegalArgumentException("approved address set must not be empty");
-        }
     }
 
     ValidatedDeliveryEndpoint endpoint() {
