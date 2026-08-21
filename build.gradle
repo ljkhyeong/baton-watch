@@ -1,3 +1,5 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
 plugins {
     id 'base'
     id 'org.springframework.boot' version '4.1.0' apply false
@@ -25,7 +27,7 @@ subprojects {
 
     dependencyManagement {
         imports {
-            mavenBom 'org.springframework.boot:spring-boot-dependencies:4.1.0'
+            mavenBom SpringBootPlugin.BOM_COORDINATES
             mavenBom 'tools.jackson:jackson-bom:3.1.5'
         }
         dependencies {
