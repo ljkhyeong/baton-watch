@@ -17,6 +17,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -57,9 +58,11 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 leaseDuration, "leaseDuration");
         Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> {
-            Instant claimedAt = transactionTime();
-            Instant leaseUntil = TimeBoundaryPolicy.add(
-                    claimedAt, supportedLease, "leaseDuration");
+            Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
+                    .query(OffsetDateTime.class)
+                    .single()
+                    .toInstant();
+            Instant leaseUntil = claimedAt.plus(supportedLease);
             return claimInTransaction(claimedAt, leaseUntil, limit);
         });
     }
@@ -74,8 +77,22 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
         Objects.requireNonNull(deliveredBefore, "deliveredBefore");
         Assert.isTrue(limit > 0, "limit must be positive");
-        return transactions.execute(
-                ignored -> purgeDeliveredInTransaction(deliveredBefore, limit));
+        return transactions.execute(ignored -> jdbc.sql("""
+                        WITH candidates AS MATERIALIZED (
+                            SELECT event_id
+                            FROM watch_health_change_event
+                            WHERE delivery_status = 'DELIVERED'
+                              AND delivered_at < ?
+                            ORDER BY delivered_at, event_id
+                            LIMIT ?
+                            FOR UPDATE SKIP LOCKED
+                        )
+                        DELETE FROM watch_health_change_event event
+                        USING candidates
+                        WHERE event.event_id = candidates.event_id
+                        """)
+                .params(databaseTime(deliveredBefore), limit)
+                .update());
     }
 
     @Override
@@ -110,9 +127,8 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         List<ClaimedHealthChangeEvent> claimed = new ArrayList<>(pending.size());
         for (DeliveryRow event : pending) {
             UUID leaseToken = UUID.randomUUID();
-            int deliveryAttempt = event.deliveryAttempt() == Integer.MAX_VALUE
-                    ? Integer.MAX_VALUE
-                    : event.deliveryAttempt() + 1;
+            int deliveryAttempt = Math.clamp(
+                    (long) event.deliveryAttempt() + 1, 1, Integer.MAX_VALUE);
             jdbc.sql("""
                             UPDATE watch_health_change_event
                             SET delivery_attempt = ?,
@@ -138,12 +154,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
         return claimed;
     }
 
-    private Instant transactionTime() {
-        return jdbc.sql("SELECT transaction_timestamp() AS transaction_time")
-                .query((resultSet, ignoredRow) -> instant(resultSet, "transaction_time"))
-                .single();
-    }
-
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
         Optional<DeliveryRow> locked = jdbc.sql(
                         "SELECT " + DELIVERY_COLUMNS
@@ -155,7 +165,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             return EventDeliveryFinalizationStatus.STALE_CLAIM;
         }
 
-        DeliveryRow event = locked.orElseThrow();
+        DeliveryRow event = locked.get();
         if (event.deliveryStatus() == DeliveryStatus.DELIVERED) {
             return EventDeliveryFinalizationStatus.ALREADY_DELIVERED;
         }
@@ -202,25 +212,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                     .update();
         }
         return EventDeliveryFinalizationStatus.APPLIED;
-    }
-
-    private int purgeDeliveredInTransaction(Instant deliveredBefore, int limit) {
-        return jdbc.sql("""
-                        WITH candidates AS MATERIALIZED (
-                            SELECT event_id
-                            FROM watch_health_change_event
-                            WHERE delivery_status = 'DELIVERED'
-                              AND delivered_at < ?
-                            ORDER BY delivered_at, event_id
-                            LIMIT ?
-                            FOR UPDATE SKIP LOCKED
-                        )
-                        DELETE FROM watch_health_change_event event
-                        USING candidates
-                        WHERE event.event_id = candidates.event_id
-                        """)
-                .params(databaseTime(deliveredBefore), limit)
-                .update();
     }
 
     private static DeliveryRow mapDelivery(ResultSet resultSet, int ignoredRow) throws SQLException {

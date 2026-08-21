@@ -34,6 +34,7 @@ final class MonitoringJdbcRows {
     }
 
     static MonitorRow mapMonitor(ResultSet resultSet, int ignoredRow) throws SQLException {
+        String lastOutcome = resultSet.getString("last_outcome");
         return new MonitorRow(
                 resultSet.getString("resource_reference"),
                 new SourceRevision(resultSet.getLong("source_revision")),
@@ -41,7 +42,7 @@ final class MonitoringJdbcRows {
                 resultSet.getString("target_url"),
                 Health.valueOf(resultSet.getString("current_health")),
                 resultSet.getInt("consecutive_failures"),
-                enumValue(CheckOutcome.class, resultSet.getString("last_outcome")),
+                lastOutcome == null ? null : CheckOutcome.valueOf(lastOutcome),
                 instant(resultSet, "last_checked_at"),
                 instant(resultSet, "last_conclusive_at"),
                 instant(resultSet, "next_check_at"),
@@ -56,10 +57,6 @@ final class MonitoringJdbcRows {
 
     static OffsetDateTime databaseTime(Instant instant) {
         return instant == null ? null : OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
-    }
-
-    private static <E extends Enum<E>> E enumValue(Class<E> type, String value) {
-        return value == null ? null : Enum.valueOf(type, value);
     }
 
     record MonitorRow(
