@@ -189,9 +189,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
             assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(1);
         } finally {
             try {
-                if (claimFuture != null && !claimFuture.isDone()) {
-                    claimFuture.cancel(true);
-                }
+                cancelIfRunning(claimFuture);
                 if (!lockTransaction.isCompleted()) {
                     lockTransactionManager.rollback(lockTransaction);
                 }

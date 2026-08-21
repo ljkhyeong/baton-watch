@@ -11,6 +11,7 @@ import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -90,7 +91,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected static void cancelIfRunning(Future<?> future) {
-        if (future != null && !future.isDone()) {
+        if (future != null) {
             future.cancel(true);
         }
     }
@@ -99,5 +100,11 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         executor.shutdownNow();
         assertThat(executor.awaitTermination(
                 CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+    }
+
+    protected static void assertSqlState(Throwable failure, String expectedState) {
+        assertThat(failure).rootCause()
+                .isInstanceOfSatisfying(SQLException.class, sqlFailure ->
+                        assertThat(sqlFailure.getSQLState()).isEqualTo(expectedState));
     }
 }

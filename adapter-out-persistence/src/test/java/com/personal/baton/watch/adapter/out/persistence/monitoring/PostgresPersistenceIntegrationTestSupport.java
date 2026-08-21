@@ -22,7 +22,8 @@ abstract class PostgresPersistenceIntegrationTestSupport {
 
     @BeforeEach
     void migrateFreshDatabase() {
-        testDataSource = dataSource();
+        testDataSource = new DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         Flyway flyway = Flyway.configure()
                 .dataSource(testDataSource)
                 .cleanDisabled(false)
@@ -32,12 +33,4 @@ abstract class PostgresPersistenceIntegrationTestSupport {
         jdbc = new JdbcTemplate(testDataSource);
     }
 
-    private DataSource dataSource() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName(POSTGRES.getDriverClassName());
-        dataSource.setUrl(POSTGRES.getJdbcUrl());
-        dataSource.setUsername(POSTGRES.getUsername());
-        dataSource.setPassword(POSTGRES.getPassword());
-        return dataSource;
-    }
 }

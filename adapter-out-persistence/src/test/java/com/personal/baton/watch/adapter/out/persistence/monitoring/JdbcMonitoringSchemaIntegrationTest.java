@@ -170,7 +170,7 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
             holder.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } finally {
             releaseSummary.countDown();
-            if (holder != null && !holder.isDone()) {
+            if (holder != null) {
                 holder.cancel(true);
             }
             executor.shutdownNow();
@@ -247,10 +247,10 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                     .isEqualTo(insertedChangedAt);
         } finally {
             allowInsertCommit.countDown();
-            if (insert != null && !insert.isDone()) {
+            if (insert != null) {
                 insert.cancel(true);
             }
-            if (completion != null && !completion.isDone()) {
+            if (completion != null) {
                 completion.cancel(true);
             }
             executor.shutdownNow();

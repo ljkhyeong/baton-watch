@@ -2,9 +2,9 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
-import java.sql.SQLException;
 import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -29,7 +29,7 @@ class PostgresReadDeadlineIntegrationTest
                 boundedJdbc, newTransactionOperations());
 
         assertReadTimesOutWhileTableIsLocked(
-                "watch_monitor",
+                "LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE",
                 () -> boundedReads.findProjection(new ResourceReference("resource:read-timeout")));
 
         assertThat(boundedReads.findProjection(new ResourceReference("resource:read-timeout")))
@@ -44,7 +44,8 @@ class PostgresReadDeadlineIntegrationTest
                         JdbcClient.create(boundedJdbc), newTransactionOperations());
 
         assertReadTimesOutWhileTableIsLocked(
-                "watch_health_change_event_backlog", boundedReads::getBacklogSnapshot);
+                "LOCK TABLE watch_health_change_event_backlog IN ACCESS EXCLUSIVE MODE",
+                boundedReads::getBacklogSnapshot);
 
         assertThat(boundedReads.getBacklogSnapshot().pendingCount()).isZero();
     }
@@ -56,7 +57,7 @@ class PostgresReadDeadlineIntegrationTest
     }
 
     private void assertReadTimesOutWhileTableIsLocked(
-            String table, Runnable read) throws Exception {
+            String lockSql, Runnable read) throws Exception {
         CountDownLatch lockAcquired = new CountDownLatch(1);
         CountDownLatch releaseLock = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -64,15 +65,13 @@ class PostgresReadDeadlineIntegrationTest
 
         try {
             lockHolder = executor.submit(() -> holdExclusiveTableLock(
-                    table, lockAcquired, releaseLock));
+                    lockSql, lockAcquired, releaseLock));
             assertThat(lockAcquired.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
-            long startedAt = System.nanoTime();
-            Throwable failure = catchThrowable(read::run);
+            Throwable failure = assertTimeout(
+                    Duration.ofSeconds(3), () -> catchThrowable(read::run));
 
             assertSqlState(failure, "57014");
-            assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
-                    .isLessThan(Duration.ofSeconds(3));
         } finally {
             releaseLock.countDown();
             if (lockHolder != null) {
@@ -83,15 +82,7 @@ class PostgresReadDeadlineIntegrationTest
     }
 
     private void holdExclusiveTableLock(
-            String table, CountDownLatch lockAcquired, CountDownLatch releaseLock) {
-        String lockSql = switch (table) {
-            case "watch_monitor" -> "LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE";
-            case "watch_health_change_event" ->
-                "LOCK TABLE watch_health_change_event IN ACCESS EXCLUSIVE MODE";
-            case "watch_health_change_event_backlog" ->
-                "LOCK TABLE watch_health_change_event_backlog IN ACCESS EXCLUSIVE MODE";
-            default -> throw new IllegalArgumentException("unsupported lock table");
-        };
+            String lockSql, CountDownLatch lockAcquired, CountDownLatch releaseLock) {
         TransactionTemplate holder = new TransactionTemplate(
                 new DataSourceTransactionManager(testDataSource));
         holder.executeWithoutResult(status -> {
@@ -111,10 +102,4 @@ class PostgresReadDeadlineIntegrationTest
         }
     }
 
-    private static void assertSqlState(Throwable failure, String expectedState) {
-        assertThat(failure).isNotNull();
-        assertThat(failure).rootCause()
-                .isInstanceOfSatisfying(SQLException.class, sqlFailure ->
-                        assertThat(sqlFailure.getSQLState()).isEqualTo(expectedState));
-    }
 }
