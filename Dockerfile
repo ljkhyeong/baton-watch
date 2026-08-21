@@ -8,7 +8,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 USER 70:70
 ENTRYPOINT ["/opt/watch/staging-database-operation.sh", "configure-runtime-role"]
 
-FROM flyway/flyway:12.4.0-alpine@sha256:b43c3d9b7227687682a9124451ac3dbc9b0003eca65290ad1dcda760345bc680 AS migrations
+FROM flyway/flyway:13.3.0-alpine@sha256:fb13953f16913efd313f202ec4b4ed34fd2ea14cc51401eb36ea9818c0df2918 AS migrations
 COPY --chmod=0555 adapter-out-persistence/src/main/resources/db/migration /flyway/sql
 COPY --chmod=0555 ops/flyway /flyway/callbacks
 RUN find /flyway/sql /flyway/callbacks -type f -exec chmod 0444 {} +
