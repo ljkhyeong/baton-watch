@@ -58,7 +58,9 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
-        if (responseCommitted(request)) {
+        if (request instanceof ServletWebRequest servletRequest
+                && servletRequest.getResponse() != null
+                && servletRequest.getResponse().isCommitted()) {
             if (!status.is4xxClientError()) {
                 logFailure(exception);
             }
@@ -77,12 +79,6 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             default -> REQUEST_REJECTED;
         };
         return problem(status, problem, headers);
-    }
-
-    private boolean responseCommitted(WebRequest request) {
-        return request instanceof ServletWebRequest servletRequest
-                && servletRequest.getResponse() != null
-                && servletRequest.getResponse().isCommitted();
     }
 
     private ResponseEntity<Object> problem(
