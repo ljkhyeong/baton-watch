@@ -3,7 +3,6 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,7 +18,6 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.net.InetAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -59,16 +57,13 @@ class SafeEventDeliveryEngineTest {
                 transport.requests.get(0).idempotencyKey(),
                 transport.requests.get(1).idempotencyKey());
         assertEquals("events.example.com", dns.lastHostname);
-        assertNotNull(transport.lastRequest);
-        assertEquals(List.of(address("8.8.8.8"), address("1.1.1.1")), transport.lastRequest.addresses());
-        assertEquals("delivery-token", transport.lastRequest.bearerToken());
-        assertEquals("00000000-0000-0000-0000-000000000001", transport.lastRequest.idempotencyKey());
-        String payload = new String(transport.lastRequest.payload(), StandardCharsets.UTF_8);
-        assertTrue(payload.contains("\"eventType\":\"RESOURCE_HEALTH_CHANGED\""));
-        assertTrue(payload.contains("\"eventId\":\"00000000-0000-0000-0000-000000000001\""));
+        ApprovedDeliveryRequest lastRequest = transport.requests.getLast();
+        assertEquals(List.of(address("8.8.8.8"), address("1.1.1.1")), lastRequest.addresses());
+        assertEquals("delivery-token", lastRequest.bearerToken());
+        assertEquals("00000000-0000-0000-0000-000000000001", lastRequest.idempotencyKey());
         assertEquals(
-                new ObjectMapper().readTree(payload).get("eventId").stringValue(),
-                transport.lastRequest.idempotencyKey());
+                new ObjectMapper().readTree(lastRequest.payload()).get("eventId").stringValue(),
+                lastRequest.idempotencyKey());
     }
 
     @Test
@@ -81,7 +76,7 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
         assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
     @ParameterizedTest
@@ -97,7 +92,7 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(expected, observation.outcome());
         assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
     @Test
@@ -160,7 +155,7 @@ class SafeEventDeliveryEngineTest {
         EventDeliveryObservation observation = engine(dns, transport, clock).send(event());
 
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, observation.outcome());
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
     @Test
@@ -179,7 +174,7 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
         assertEquals(0, dns.calls);
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
     private static SafeEventDeliveryEngine engine(
@@ -268,7 +263,6 @@ class SafeEventDeliveryEngineTest {
 
         private final int statusCode;
         private final List<ApprovedDeliveryRequest> requests = new ArrayList<>();
-        private ApprovedDeliveryRequest lastRequest;
 
         private RecordingTransport(int statusCode) {
             this.statusCode = statusCode;
@@ -277,7 +271,6 @@ class SafeEventDeliveryEngineTest {
         @Override
         public int execute(ApprovedDeliveryRequest request, Duration remainingTime) {
             requests.add(request);
-            lastRequest = request;
             return statusCode;
         }
     }

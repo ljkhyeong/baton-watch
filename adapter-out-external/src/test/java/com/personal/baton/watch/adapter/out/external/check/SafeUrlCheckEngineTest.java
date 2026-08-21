@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.check;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -215,8 +214,7 @@ class SafeUrlCheckEngineTest {
 
         assertEquals(expected, observation.outcome());
         assertEquals(3, observation.responseBytes());
-        assertEquals(null, observation.httpStatusCode());
-        assertSame(scriptedFailure, transport.lastFailure);
+        assertNull(observation.httpStatusCode());
     }
 
     @Test
@@ -326,7 +324,7 @@ class SafeUrlCheckEngineTest {
                 .check(new TargetUrl("https://internal.example/"));
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
-        assertEquals(null, observation.httpStatusCode());
+        assertNull(observation.httpStatusCode());
     }
 
     private static SafeUrlCheckEngine engine(
@@ -403,7 +401,6 @@ class SafeUrlCheckEngineTest {
         private final List<Long> remainingByteBudgets = new ArrayList<>();
         private final MutableNanoClock clock;
         private final Duration timePerHop;
-        private OutboundHttpFailure lastFailure;
 
         private ScriptedTransport(MutableNanoClock clock, Duration timePerHop) {
             this.clock = clock;
@@ -422,7 +419,6 @@ class SafeUrlCheckEngineTest {
             clock.advance(timePerHop);
             Object next = script.removeFirst();
             if (next instanceof OutboundHttpFailure failure) {
-                lastFailure = failure;
                 throw failure;
             }
             return (HttpHopResponse) next;

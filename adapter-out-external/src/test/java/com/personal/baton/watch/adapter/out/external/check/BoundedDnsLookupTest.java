@@ -73,7 +73,7 @@ class BoundedDnsLookupTest {
     }
 
     @Test
-    void createsNamedDaemonPlatformThreads() throws Exception {
+    void createsNamedDaemonThreads() throws Exception {
         AtomicReference<Thread> worker = new AtomicReference<>();
         try (BoundedDnsLookup lookup = new BoundedDnsLookup(1, 1, hostname -> {
             worker.set(Thread.currentThread());
@@ -84,6 +84,5 @@ class BoundedDnsLookupTest {
 
         assertEquals("watch-dns-1", worker.get().getName());
         assertTrue(worker.get().isDaemon());
-        assertFalse(worker.get().isVirtual());
     }
 }

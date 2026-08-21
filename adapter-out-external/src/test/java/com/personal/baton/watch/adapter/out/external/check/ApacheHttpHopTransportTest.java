@@ -138,7 +138,7 @@ class ApacheHttpHopTransportTest {
             assertEquals(8, failure.responseBytes());
         } finally {
             releaseBody.countDown();
-            if (result != null && !result.isDone()) {
+            if (result != null) {
                 result.cancel(true);
             }
             caller.shutdownNow();

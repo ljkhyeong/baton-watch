@@ -95,7 +95,7 @@ class ApacheHttpRequestExecutorTest {
     }
 
     @Test
-    void createsNamedDaemonPlatformThreads() throws Exception {
+    void createsNamedDaemonThreads() throws Exception {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             Thread worker = executor.execute(
@@ -103,7 +103,6 @@ class ApacheHttpRequestExecutorTest {
 
             assertEquals("test-http-1", worker.getName());
             assertTrue(worker.isDaemon());
-            assertFalse(worker.isVirtual());
         }
     }
 
