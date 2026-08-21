@@ -42,15 +42,11 @@ public record TargetUrl(String value) {
     }
 
     private static void validateRawCharacters(String value) {
-        if (value.isEmpty() || value.length() > MAX_LENGTH) {
+        if (value.isEmpty()
+                || value.length() > MAX_LENGTH
+                || value.codePoints().anyMatch(codePoint ->
+                        codePoint == '\\' || Character.isISOControl(codePoint))) {
             throw invalid();
-        }
-        for (int index = 0; index < value.length(); ) {
-            int codePoint = value.codePointAt(index);
-            if (codePoint == '\\' || Character.isISOControl(codePoint)) {
-                throw invalid();
-            }
-            index += Character.charCount(codePoint);
         }
     }
 
@@ -80,7 +76,7 @@ public record TargetUrl(String value) {
     }
 
     private static void validateUri(URI uri) {
-        if (!uri.isAbsolute() || uri.isOpaque()) {
+        if (!uri.isAbsolute()) {
             throw invalid();
         }
 
@@ -88,12 +84,12 @@ public record TargetUrl(String value) {
         if (!scheme.equals("http") && !scheme.equals("https")) {
             throw invalid();
         }
-        if (uri.getRawAuthority() == null || uri.getRawUserInfo() != null || uri.getRawFragment() != null) {
+        if (uri.getRawFragment() != null) {
             throw invalid();
         }
 
         String host = uri.getHost();
-        if (host == null || host.isBlank() || isIpLiteral(host) || !isUnambiguousHostname(host)) {
+        if (host == null || isIpLiteral(host) || !isUnambiguousHostname(host)) {
             throw invalid();
         }
 
@@ -103,7 +99,7 @@ public record TargetUrl(String value) {
             throw invalid();
         }
         String expectedAuthority = port == -1 ? host : host + ":" + port;
-        if (!uri.getRawAuthority().equalsIgnoreCase(expectedAuthority)) {
+        if (!expectedAuthority.equalsIgnoreCase(uri.getRawAuthority())) {
             throw invalid();
         }
     }
@@ -122,7 +118,7 @@ public record TargetUrl(String value) {
     }
 
     private static boolean isUnambiguousHostname(String host) {
-        if (host.length() > 253 || host.startsWith(".") || host.endsWith(".")) {
+        if (host.length() > 253) {
             return false;
         }
         for (String label : host.split("\\.", -1)) {

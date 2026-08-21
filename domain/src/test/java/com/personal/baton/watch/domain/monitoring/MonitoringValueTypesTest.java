@@ -40,6 +40,7 @@ class MonitoringValueTypesTest {
         String[] invalidTargets = {
             "/relative",
             "ftp://example.com/file",
+            "https:opaque",
             "https://user@example.com/health",
             "https://example.com/health#fragment",
             "https://example.com:8443/health",
@@ -53,6 +54,7 @@ class MonitoringValueTypesTest {
             "http://127.1/health",
             "http://0x7f.1/health",
             "https://1.2.3.4.5/health",
+            "https://.example.com/health",
             "https://example.com./health",
             "https://bad_host.example/health",
             "https://example.com\\health",
