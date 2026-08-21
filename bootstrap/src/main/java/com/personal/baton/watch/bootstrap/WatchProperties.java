@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -19,11 +20,21 @@ public record WatchProperties(
         String apiToken,
         @NotNull @DurationMin(inclusive = false) Duration pollInterval,
         @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
-        @NotNull @DurationMin(inclusive = false) Duration leaseDuration,
-        @NotNull @DurationMin(inclusive = false) Duration checkInterval,
-        @NotNull @DurationMin(inclusive = false) Duration internalFailureRetryInterval,
-        @NotNull @DurationMin(inclusive = false) Duration staleAfter,
-        @NotNull @DurationMin(inclusive = false) Duration retention,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration leaseDuration,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration checkInterval,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration internalFailureRetryInterval,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration staleAfter,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration retention,
         @Min(1) @Max(MAX_CHECK_BATCH_SIZE) int checkBatchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
@@ -36,12 +47,6 @@ public record WatchProperties(
 
     public WatchProperties {
         apiToken = requireToken(apiToken);
-        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "leaseDuration");
-        checkInterval = requireSupportedOffsetIfPositive(checkInterval, "checkInterval");
-        internalFailureRetryInterval = requireSupportedOffsetIfPositive(
-                internalFailureRetryInterval, "internalFailureRetryInterval");
-        staleAfter = requireSupportedOffsetIfPositive(staleAfter, "staleAfter");
-        retention = requireSupportedOffsetIfPositive(retention, "retention");
         if (http != null
                 && leaseDuration != null
                 && leaseDuration.isPositive()
@@ -110,12 +115,6 @@ public record WatchProperties(
                     "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
         return token;
-    }
-
-    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
-        return duration != null && duration.isPositive()
-                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
-                : duration;
     }
 
 }

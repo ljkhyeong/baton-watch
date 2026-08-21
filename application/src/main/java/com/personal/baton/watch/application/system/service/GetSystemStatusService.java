@@ -3,7 +3,6 @@ package com.personal.baton.watch.application.system.service;
 import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.system.SystemStatus;
 import java.time.Clock;
-import java.time.Instant;
 import java.util.Objects;
 
 public final class GetSystemStatusService implements GetSystemStatusUseCase {
@@ -18,7 +17,6 @@ public final class GetSystemStatusService implements GetSystemStatusUseCase {
 
     @Override
     public SystemStatus getStatus() {
-        return new SystemStatus(SERVICE_NAME, SystemStatus.State.UP, Instant.now(clock));
+        return new SystemStatus(SERVICE_NAME, SystemStatus.State.UP, clock.instant());
     }
 }
-

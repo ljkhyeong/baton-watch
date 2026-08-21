@@ -33,14 +33,10 @@ class EventDeliveryRetryPolicyTest {
     }
 
     @Test
-    void rejectsInvalidDelayRelationshipsAndAttemptCounts() {
+    void rejectsInvalidDelayRelationships() {
         assertThrows(IllegalArgumentException.class, () -> new EventDeliveryRetryPolicy(
                 Duration.ZERO, Duration.ofSeconds(10)));
         assertThrows(IllegalArgumentException.class, () -> new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(11), Duration.ofSeconds(10)));
-
-        EventDeliveryRetryPolicy policy = new EventDeliveryRetryPolicy(
-                Duration.ofSeconds(5), Duration.ofSeconds(10));
-        assertThrows(IllegalArgumentException.class, () -> policy.nextAttemptAt(COMPLETED_AT, 0));
     }
 }

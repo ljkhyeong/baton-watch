@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
+import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -21,10 +22,14 @@ public record EventDeliveryProperties(
         String bearerToken,
         @NotNull @DurationMin(inclusive = false) Duration pollInterval,
         @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
-        @NotNull @DurationMin(inclusive = false) Duration leaseDuration,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration leaseDuration,
         Duration initialRetryDelay,
         Duration maxRetryDelay,
-        @NotNull @DurationMin(inclusive = false) Duration retention,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration retention,
         @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
@@ -33,8 +38,6 @@ public record EventDeliveryProperties(
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
 
     public EventDeliveryProperties {
-        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "event delivery leaseDuration");
-        retention = requireSupportedOffsetIfPositive(retention, "event delivery retention");
         if (http != null
                 && leaseDuration != null
                 && leaseDuration.isPositive()
@@ -84,9 +87,4 @@ public record EventDeliveryProperties(
         }
     }
 
-    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
-        return duration != null && duration.isPositive()
-                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
-                : duration;
-    }
 }

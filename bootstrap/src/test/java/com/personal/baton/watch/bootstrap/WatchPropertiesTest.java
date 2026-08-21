@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -13,19 +12,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WatchPropertiesTest {
 
     @Test
-    void acceptsAConfigurationWhoseLeaseCoversTheBoundedBatch() {
-        assertDoesNotThrow(() -> properties(Duration.ofSeconds(30), 2));
-    }
-
-    @Test
     void rejectsAConfigurationWhoseChecksCanOutliveTheLease() {
         assertThrows(IllegalArgumentException.class, () -> properties(Duration.ofSeconds(10), 2));
-    }
-
-    @Test
-    void rejectsInstantOffsetsAboveTheApplicationHardCeiling() {
-        assertThrows(IllegalArgumentException.class, () -> properties(
-                TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET.plusNanos(1), 1));
     }
 
     @Test

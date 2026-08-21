@@ -30,8 +30,6 @@ public final class MarkStaleProjectionsService implements MarkStaleProjectionsUs
     public int markStaleProjectionsUnknown() {
         Instant markedAt = clock.instant();
         return persistence.markStaleUnknown(
-                TimeBoundaryPolicy.subtract(markedAt, stalenessThreshold, "stalenessThreshold"),
-                markedAt,
-                batchSize);
+                markedAt.minus(stalenessThreshold), markedAt, batchSize);
     }
 }

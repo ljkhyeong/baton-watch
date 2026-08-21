@@ -71,7 +71,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     claimedCheck.leaseToken(),
                     observation,
                     completedAt,
-                    TimeBoundaryPolicy.add(completedAt, interval, "check interval"));
+                    completedAt.plus(interval));
             CheckFinalizationStatus status = persistence.finalizeCheck(finalization);
             switch (status) {
                 case APPLIED -> applied++;

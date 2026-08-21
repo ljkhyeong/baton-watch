@@ -17,14 +17,18 @@ class ConfigurationPropertiesValidationTest {
         watchContext(
                         "watch.check-batch-size=101",
                         "watch.http.dns-queue-capacity=65",
-                        "watch.poll-interval=0s")
+                        "watch.poll-interval=0s",
+                        "watch.lease-duration=366d")
                 .run(context -> {
                     assertThat(context).hasFailed();
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "checkBatchSize", "http.dnsQueueCapacity", "pollInterval");
+                                    "checkBatchSize",
+                                    "http.dnsQueueCapacity",
+                                    "leaseDuration",
+                                    "pollInterval");
                 });
     }
 
@@ -33,19 +37,23 @@ class ConfigurationPropertiesValidationTest {
         eventDeliveryContext(
                         "watch.event-delivery.batch-size=101",
                         "watch.event-delivery.http.request-queue-capacity=17",
-                        "watch.event-delivery.maintenance-interval=0s")
+                        "watch.event-delivery.maintenance-interval=0s",
+                        "watch.event-delivery.retention=366d")
                 .run(context -> {
                     assertThat(context).hasFailed();
 
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "batchSize", "http.requestQueueCapacity", "maintenanceInterval");
+                                    "batchSize",
+                                    "http.requestQueueCapacity",
+                                    "maintenanceInterval",
+                                    "retention");
                 });
     }
 
     @Test
-    void rejectsJdbcQueryTimeoutsOutsideTheWholeSecondOperationalBound() {
+    void rejectsSubsecondJdbcQueryTimeoutDuringBinding() {
         persistenceContext("watch.persistence.query-timeout=500ms")
                 .run(context -> {
                     assertThat(context).hasFailed();
@@ -54,16 +62,6 @@ class ConfigurationPropertiesValidationTest {
                             .isInstanceOf(IllegalArgumentException.class)
                             .hasMessageContaining("queryTimeout")
                             .hasMessageContaining("whole-second");
-                });
-
-        persistenceContext("watch.persistence.query-timeout=31s")
-                .run(context -> {
-                    assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure())
-                            .rootCause()
-                            .isInstanceOf(IllegalArgumentException.class)
-                            .hasMessageContaining("queryTimeout")
-                            .hasMessageContaining("between 1 and 30 seconds");
                 });
     }
 

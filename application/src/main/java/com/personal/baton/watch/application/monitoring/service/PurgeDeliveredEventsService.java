@@ -27,7 +27,7 @@ public final class PurgeDeliveredEventsService implements PurgeDeliveredEventsUs
 
     @Override
     public int purgeDeliveredEvents() {
-        Instant deliveredBefore = TimeBoundaryPolicy.subtract(clock.instant(), retention, "retention");
+        Instant deliveredBefore = clock.instant().minus(retention);
         return persistence.purgeDeliveredEvents(deliveredBefore, batchSize);
     }
 }
