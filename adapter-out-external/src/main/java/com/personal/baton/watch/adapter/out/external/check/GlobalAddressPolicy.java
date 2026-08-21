@@ -4,6 +4,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -111,10 +112,8 @@ public final class GlobalAddressPolicy {
             }
             int completeBytes = prefixLength / Byte.SIZE;
             int remainingBits = prefixLength % Byte.SIZE;
-            for (int index = 0; index < completeBytes; index++) {
-                if (candidate[index] != network[index]) {
-                    return false;
-                }
+            if (!Arrays.equals(candidate, 0, completeBytes, network, 0, completeBytes)) {
+                return false;
             }
             if (remainingBits == 0) {
                 return true;
