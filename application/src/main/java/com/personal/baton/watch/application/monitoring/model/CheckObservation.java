@@ -46,9 +46,7 @@ public record CheckObservation(
 
     public static CheckObservation failure(
             CheckOutcome outcome, Duration duration, long responseBytes, int redirectCount) {
-        if (!outcome.isTargetFailure()
-                || outcome == CheckOutcome.HTTP_CLIENT_ERROR
-                || outcome == CheckOutcome.HTTP_SERVER_ERROR) {
+        if (!outcome.isConclusive()) {
             throw new IllegalArgumentException("outcome requires different observation metadata");
         }
         return new CheckObservation(outcome, null, duration, responseBytes, redirectCount);

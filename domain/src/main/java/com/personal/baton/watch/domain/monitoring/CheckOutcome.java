@@ -22,8 +22,4 @@ public enum CheckOutcome {
     public boolean isConclusive() {
         return this != INTERNAL_FAILURE;
     }
-
-    public boolean isTargetFailure() {
-        return isConclusive() && !isSuccess();
-    }
 }
