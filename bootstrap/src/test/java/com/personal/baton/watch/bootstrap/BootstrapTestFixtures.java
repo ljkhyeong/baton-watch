@@ -35,10 +35,15 @@ final class BootstrapTestFixtures {
     }
 
     static EventDeliveryProperties enabledEventDeliveryProperties() {
+        return enabledEventDeliveryProperties(
+                "a-separate-delivery-token-longer-than-32-characters");
+    }
+
+    static EventDeliveryProperties enabledEventDeliveryProperties(String token) {
         return eventDeliveryProperties(
                 true,
                 URI.create("https://baton.example.com/api/v1/internal/resource-health-events"),
-                "a-separate-delivery-token-longer-than-32-characters");
+                token);
     }
 
     static EventDeliveryProperties disabledEventDeliveryProperties() {

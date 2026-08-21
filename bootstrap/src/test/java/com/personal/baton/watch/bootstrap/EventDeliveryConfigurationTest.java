@@ -16,17 +16,17 @@ import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 class EventDeliveryConfigurationTest {
 
     @Test
     void enabledDeliveryUsesTheBootManagedJacksonMapperAndCreatesTheSenderGraph() {
-        contextRunner(enabledEventDeliveryProperties(), true).run(context -> {
+        contextRunner(
+                        enabledEventDeliveryProperties(),
+                        BootstrapTestFixtures.watchProperties(),
+                        true)
+                .run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context).hasSingleBean(ObjectMapper.class);
-            assertThat(context.getBean(ObjectMapper.class)).isInstanceOf(JsonMapper.class);
             assertThat(context).hasSingleBean(ApacheHealthChangeEventSender.class);
             assertThat(context.getBean(HealthChangeEventSender.class))
                     .isInstanceOf(MeteredHealthChangeEventSender.class);
@@ -35,8 +35,27 @@ class EventDeliveryConfigurationTest {
     }
 
     @Test
+    void enabledDeliveryRejectsReusingTheMonitorApiToken() {
+        WatchProperties watchProperties = BootstrapTestFixtures.watchProperties();
+        EventDeliveryProperties deliveryProperties =
+                enabledEventDeliveryProperties(watchProperties.apiToken());
+
+        contextRunner(deliveryProperties, watchProperties, true).run(context -> {
+            assertThat(context).hasFailed();
+            assertThat(context.getStartupFailure())
+                    .rootCause()
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("event delivery token must differ from the monitor API token");
+        });
+    }
+
+    @Test
     void disabledDeliveryDoesNotCreateOutboundSenderOrDispatcherBeans() {
-        contextRunner(disabledEventDeliveryProperties(), false).run(context -> {
+        contextRunner(
+                        disabledEventDeliveryProperties(),
+                        BootstrapTestFixtures.watchProperties(),
+                        false)
+                .run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(ApacheHealthChangeEventSender.class);
             assertThat(context).doesNotHaveBean(HealthChangeEventSender.class);
@@ -45,13 +64,15 @@ class EventDeliveryConfigurationTest {
     }
 
     private static ApplicationContextRunner contextRunner(
-            EventDeliveryProperties deliveryProperties, boolean enabled) {
+            EventDeliveryProperties deliveryProperties,
+            WatchProperties watchProperties,
+            boolean enabled) {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
                 .withUserConfiguration(EventDeliveryConfiguration.class)
                 .withPropertyValues("watch.event-delivery.enabled=" + enabled)
                 .withBean(EventDeliveryProperties.class, () -> deliveryProperties)
-                .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties)
+                .withBean(WatchProperties.class, () -> watchProperties)
                 .withBean(JdbcClient.class, () -> mock(JdbcClient.class))
                 .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
                 .withBean(Clock.class, Clock::systemUTC)

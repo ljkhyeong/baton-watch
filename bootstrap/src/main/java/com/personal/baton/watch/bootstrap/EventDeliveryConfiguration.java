@@ -25,12 +25,6 @@ import tools.jackson.databind.ObjectMapper;
 class EventDeliveryConfiguration {
 
     @Bean
-    EventDeliveryRetryPolicy eventDeliveryRetryPolicy(EventDeliveryProperties properties) {
-        return new EventDeliveryRetryPolicy(
-                properties.initialRetryDelay(), properties.maxRetryDelay());
-    }
-
-    @Bean
     JdbcHealthChangeEventDeliveryAdapter healthChangeEventDeliveryPersistenceAdapter(
             JdbcClient jdbcClient, TransactionOperations transactions) {
         return new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
@@ -42,7 +36,9 @@ class EventDeliveryConfiguration {
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
             ObjectMapper objectMapper) {
-        requireSeparateToken(properties.bearerToken(), watchProperties.apiToken());
+        if (properties.bearerToken().equals(watchProperties.apiToken())) {
+            throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
+        }
         EventDeliveryProperties.Http http = properties.http();
         EventDeliveryLimits limits = new EventDeliveryLimits(
                 http.connectTimeout(),
@@ -76,14 +72,14 @@ class EventDeliveryConfiguration {
             HealthChangeEventDeliveryPersistencePort persistence,
             HealthChangeEventSender sender,
             Clock clock,
-            EventDeliveryProperties properties,
-            EventDeliveryRetryPolicy retryPolicy) {
+            EventDeliveryProperties properties) {
         return new RunEventDeliveriesService(
                 persistence,
                 sender,
                 clock,
                 properties.leaseDuration(),
-                retryPolicy,
+                new EventDeliveryRetryPolicy(
+                        properties.initialRetryDelay(), properties.maxRetryDelay()),
                 properties.batchSize());
     }
 
@@ -102,9 +98,4 @@ class EventDeliveryConfiguration {
         return new GetEventDeliveryBacklogService(persistence, clock);
     }
 
-    static void requireSeparateToken(String deliveryToken, String monitorApiToken) {
-        if (deliveryToken.equals(monitorApiToken)) {
-            throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
-        }
-    }
 }
