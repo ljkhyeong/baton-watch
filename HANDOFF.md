@@ -33,14 +33,14 @@
 
 ## 검증
 
-- Gradle 9.2.1에서 `./gradlew --no-daemon clean test :bootstrap:bootJar --no-build-cache`를 재실행했다. 전체 399개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 22개, `adapter-out-external` 242개, `adapter-out-persistence` 36개, `bootstrap` 69개다.
+- Gradle 9.2.1에서 `./gradlew --no-daemon clean test :bootstrap:bootJar --no-build-cache`를 재실행했다. 전체 342개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 19개, `adapter-out-external` 203개, `adapter-out-persistence` 36개, `bootstrap` 54개다.
 - 실제 `BatonWatchApplication` 루트 컨텍스트가 Flyway V1/V2/V3, Spring Security, 영속성 어댑터 3개, 아웃바운드 점검·전달 클라이언트, 활성화된 전달 워커, 이름이 지정된 스케줄러 3개와 함께 서비스 연결된 PostgreSQL 18.4 컨테이너를 대상으로 시작됐다. HTTP 스모크는 공개 상태 접근, 쓰기 없는 미인증 PUT 거부, 인증된 `INACTIVE` 동기화, 인증된 프로젝션 재조회, 시도나 이벤트가 없는 영속 `UNKNOWN`/`INACTIVE` 행을 증명했다.
 - CI와 동일한 결과 증거 파서가 필수 PostgreSQL 모음과 운영 루트 스모크가 누락·건너뜀·실패 없이 실행됐음을 검증했다.
 - 공개 저장소 커밋 `f5502a7`의 첫 번째 깨끗한 `Verify / verify` 실행은 Docker 사전 검사, 캐시 없는 깨끗한 테스트, 부트 JAR 생성, 필수 테스트 모음 증거 검증을 포함한 모든 단계를 1분 32초에 통과했다.
 - 실행 가능한 부트 JAR: 통과.
 - Spring Boot JDBC 및 트랜잭션 자동 구성: Boot 관리 `JdbcTemplate`, `JdbcClient`, 5초 조회 제한 시간, `PlatformTransactionManager`와 영속성 어댑터 3개를 연결하는 WATCH 소유의 제한된 PostgreSQL `TransactionOperations`를 포함해 통과했다.
-- 아웃바운드 점검기·콜백 어댑터 모음은 실제 인터넷 의존성 없이 모듈 테스트 242개가 통과했다. 정확한 소비 바이트 집계, 본문을 비우지 않는 응답 중단, 헤더 개수·행 분류, 리소스 상한 경계, 현재 IANA 할당 IPv6 범위의 모든 경계, Azure WireServer 거부, 점검·전달 전송 전 예약·미할당 IPv6 거부, 제한된 DNS·요청 실행기, 고정 주소 TLS Host/SNI 보존, DNS SAN 검증, 신뢰 인증서의 호스트명 불일치 분류를 포함한다.
-- 부트스트랩 로깅 회귀 테스트는 테스트 JVM의 로거 상태를 변경하지 않고 Spring Boot ConfigData와 최종 로그 레벨 적용 경로를 통해 운영 설정을 적재한다. 루트와 더 넓은 Apache HTTP 패키지를 `DEBUG`로 강제해도 원시 헤더·wire와 대표 구현·TLS 로거는 `OFF`로 유지된다.
+- 아웃바운드 점검기·콜백 어댑터 모음은 실제 인터넷 의존성 없이 모듈 테스트 203개가 통과했다. 정확한 소비 바이트 집계, 본문을 비우지 않는 응답 중단, 헤더 개수·행 분류, 리소스 상한 경계, 현재 IANA 할당 IPv6 범위의 모든 경계와 Azure WireServer 거부, 엔진의 혼합 DNS 응답 연결 전 차단, 제한된 DNS·요청 실행기, 고정 주소 TLS Host/SNI 보존, DNS SAN 검증, 신뢰 인증서의 호스트명 불일치 분류를 포함한다.
+- 부트스트랩 로깅 회귀 테스트는 테스트 JVM의 로거 상태를 변경하지 않고 Spring Boot ConfigData와 최종 로그 레벨 적용 경로를 통해 운영 설정을 적재한다. 루트와 더 넓은 Apache HTTP 패키지를 `DEBUG`로 강제해도 원시 헤더·wire 및 구현·TLS 패키지의 명시 설정은 `OFF`로 유지된다.
 - PostgreSQL 18.4 Testcontainers 모음은 V1/V2/V3 마이그레이션, 리비전 경합, 점검·전달 점유 시 잠긴 행의 결정적 건너뛰기, 서로 겹치지 않는 동시 점유, 동시 완료 처리 멱등성, 점검·전달 리스 복구, 원자적 이벤트 롤백, 싱글턴 백로그 경합 정확성, `SKIP LOCKED` 보존, 행 잠금·트랜잭션·쿼리 제한 시간, 외부 트랜잭션 거부를 검증하며 모두 통과했다.
 - 이름이 지정된 스케줄러 테스트는 독립 단일 스레드 실행, 소유 스레드 접두사, 종료 정책, 예약 메서드 6개의 명시적 라우팅, `outcome=ERROR` 프레임워크 관측, 비식별화된 실패 로깅, 실패 후 고정 지연 실행 지속을 검증한다.
 - 전달 재시도 정책 테스트는 첫 번째·지수형·최대 시도 지연과 함께 영속성 점유 전 정확한 30일 허용 및 30일+1나노초 거부 설정 경계를 검증한다.
