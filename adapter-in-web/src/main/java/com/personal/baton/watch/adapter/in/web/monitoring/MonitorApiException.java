@@ -7,14 +7,12 @@ final class MonitorApiException extends RuntimeException {
 
     private final HttpStatus status;
     private final URI type;
-    private final String title;
     private final String code;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
         super(title);
         this.status = status;
         this.type = URI.create("urn:baton-watch:problem:" + slug);
-        this.title = title;
         this.code = code;
     }
 
@@ -56,10 +54,6 @@ final class MonitorApiException extends RuntimeException {
 
     URI type() {
         return type;
-    }
-
-    String title() {
-        return title;
     }
 
     String code() {

@@ -41,7 +41,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
         return problem(
                 exception.status(),
-                new ProblemSpec(exception.type(), exception.title(), exception.code()),
+                new ProblemSpec(exception.type(), exception.getMessage(), exception.code()),
                 HttpHeaders.EMPTY);
     }
 
@@ -87,27 +87,16 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
 
     private ResponseEntity<Object> problem(
             HttpStatusCode status,
-            ProblemSpec problem,
+            ProblemSpec spec,
             HttpHeaders headers) {
-        return new ResponseEntity<>(
-                problemDetail(status, problem),
-                problemHeaders(headers),
-                status);
-    }
-
-    private ProblemDetail problemDetail(HttpStatusCode status, ProblemSpec spec) {
         ProblemDetail problem = ProblemDetail.forStatus(status);
         problem.setType(spec.type());
         problem.setTitle(spec.title());
         problem.setInstance(REDACTED_REQUEST);
         problem.setProperty("code", spec.code());
-        return problem;
-    }
-
-    private HttpHeaders problemHeaders(HttpHeaders headers) {
         HttpHeaders responseHeaders = HttpHeaders.copyOf(headers);
         responseHeaders.setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-        return responseHeaders;
+        return new ResponseEntity<>(problem, responseHeaders, status);
     }
 
     private void logFailure(Exception exception) {
