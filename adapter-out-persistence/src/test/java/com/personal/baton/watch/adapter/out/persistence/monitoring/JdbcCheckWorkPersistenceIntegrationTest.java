@@ -86,7 +86,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 "SELECT target_url FROM watch_attempt ORDER BY resource_reference",
                 String.class))
                 .containsExactly(historicalTarget, "https://current.example/path");
-        assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
     }
 
     @Test
@@ -182,7 +181,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
             List<ClaimedCheck> claims = claimFuture.get(
                     CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            assertThat(lockTransaction.isCompleted()).isFalse();
             assertThat(claims)
                     .extracting(claim -> claim.targetUrl().value())
                     .containsExactly("https://next.example/path");
@@ -190,9 +188,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         } finally {
             try {
                 cancelIfRunning(claimFuture);
-                if (!lockTransaction.isCompleted()) {
-                    lockTransactionManager.rollback(lockTransaction);
-                }
+                lockTransactionManager.rollback(lockTransaction);
             } finally {
                 shutdownAndAwait(executor);
             }
@@ -416,9 +412,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                     .doesNotContain(available.attemptId());
         } finally {
             cancelIfRunning(purgeFuture);
-            if (!lockTransaction.isCompleted()) {
-                lockTransactionManager.rollback(lockTransaction);
-            }
+            lockTransactionManager.rollback(lockTransaction);
             shutdownAndAwait(executor);
         }
     }

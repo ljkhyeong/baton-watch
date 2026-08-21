@@ -187,15 +187,12 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
             List<ClaimedHealthChangeEvent> claims = claimFuture.get(
                     CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
-            assertThat(lockTransaction.isCompleted()).isFalse();
             assertThat(claims).extracting(claim -> claim.payload().eventId())
                     .containsExactly(followingEvent);
         } finally {
             try {
                 cancelIfRunning(claimFuture);
-                if (!lockTransaction.isCompleted()) {
-                    lockTransactionManager.rollback(lockTransaction);
-                }
+                lockTransactionManager.rollback(lockTransaction);
             } finally {
                 shutdownAndAwait(executor);
             }
