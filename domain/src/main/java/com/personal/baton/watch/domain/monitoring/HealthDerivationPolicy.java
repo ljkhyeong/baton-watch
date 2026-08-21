@@ -10,7 +10,7 @@ public final class HealthDerivationPolicy {
         if (!outcome.isConclusive()) {
             return current;
         }
-        if (outcome.isSuccess()) {
+        if (outcome == CheckOutcome.SUCCESS) {
             return new HealthDerivation(Health.HEALTHY, 0);
         }
 
