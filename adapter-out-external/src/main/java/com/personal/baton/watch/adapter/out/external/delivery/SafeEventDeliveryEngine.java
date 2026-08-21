@@ -51,7 +51,7 @@ final class SafeEventDeliveryEngine {
             byte[] body = serializer.apply(payload);
             Duration remaining = remaining(startedAt);
             if (remaining.isZero()) {
-                return failure(EventDeliveryOutcome.DNS_FAILURE);
+                return EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE);
             }
 
             List<InetAddress> resolved;
@@ -59,7 +59,8 @@ final class SafeEventDeliveryEngine {
                 resolved = dnsLookup.resolve(endpoint.hostname(), remaining);
             } catch (DnsLookupException exception) {
                 return switch (exception.reason()) {
-                    case DNS_FAILURE -> failure(EventDeliveryOutcome.DNS_FAILURE);
+                    case DNS_FAILURE -> EventDeliveryObservation.failure(
+                            EventDeliveryOutcome.DNS_FAILURE);
                     case INTERNAL_FAILURE -> EventDeliveryObservation.internalFailure();
                 };
             }
@@ -68,12 +69,12 @@ final class SafeEventDeliveryEngine {
             try {
                 approved = addressPolicy.approve(resolved);
             } catch (AddressPolicyException exception) {
-                return failure(EventDeliveryOutcome.DESTINATION_REJECTED);
+                return EventDeliveryObservation.failure(EventDeliveryOutcome.DESTINATION_REJECTED);
             }
 
             remaining = remaining(startedAt);
             if (remaining.isZero()) {
-                return failure(EventDeliveryOutcome.DNS_FAILURE);
+                return EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE);
             }
 
             ApprovedDeliveryRequest request = new ApprovedDeliveryRequest(
@@ -89,7 +90,7 @@ final class SafeEventDeliveryEngine {
                 return transportFailure(exception.kind());
             }
             if (statusCode < 200 || statusCode > 599) {
-                return failure(EventDeliveryOutcome.NETWORK_FAILURE);
+                return EventDeliveryObservation.failure(EventDeliveryOutcome.NETWORK_FAILURE);
             }
             return EventDeliveryObservation.forHttpStatus(statusCode);
         } catch (RuntimeException exception) {
@@ -106,10 +107,6 @@ final class SafeEventDeliveryEngine {
             case NETWORK_FAILURE -> EventDeliveryOutcome.NETWORK_FAILURE;
             case INTERNAL_FAILURE -> EventDeliveryOutcome.INTERNAL_FAILURE;
         };
-        return failure(outcome);
-    }
-
-    private EventDeliveryObservation failure(EventDeliveryOutcome outcome) {
         return EventDeliveryObservation.failure(outcome);
     }
 

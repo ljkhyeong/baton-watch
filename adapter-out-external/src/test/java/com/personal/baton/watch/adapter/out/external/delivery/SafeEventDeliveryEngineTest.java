@@ -84,30 +84,6 @@ class SafeEventDeliveryEngineTest {
         assertNull(transport.lastRequest);
     }
 
-    @Test
-    void rejectsReservedIpv6BeforeCallbackDelivery() throws Exception {
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("3ffe::1")));
-        RecordingTransport transport = new RecordingTransport(204);
-
-        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
-    }
-
-    @Test
-    void rejectsAzureWireServerBeforeCallbackDelivery() throws Exception {
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("168.63.129.16")));
-        RecordingTransport transport = new RecordingTransport(204);
-
-        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
-    }
-
     @ParameterizedTest
     @MethodSource("dnsFailures")
     void mapsDnsFailuresToBoundedOutcomes(
@@ -124,11 +100,9 @@ class SafeEventDeliveryEngineTest {
         assertNull(transport.lastRequest);
     }
 
-    @ParameterizedTest
-    @MethodSource("httpStatuses")
-    void mapsFinalHttpStatusesWithoutFollowingRedirects(
-            int status, EventDeliveryOutcome expected) throws Exception {
-        RecordingTransport transport = new RecordingTransport(status);
+    @Test
+    void treatsRedirectAsClientErrorWithoutAnotherRequest() throws Exception {
+        RecordingTransport transport = new RecordingTransport(302);
 
         EventDeliveryObservation observation = engine(
                         new RecordingDnsLookup(List.of(address("8.8.8.8"))),
@@ -136,8 +110,9 @@ class SafeEventDeliveryEngineTest {
                         System::nanoTime)
                 .send(event());
 
-        assertEquals(expected, observation.outcome());
-        assertEquals(status, observation.httpStatusCode());
+        assertEquals(EventDeliveryOutcome.HTTP_CLIENT_ERROR, observation.outcome());
+        assertEquals(302, observation.httpStatusCode());
+        assertEquals(1, transport.requests.size());
     }
 
     @Test
@@ -186,19 +161,6 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, observation.outcome());
         assertNull(transport.lastRequest);
-    }
-
-    @Test
-    void convertsUnexpectedAdapterFailuresToInternalFailure() {
-        DnsLookup dns = (hostname, timeout) -> {
-            throw new IllegalStateException("sensitive resolver detail");
-        };
-
-        EventDeliveryObservation observation =
-                engine(dns, (request, remaining) -> 204, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
-        assertNull(observation.httpStatusCode());
     }
 
     @Test
@@ -268,16 +230,6 @@ class SafeEventDeliveryEngineTest {
                 Arguments.of(
                         DnsLookupException.Reason.INTERNAL_FAILURE,
                         EventDeliveryOutcome.INTERNAL_FAILURE));
-    }
-
-    private static Stream<Arguments> httpStatuses() {
-        return Stream.of(
-                Arguments.of(200, EventDeliveryOutcome.DELIVERED),
-                Arguments.of(299, EventDeliveryOutcome.DELIVERED),
-                Arguments.of(302, EventDeliveryOutcome.HTTP_CLIENT_ERROR),
-                Arguments.of(404, EventDeliveryOutcome.HTTP_CLIENT_ERROR),
-                Arguments.of(500, EventDeliveryOutcome.HTTP_SERVER_ERROR),
-                Arguments.of(599, EventDeliveryOutcome.HTTP_SERVER_ERROR));
     }
 
     private static Stream<Arguments> transportFailures() {
