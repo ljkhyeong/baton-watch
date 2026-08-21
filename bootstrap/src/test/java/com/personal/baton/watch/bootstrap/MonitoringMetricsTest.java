@@ -97,6 +97,7 @@ class MonitoringMetricsTest {
 
         metrics.recordStaleProjections(2);
         metrics.recordPurgedAttempts(3);
+        metrics.recordPurgedDeliveredEvents(4);
 
         assertEquals(
                 2.0,
@@ -108,6 +109,12 @@ class MonitoringMetricsTest {
                 3.0,
                 registry.get("baton.watch.maintenance.items")
                         .tag("operation", "attempt_purged")
+                        .counter()
+                        .count());
+        assertEquals(
+                4.0,
+                registry.get("baton.watch.maintenance.items")
+                        .tag("operation", "delivered_event_purged")
                         .counter()
                         .count());
     }

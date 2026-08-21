@@ -43,8 +43,8 @@ import tools.jackson.databind.ObjectMapper;
             "watch.event-delivery.poll-interval=1d",
             "watch.event-delivery.maintenance-interval=1d"
         })
-@Testcontainers(disabledWithoutDocker = false)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Testcontainers
+@DirtiesContext
 class BatonWatchApplicationSmokeTest {
 
     private static final String API_TOKEN = "full-context-monitor-token-0123456789abcdef";
