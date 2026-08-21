@@ -28,19 +28,10 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
     private final ResponseBodyDiscarder bodyDiscarder = new ResponseBodyDiscarder();
 
     ApacheEventDeliveryTransport(EventDeliveryLimits limits, int threadCount, int queueCapacity) {
-        this(
-                limits,
-                new ApacheHttpRequestExecutor(threadCount, queueCapacity, "watch-event-http-"),
-                new PinnedApacheClientFactory());
-    }
-
-    ApacheEventDeliveryTransport(
-            EventDeliveryLimits limits,
-            ApacheHttpRequestExecutor requestExecutor,
-            PinnedApacheClientFactory clientFactory) {
         this.limits = Objects.requireNonNull(limits, "limits");
-        this.requestExecutor = Objects.requireNonNull(requestExecutor, "requestExecutor");
-        this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
+        this.clientFactory = new PinnedApacheClientFactory();
+        this.requestExecutor = new ApacheHttpRequestExecutor(
+                threadCount, queueCapacity, "watch-event-http-");
     }
 
     @Override
