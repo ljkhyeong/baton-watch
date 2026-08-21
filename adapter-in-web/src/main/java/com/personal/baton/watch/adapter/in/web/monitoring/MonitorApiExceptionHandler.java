@@ -66,12 +66,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
         }
         if (!status.is4xxClientError()) {
             logFailure(exception);
-            return frameworkProblem(
-                    exception,
-                    request,
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    INTERNAL_ERROR,
-                    headers);
+            return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, headers);
         }
         ProblemSpec problem = switch (status.value()) {
             case 400 -> INVALID_REQUEST;
@@ -81,27 +76,13 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             case 415 -> UNSUPPORTED_MEDIA_TYPE;
             default -> REQUEST_REJECTED;
         };
-        return frameworkProblem(exception, request, status, problem, headers);
+        return problem(status, problem, headers);
     }
 
     private boolean responseCommitted(WebRequest request) {
         return request instanceof ServletWebRequest servletRequest
                 && servletRequest.getResponse() != null
                 && servletRequest.getResponse().isCommitted();
-    }
-
-    private ResponseEntity<Object> frameworkProblem(
-            Exception exception,
-            WebRequest request,
-            HttpStatusCode status,
-            ProblemSpec problem,
-            HttpHeaders headers) {
-        return super.handleExceptionInternal(
-                exception,
-                problemDetail(status, problem),
-                problemHeaders(headers),
-                status,
-                request);
     }
 
     private ResponseEntity<Object> problem(

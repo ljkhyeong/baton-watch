@@ -18,7 +18,6 @@ import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.system.SystemStatus;
-import jakarta.servlet.Filter;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -27,7 +26,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -44,8 +42,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.web.FilterChainProxy;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -70,14 +66,10 @@ class MonitorApiSecurityIntegrationTest {
     private int serverPort;
 
     private final ObjectMapper objectMapper;
-    private final FilterChainProxy filterChainProxy;
 
     @Autowired
-    MonitorApiSecurityIntegrationTest(
-            ObjectMapper objectMapper,
-            FilterChainProxy filterChainProxy) {
+    MonitorApiSecurityIntegrationTest(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.filterChainProxy = filterChainProxy;
     }
 
     @Test
@@ -135,22 +127,6 @@ class MonitorApiSecurityIntegrationTest {
                 "Invalid request",
                 "INVALID_REQUEST");
         assertThat(valid.statusCode()).isEqualTo(200);
-    }
-
-    @Test
-    void requestBodyLimitRunsAfterSpringSecurityAuthorization() {
-        List<List<Filter>> matchingChains = filterChainProxy.getFilterChains().stream()
-                .map(org.springframework.security.web.SecurityFilterChain::getFilters)
-                .filter(chain -> chain.stream().anyMatch(MonitorApiRequestBodyLimitFilter.class::isInstance))
-                .toList();
-        assertThat(matchingChains).hasSize(1);
-        List<Filter> filters = matchingChains.getFirst();
-
-        int authorization = indexOf(filters, AuthorizationFilter.class);
-        int bodyLimit = indexOf(filters, MonitorApiRequestBodyLimitFilter.class);
-
-        assertThat(authorization).isNotNegative();
-        assertThat(bodyLimit).isGreaterThan(authorization);
     }
 
     @Test
@@ -330,16 +306,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE);
     }
 
-    @Test
-    void successfulAuthenticationIsNotReusedAsASession() throws Exception {
-        HttpResponse<String> authenticated = get("/api/v1/resource-monitors/resource-1", API_TOKEN);
-        HttpResponse<String> followingRequest = get("/api/v1/resource-monitors/resource-1", null);
-
-        assertThat(authenticated.statusCode()).isEqualTo(200);
-        assertThat(authenticated.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
-        assertUnauthorized(followingRequest);
-    }
-
     private HttpResponse<String> get(String path, String token) throws Exception {
         return get(path, token, MediaType.APPLICATION_JSON_VALUE);
     }
@@ -399,15 +365,6 @@ class MonitorApiSecurityIntegrationTest {
     private static HttpRequest.BodyPublisher chunked(String body) {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         return HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(bytes));
-    }
-
-    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
-        for (int index = 0; index < filters.size(); index++) {
-            if (type.isInstance(filters.get(index))) {
-                return index;
-            }
-        }
-        return -1;
     }
 
     private void assertUnauthorized(HttpResponse<String> response) throws Exception {

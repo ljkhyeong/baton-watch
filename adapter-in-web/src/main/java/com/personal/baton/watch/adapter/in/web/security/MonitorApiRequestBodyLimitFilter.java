@@ -12,7 +12,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.InvalidMediaTypeException;
@@ -34,7 +33,7 @@ public final class MonitorApiRequestBodyLimitFilter extends OncePerRequestFilter
     private final ObjectMapper objectMapper;
 
     public MonitorApiRequestBodyLimitFilter(ObjectMapper objectMapper) {
-        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -144,7 +143,6 @@ public final class MonitorApiRequestBodyLimitFilter extends OncePerRequestFilter
 
         @Override
         public void setReadListener(ReadListener readListener) {
-            Objects.requireNonNull(readListener, "readListener");
             try {
                 if (!isFinished()) {
                     readListener.onDataAvailable();
