@@ -112,7 +112,7 @@ final class SafeEventDeliveryEngine {
 
     private Duration remaining(long startedAt) {
         long elapsed = Math.max(0, clock.getAsLong() - startedAt);
-        long remaining = limits.totalTimeoutNanos() - elapsed;
+        long remaining = limits.totalTimeout().toNanos() - elapsed;
         return remaining <= 0 ? Duration.ZERO : Duration.ofNanos(remaining);
     }
 }

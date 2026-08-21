@@ -163,7 +163,7 @@ final class SafeUrlCheckEngine {
 
     private Duration remaining(long startedAt) {
         long elapsed = nonNegativeElapsed(startedAt);
-        long remaining = limits.totalTimeoutNanos() - elapsed;
+        long remaining = limits.totalTimeout().toNanos() - elapsed;
         return remaining <= 0 ? Duration.ZERO : Duration.ofNanos(remaining);
     }
 

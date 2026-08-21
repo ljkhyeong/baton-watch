@@ -26,10 +26,6 @@ public record CheckerLimits(
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
-    long totalTimeoutNanos() {
-        return totalTimeout.toNanos();
-    }
-
     private static Duration requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
         if (!value.isPositive()) {
