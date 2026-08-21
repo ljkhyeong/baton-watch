@@ -43,16 +43,11 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
 
     @Override
     public void close() {
-        closeQuietly(transport);
-        closeQuietly(dnsLookup);
-    }
-
-    private static void closeQuietly(AutoCloseable closeable) {
-        try {
-            closeable.close();
+        try (AutoCloseable ignoredDnsLookup = dnsLookup;
+                AutoCloseable ignoredTransport = transport) {
+            // 등록 역순인 전송 계층, DNS 조회기 순서로 닫는다.
         } catch (Exception ignored) {
             // 종료는 최선을 다해 시도하며 예외 세부 정보를 의도적으로 노출하지 않는다.
         }
     }
-
 }

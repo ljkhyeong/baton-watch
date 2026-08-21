@@ -48,9 +48,6 @@ public final class ResponseBodyDiscarder {
             if (read == -1) {
                 return closeCompleted(input, consumed);
             }
-            if (read == 0) {
-                continue;
-            }
             consumed += read;
             progress.accept(consumed);
         }

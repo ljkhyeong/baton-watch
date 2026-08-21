@@ -58,12 +58,15 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
 
     @Override
     public void close() {
-        closeQuietly(transport);
-        closeQuietly(dnsLookup);
+        try (AutoCloseable ignoredDnsLookup = dnsLookup;
+                AutoCloseable ignoredTransport = transport) {
+            // 등록 역순인 전송 계층, DNS 조회기 순서로 닫는다.
+        } catch (Exception ignored) {
+            // 종료는 최선을 다해 시도하며 예외 세부 정보를 의도적으로 노출하지 않는다.
+        }
     }
 
     private static String validateBearerToken(String bearerToken) {
-        Objects.requireNonNull(bearerToken, "bearerToken");
         if (!BEARER_TOKEN.matcher(bearerToken).matches()) {
             throw new IllegalArgumentException(
                     "event delivery bearer token must contain 32 to 200 URL-safe characters");
@@ -71,11 +74,4 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
         return bearerToken;
     }
 
-    private static void closeQuietly(AutoCloseable closeable) {
-        try {
-            closeable.close();
-        } catch (Exception ignored) {
-            // 종료는 최선을 다해 시도하며 예외 세부 정보를 의도적으로 노출하지 않는다.
-        }
-    }
 }

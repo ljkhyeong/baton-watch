@@ -23,6 +23,7 @@ import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.MessageConstraintException;
 import org.apache.hc.core5.io.IOFunction;
+import org.apache.hc.core5.util.Args;
 
 /** 제한된 HTTP 실행기를 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
@@ -130,9 +131,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
     private static ExecutorService createExecutor(
             int threadCount, int queueCapacity, String threadNamePrefix) {
         OutboundResourceBounds.requireRequestExecutorBounds(threadCount, queueCapacity);
-        if (threadNamePrefix == null || threadNamePrefix.isBlank()) {
-            throw new IllegalArgumentException("HTTP thread name prefix must not be blank");
-        }
+        Args.notBlank(threadNamePrefix, "HTTP thread name prefix");
         return new ThreadPoolExecutor(
                 threadCount,
                 threadCount,
