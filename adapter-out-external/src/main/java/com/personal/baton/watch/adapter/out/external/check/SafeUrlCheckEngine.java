@@ -41,9 +41,6 @@ final class SafeUrlCheckEngine {
         long startedAt = clock.getAsLong();
         CheckState state = new CheckState();
         try {
-            if (targetUrl == null) {
-                return internalFailure(startedAt, state);
-            }
             ValidatedUri current;
             try {
                 current = targetPolicy.prepare(targetUrl);

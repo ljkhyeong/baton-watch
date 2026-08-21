@@ -23,13 +23,9 @@ public record TargetUrl(String value) {
         return parse(value);
     }
 
-    public String protocol() {
-        return uri().getScheme().toLowerCase(Locale.ROOT);
-    }
-
     /** 기존 행의 재구성을 막지 않으면서 인코딩된 문자 제한을 적용합니다. */
     public TargetUrl requireSafeEncodedCharacters() {
-        requireSafeReferenceCharacters(value);
+        validateEncodedCharacters(value);
         return this;
     }
 

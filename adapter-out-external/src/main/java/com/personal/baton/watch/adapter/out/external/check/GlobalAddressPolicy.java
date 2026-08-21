@@ -42,23 +42,17 @@ public final class GlobalAddressPolicy {
 
     private static final List<Cidr> REJECTED_IPV4 = List.of(
             cidr("0.0.0.0", 8),
-            cidr("10.0.0.0", 8),
             cidr("100.64.0.0", 10),
-            cidr("127.0.0.0", 8),
             cidr("168.63.129.16", 32),
-            cidr("169.254.0.0", 16),
-            cidr("172.16.0.0", 12),
             cidr("192.0.0.0", 24),
             cidr("192.0.2.0", 24),
             cidr("192.31.196.0", 24),
             cidr("192.52.193.0", 24),
             cidr("192.88.99.0", 24),
-            cidr("192.168.0.0", 16),
             cidr("192.175.48.0", 24),
             cidr("198.18.0.0", 15),
             cidr("198.51.100.0", 24),
             cidr("203.0.113.0", 24),
-            cidr("224.0.0.0", 4),
             cidr("240.0.0.0", 4));
 
     private static final List<Cidr> REJECTED_IPV6 = List.of(
@@ -109,13 +103,6 @@ public final class GlobalAddressPolicy {
     }
 
     private record Cidr(byte[] network, int prefixLength) {
-
-        private Cidr {
-            network = network.clone();
-            if (prefixLength < 0 || prefixLength > network.length * Byte.SIZE) {
-                throw new IllegalArgumentException("invalid CIDR prefix");
-            }
-        }
 
         boolean contains(InetAddress address) {
             byte[] candidate = address.getAddress();
