@@ -105,7 +105,7 @@ final class SafeUrlCheckEngine {
                 ValidatedUri next;
                 try {
                     URI redirectUri = targetPolicy.resolveRedirect(current, response.locations().getFirst());
-                    next = targetPolicy.validate(redirectUri);
+                    next = targetPolicy.prepare(new TargetUrl(redirectUri.toString()));
                 } catch (IllegalArgumentException exception) {
                     return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
                 }

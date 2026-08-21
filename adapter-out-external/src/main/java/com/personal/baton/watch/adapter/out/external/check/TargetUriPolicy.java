@@ -15,10 +15,6 @@ final class TargetUriPolicy {
         return new ValidatedUri(uri, scheme, hostname, loopKey(uri, scheme, hostname));
     }
 
-    ValidatedUri validate(URI uri) {
-        return prepare(new TargetUrl(uri.toString()));
-    }
-
     URI resolveRedirect(ValidatedUri current, String location) {
         TargetUrl.requireSafeReferenceCharacters(location);
         return current.uri().resolve(location);
