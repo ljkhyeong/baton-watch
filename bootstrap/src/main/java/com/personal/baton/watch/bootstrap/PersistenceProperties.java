@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -22,14 +23,6 @@ public record PersistenceProperties(
         }
     }
 
-    int queryTimeoutSeconds() {
-        return Math.toIntExact(queryTimeout.getSeconds());
-    }
-
-    int transactionTimeoutSeconds() {
-        return Math.toIntExact(transactionTimeout.getSeconds());
-    }
-
     private static Duration requireWholeSeconds(Duration value, String name) {
         Objects.requireNonNull(value, name);
         long seconds = value.getSeconds();
@@ -42,13 +35,7 @@ public record PersistenceProperties(
 
     private static Duration requireWholeMilliseconds(Duration value) {
         Objects.requireNonNull(value, "lockTimeout");
-        long milliseconds;
-        try {
-            milliseconds = value.toMillis();
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException("lockTimeout is too large");
-        }
-        if (milliseconds < 1 || !Duration.ofMillis(milliseconds).equals(value)) {
+        if (!value.isPositive() || !value.truncatedTo(ChronoUnit.MILLIS).equals(value)) {
             throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
         }
         return value;

@@ -8,6 +8,7 @@ dependencies {
     implementation project(':adapter-out-persistence')
     implementation project(':adapter-out-external')
     implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'org.postgresql:postgresql'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
