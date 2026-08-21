@@ -17,7 +17,8 @@ class HealthDerivationPolicyTest {
 
     @Test
     void conclusiveFailuresBecomeDegradedThenBroken() {
-        HealthDerivation first = policy.derive(HealthDerivation.unknown(), CheckOutcome.CONNECT_TIMEOUT);
+        HealthDerivation first = policy.derive(
+                new HealthDerivation(Health.UNKNOWN, 0), CheckOutcome.CONNECT_TIMEOUT);
         HealthDerivation second = policy.derive(first, CheckOutcome.HTTP_SERVER_ERROR);
         HealthDerivation third = policy.derive(second, CheckOutcome.DNS_FAILURE);
 

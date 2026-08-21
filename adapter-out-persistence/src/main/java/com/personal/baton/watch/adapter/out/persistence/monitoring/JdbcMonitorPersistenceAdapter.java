@@ -111,7 +111,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
         boolean targetOrStateChanged = !samePayload;
         HealthDerivation derivation = targetOrStateChanged
-                ? HealthDerivation.unknown()
+                ? new HealthDerivation(Health.UNKNOWN, 0)
                 : existing.derivation();
         CheckOutcome lastOutcome = targetOrStateChanged ? null : existing.lastOutcome();
         Instant lastCheckedAt = targetOrStateChanged ? null : existing.lastCheckedAt();
