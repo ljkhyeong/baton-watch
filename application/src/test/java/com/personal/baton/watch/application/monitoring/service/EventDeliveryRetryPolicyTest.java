@@ -1,6 +1,5 @@
 package com.personal.baton.watch.application.monitoring.service;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -14,9 +13,9 @@ class EventDeliveryRetryPolicyTest {
 
     @Test
     void acceptsTheHardCeilingAndRejectsLargerDelays() {
-        assertDoesNotThrow(() -> new EventDeliveryRetryPolicy(
+        new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(5),
-                TimeBoundaryPolicy.MAX_EVENT_DELIVERY_RETRY_DELAY));
+                TimeBoundaryPolicy.MAX_EVENT_DELIVERY_RETRY_DELAY);
         assertThrows(IllegalArgumentException.class, () -> new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(5),
                 TimeBoundaryPolicy.MAX_EVENT_DELIVERY_RETRY_DELAY.plusNanos(1)));

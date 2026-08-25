@@ -1,6 +1,5 @@
 package com.personal.baton.watch.bootstrap;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -18,8 +17,8 @@ class WatchPropertiesTest {
 
     @Test
     void acceptsAnRfc6750Token68ServiceToken() {
-        assertDoesNotThrow(() -> properties("01234567890123456789012345678901=="));
-        assertDoesNotThrow(() -> properties("a".repeat(WatchProperties.MAX_API_TOKEN_LENGTH)));
+        properties("01234567890123456789012345678901==");
+        properties("a".repeat(WatchProperties.MAX_API_TOKEN_LENGTH));
     }
 
     @Test
