@@ -101,7 +101,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 WHERE resource_reference = 'resource:lease'
                 """);
         ClaimedCheck recovered = claimOne();
-        Instant recoveredAt = claimedAt(recovered);
+        Instant recoveredAt = recovered.claimedAt();
 
         assertThat(recovered.attemptId()).isNotEqualTo(first.attemptId());
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
@@ -240,7 +240,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void duplicateAndWrongTokenFinalizationCannotDuplicateResultOrEvent() {
         synchronize("resource:idempotent", 1, "https://idempotent.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization valid = finalization(
                 claimed,
                 CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 42, 1),
@@ -272,7 +272,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void concurrentFinalizationCreatesOneResultAndOneEvent() throws Exception {
         synchronize("resource:concurrent-finalize", 1, "https://finalize.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization finalization = finalization(
                 claimed,
                 CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
@@ -311,7 +311,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void resultProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
         synchronize("resource:atomic", 1, "https://atomic.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         jdbc.update("""
                 INSERT INTO watch_health_change_event (
                     event_id, resource_reference, source_revision, attempt_id,

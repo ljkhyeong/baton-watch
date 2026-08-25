@@ -62,13 +62,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         return claims.getFirst();
     }
 
-    protected Instant claimedAt(ClaimedCheck claimed) {
-        return jdbc.queryForObject(
-                "SELECT claimed_at FROM watch_attempt WHERE attempt_id = ?",
-                java.time.OffsetDateTime.class,
-                claimed.attemptId()).toInstant();
-    }
-
     protected CheckFinalization finalization(
             ClaimedCheck claimed,
             CheckObservation observation,
