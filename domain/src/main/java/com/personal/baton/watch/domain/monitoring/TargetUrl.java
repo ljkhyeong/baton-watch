@@ -2,6 +2,7 @@ package com.personal.baton.watch.domain.monitoring;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -108,25 +109,16 @@ public record TargetUrl(String value) {
         if (host.indexOf(':') >= 0 || host.startsWith("[") || host.endsWith("]")) {
             return true;
         }
-        String[] components = host.split("\\.", -1);
-        for (String component : components) {
-            if (!NUMERIC_ADDRESS_COMPONENT.matcher(component).matches()) {
-                return false;
-            }
-        }
-        return true;
+        return Arrays.stream(host.split("\\.", -1))
+                .allMatch(NUMERIC_ADDRESS_COMPONENT.asMatchPredicate());
     }
 
     private static boolean isUnambiguousHostname(String host) {
         if (host.length() > 253) {
             return false;
         }
-        for (String label : host.split("\\.", -1)) {
-            if (!HOST_LABEL.matcher(label).matches()) {
-                return false;
-            }
-        }
-        return true;
+        return Arrays.stream(host.split("\\.", -1))
+                .allMatch(HOST_LABEL.asMatchPredicate());
     }
 
     private static IllegalArgumentException invalid() {
