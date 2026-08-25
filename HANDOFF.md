@@ -33,7 +33,7 @@
 
 ## 검증
 
-- Gradle 9.2.1에서 `./gradlew --no-daemon clean test :bootstrap:bootJar --no-build-cache`를 재실행했다. 전체 342개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 19개, `adapter-out-external` 203개, `adapter-out-persistence` 36개, `bootstrap` 54개다.
+- Gradle 9.2.1에서 `./gradlew --no-daemon clean test :bootstrap:bootJar --no-build-cache`를 재실행했다. 전체 341개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 19개, `adapter-out-external` 203개, `adapter-out-persistence` 36개, `bootstrap` 53개다.
 - 실제 `BatonWatchApplication` 루트 컨텍스트가 Flyway V1/V2/V3, Spring Security, 영속성 어댑터 3개, 아웃바운드 점검·전달 클라이언트, 활성화된 전달 워커, 이름이 지정된 스케줄러 3개와 함께 서비스 연결된 PostgreSQL 18.4 컨테이너를 대상으로 시작됐다. HTTP 스모크는 공개 상태 접근, 쓰기 없는 미인증 PUT 거부, 인증된 `INACTIVE` 동기화, 인증된 프로젝션 재조회, 시도나 이벤트가 없는 영속 `UNKNOWN`/`INACTIVE` 행을 증명했다.
 - CI와 동일한 결과 증거 파서가 필수 PostgreSQL 모음과 운영 루트 스모크가 누락·건너뜀·실패 없이 실행됐음을 검증했다.
 - 공개 저장소 커밋 `f5502a7`의 첫 번째 깨끗한 `Verify / verify` 실행은 Docker 사전 검사, 캐시 없는 깨끗한 테스트, 부트 JAR 생성, 필수 테스트 모음 증거 검증을 포함한 모든 단계를 1분 32초에 통과했다.
