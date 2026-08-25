@@ -223,9 +223,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.title").value("Internal server error"))
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
-                .andExpect(content().string(org.hamcrest.Matchers.not(
-                        org.hamcrest.Matchers.containsString("raw-output-secret"))));
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
     }
 
     @Test

@@ -31,12 +31,10 @@ class MonitorBearerTokenAuthenticationManagerTest {
     void rejectsWrongOrUnexpectedAuthenticationWithoutExposingTheToken() {
         assertThatThrownBy(() -> manager.authenticate(new BearerTokenAuthenticationToken("wrong-token")))
                 .isInstanceOf(BadCredentialsException.class)
-                .hasMessage("invalid monitor API credentials")
-                .hasMessageNotContaining("wrong-token");
+                .hasMessage("invalid monitor API credentials");
         assertThatThrownBy(() -> manager.authenticate(
                         new TestingAuthenticationToken("principal", "unexpected-secret")))
                 .isInstanceOf(BadCredentialsException.class)
-                .hasMessage("invalid monitor API credentials")
-                .hasMessageNotContaining("unexpected-secret");
+                .hasMessage("invalid monitor API credentials");
     }
 }
