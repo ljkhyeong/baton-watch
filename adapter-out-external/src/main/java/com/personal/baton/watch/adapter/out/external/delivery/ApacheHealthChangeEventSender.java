@@ -31,7 +31,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
             ObjectMapper objectMapper) {
         Objects.requireNonNull(limits, "limits");
         ValidatedDeliveryEndpoint validatedEndpoint = new DeliveryEndpointPolicy().validate(endpoint);
-        String validatedToken = validateBearerToken(bearerToken);
+        requireValidBearerToken(bearerToken);
         OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
         OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
         HealthChangeEventJsonSerializer serializer = new HealthChangeEventJsonSerializer(objectMapper);
@@ -40,7 +40,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
                 new ApacheEventDeliveryTransport(limits, httpThreadCount, httpQueueCapacity);
         this.engine = new SafeEventDeliveryEngine(
                 validatedEndpoint,
-                validatedToken,
+                bearerToken,
                 limits,
                 boundedDnsLookup,
                 new GlobalAddressPolicy(),
@@ -65,12 +65,11 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
         }
     }
 
-    private static String validateBearerToken(String bearerToken) {
+    private static void requireValidBearerToken(String bearerToken) {
         if (!BEARER_TOKEN.matcher(bearerToken).matches()) {
             throw new IllegalArgumentException(
                     "event delivery bearer token must contain 32 to 200 URL-safe characters");
         }
-        return bearerToken;
     }
 
 }
