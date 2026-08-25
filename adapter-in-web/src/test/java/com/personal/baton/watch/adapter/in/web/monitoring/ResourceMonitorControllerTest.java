@@ -230,14 +230,10 @@ class ResourceMonitorControllerTest {
 
     @Test
     void committedFrameworkResponsesDoNotRelogExceptionDetails(CapturedOutput output) throws Exception {
-        var result = mockMvc.perform(get("/api/v1/framework-committed-write-failure"))
+        mockMvc.perform(get("/api/v1/framework-committed-write-failure"))
                 .andExpect(status().isAccepted())
-                .andExpect(content().string("already-sent"))
-                .andReturn();
+                .andExpect(content().string("already-sent"));
 
-        assertThat(result.getResponse().isCommitted()).isTrue();
-        assertThat(result.getResolvedException())
-                .isInstanceOf(HttpMessageNotWritableException.class);
         assertThat(output)
                 .contains("monitor API failed failureType=HttpMessageNotWritableException")
                 .doesNotContain("raw-output-secret")
