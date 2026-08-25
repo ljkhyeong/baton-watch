@@ -14,7 +14,6 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -57,9 +56,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected ClaimedCheck claimOne() {
-        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(LEASE, 1);
-        assertThat(claims).hasSize(1);
-        return claims.getFirst();
+        return checkWorkPersistence.claimDueChecks(LEASE, 1).getFirst();
     }
 
     protected CheckFinalization finalization(

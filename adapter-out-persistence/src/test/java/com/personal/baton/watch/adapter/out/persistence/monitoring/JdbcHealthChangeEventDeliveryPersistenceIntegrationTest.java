@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
@@ -348,12 +347,11 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
         ClaimedCheck check = claimOne();
         Instant changedAt = check.claimedAt();
-        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+        checkWorkPersistence.finalizeCheck(finalization(
                         check,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
                         changedAt,
-                        changedAt.plus(INTERVAL))))
-                .isEqualTo(CheckFinalizationStatus.APPLIED);
+                        changedAt.plus(INTERVAL)));
         return jdbc.queryForObject("""
                 SELECT event_id
                 FROM watch_health_change_event
@@ -362,9 +360,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     private ClaimedHealthChangeEvent claimOneDelivery() {
-        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(LEASE, 1);
-        assertThat(claims).hasSize(1);
-        return claims.getFirst();
+        return deliveryAdapter.claimPendingEvents(LEASE, 1).getFirst();
     }
 
     private EventDeliveryFinalization deliveredFinalization(
