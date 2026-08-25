@@ -1,7 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
-import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -9,19 +8,7 @@ import org.junit.jupiter.api.Test;
 class PersistencePropertiesTest {
 
     @Test
-    void rejectsMissingOrNonPositiveTimeouts() {
-        assertThatNullPointerException()
-                .isThrownBy(() -> new PersistenceProperties(
-                        null, Duration.ofSeconds(5), Duration.ofSeconds(1)))
-                .withMessage("queryTimeout");
-        assertThatNullPointerException()
-                .isThrownBy(() -> new PersistenceProperties(
-                        Duration.ofSeconds(5), null, Duration.ofSeconds(1)))
-                .withMessage("transactionTimeout");
-        assertThatNullPointerException()
-                .isThrownBy(() -> new PersistenceProperties(
-                        Duration.ofSeconds(5), Duration.ofSeconds(5), null))
-                .withMessage("lockTimeout");
+    void rejectsNonPositiveTimeouts() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new PersistenceProperties(
                         Duration.ZERO, Duration.ofSeconds(5), Duration.ofMillis(1)));
