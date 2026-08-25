@@ -1,6 +1,11 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.time.Instant;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +21,7 @@ abstract class PostgresPersistenceIntegrationTestSupport {
 
     protected static final PostgreSQLContainer POSTGRES = SharedPostgresExtension.POSTGRES;
     protected static final Instant BASE_TIME = Instant.parse("2026-08-01T00:00:00Z");
+    protected static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
 
     protected JdbcTemplate jdbc;
     protected DataSource testDataSource;
@@ -33,4 +39,15 @@ abstract class PostgresPersistenceIntegrationTestSupport {
         jdbc = new JdbcTemplate(testDataSource);
     }
 
+    protected static void cancelIfRunning(Future<?> future) {
+        if (future != null) {
+            future.cancel(true);
+        }
+    }
+
+    protected static void shutdownAndAwait(ExecutorService executor) throws InterruptedException {
+        executor.shutdownNow();
+        assertThat(executor.awaitTermination(
+                CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+    }
 }

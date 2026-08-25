@@ -21,8 +21,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegrationTestSupport {
 
-    private static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
-
     @Test
     void migrationsCreateMetadataOnlyTablesWithDomainBounds() {
         List<String> tables = jdbc.queryForList("""
@@ -170,12 +168,8 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
             holder.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } finally {
             releaseSummary.countDown();
-            if (holder != null) {
-                holder.cancel(true);
-            }
-            executor.shutdownNow();
-            assertThat(executor.awaitTermination(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            cancelIfRunning(holder);
+            shutdownAndAwait(executor);
         }
     }
 
@@ -247,15 +241,9 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                     .isEqualTo(insertedChangedAt);
         } finally {
             allowInsertCommit.countDown();
-            if (insert != null) {
-                insert.cancel(true);
-            }
-            if (completion != null) {
-                completion.cancel(true);
-            }
-            executor.shutdownNow();
-            assertThat(executor.awaitTermination(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            cancelIfRunning(insert);
+            cancelIfRunning(completion);
+            shutdownAndAwait(executor);
         }
     }
 

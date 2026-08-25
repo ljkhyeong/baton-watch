@@ -15,9 +15,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -29,7 +26,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     protected static final Duration LEASE = Duration.ofSeconds(30);
     protected static final Duration INTERVAL = Duration.ofSeconds(60);
-    protected static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
 
     protected JdbcMonitorPersistenceAdapter monitorPersistence;
     protected JdbcCheckWorkPersistenceAdapter checkWorkPersistence;
@@ -88,18 +84,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     protected MonitorProjection projection(String reference) {
         return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
-    }
-
-    protected static void cancelIfRunning(Future<?> future) {
-        if (future != null) {
-            future.cancel(true);
-        }
-    }
-
-    protected static void shutdownAndAwait(ExecutorService executor) throws InterruptedException {
-        executor.shutdownNow();
-        assertThat(executor.awaitTermination(
-                CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
     }
 
     protected static void assertSqlState(Throwable failure, String expectedState) {
