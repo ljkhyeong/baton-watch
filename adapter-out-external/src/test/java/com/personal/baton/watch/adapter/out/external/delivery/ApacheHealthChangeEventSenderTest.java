@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
@@ -33,20 +32,16 @@ class ApacheHealthChangeEventSenderTest {
 
     @Test
     void acceptsTheInclusiveBearerTokenLengthBoundariesAndUrlSafePunctuation() {
-        assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = sender(
-                    URI.create("https://events.example.com/callback"),
-                    "._~-" + "A".repeat(28))) {
-                // 32자 하한과 허용 구두점을 함께 검증한다.
-            }
-        });
-        assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = sender(
-                    URI.create("https://events.example.com/callback"),
-                    "A".repeat(200))) {
-                // 200자 상한을 검증한다.
-            }
-        });
+        try (ApacheHealthChangeEventSender ignored = sender(
+                URI.create("https://events.example.com/callback"),
+                "._~-" + "A".repeat(28))) {
+            // 32자 하한과 허용 구두점을 함께 검증한다.
+        }
+        try (ApacheHealthChangeEventSender ignored = sender(
+                URI.create("https://events.example.com/callback"),
+                "A".repeat(200))) {
+            // 200자 상한을 검증한다.
+        }
     }
 
     @ParameterizedTest
