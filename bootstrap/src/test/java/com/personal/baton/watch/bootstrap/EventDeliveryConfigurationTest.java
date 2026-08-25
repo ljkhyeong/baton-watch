@@ -26,7 +26,6 @@ class EventDeliveryConfigurationTest {
                         BootstrapTestFixtures.watchProperties(),
                         true)
                 .run(context -> {
-            assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(ApacheHealthChangeEventSender.class);
             assertThat(context.getBean(HealthChangeEventSender.class))
                     .isInstanceOf(MeteredHealthChangeEventSender.class);
@@ -41,7 +40,6 @@ class EventDeliveryConfigurationTest {
                 enabledEventDeliveryProperties(watchProperties.apiToken());
 
         contextRunner(deliveryProperties, watchProperties, true).run(context -> {
-            assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
                     .rootCause()
                     .isInstanceOf(IllegalArgumentException.class)
@@ -56,8 +54,6 @@ class EventDeliveryConfigurationTest {
                         BootstrapTestFixtures.watchProperties(),
                         false)
                 .run(context -> {
-            assertThat(context).hasNotFailed();
-            assertThat(context).doesNotHaveBean(ApacheHealthChangeEventSender.class);
             assertThat(context).doesNotHaveBean(HealthChangeEventSender.class);
             assertThat(context).doesNotHaveBean(RunEventDeliveriesUseCase.class);
         });

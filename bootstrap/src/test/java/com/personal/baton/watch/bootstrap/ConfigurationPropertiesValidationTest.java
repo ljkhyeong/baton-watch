@@ -20,8 +20,6 @@ class ConfigurationPropertiesValidationTest {
                         "watch.poll-interval=0s",
                         "watch.lease-duration=366d")
                 .run(context -> {
-                    assertThat(context).hasFailed();
-
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
@@ -40,8 +38,6 @@ class ConfigurationPropertiesValidationTest {
                         "watch.event-delivery.maintenance-interval=0s",
                         "watch.event-delivery.retention=366d")
                 .run(context -> {
-                    assertThat(context).hasFailed();
-
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(

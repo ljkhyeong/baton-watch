@@ -56,18 +56,20 @@ class PersistenceAutoWiringTest {
     @Test
     void bootAutoConfiguresJdbcAndTransactionCollaboratorsForEveryPersistenceAdapter() {
         contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
             assertThat(context.getBean(JdbcTemplate.class).getQueryTimeout()).isEqualTo(3);
             assertThat(context).hasSingleBean(TransactionOperations.class);
             assertThat(context.getBean(TransactionOperations.class))
                     .isInstanceOf(PostgresTransactionOperations.class);
 
-            assertThat(context).hasSingleBean(JdbcMonitorPersistenceAdapter.class);
             assertThat(context).hasSingleBean(MonitorPersistencePort.class);
-            assertThat(context).hasSingleBean(JdbcCheckWorkPersistenceAdapter.class);
+            assertThat(context.getBean(MonitorPersistencePort.class))
+                    .isInstanceOf(JdbcMonitorPersistenceAdapter.class);
             assertThat(context).hasSingleBean(CheckWorkPersistencePort.class);
-            assertThat(context).hasSingleBean(JdbcHealthChangeEventDeliveryAdapter.class);
+            assertThat(context.getBean(CheckWorkPersistencePort.class))
+                    .isInstanceOf(JdbcCheckWorkPersistenceAdapter.class);
             assertThat(context).hasSingleBean(HealthChangeEventDeliveryPersistencePort.class);
+            assertThat(context.getBean(HealthChangeEventDeliveryPersistencePort.class))
+                    .isInstanceOf(JdbcHealthChangeEventDeliveryAdapter.class);
             assertThat(context).hasSingleBean(ApacheUrlChecker.class);
             assertThat(context.getBean(UrlChecker.class)).isInstanceOf(MeteredUrlChecker.class);
         });

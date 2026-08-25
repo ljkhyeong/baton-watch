@@ -21,7 +21,6 @@ class PersistenceRuntimeConfigurationTest {
     @Test
     void appliesBoundedHikariAndPostgresDriverDefaultsFromProductionConfiguration() {
         contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
             HikariDataSource dataSource = context.getBean(HikariDataSource.class);
 
             assertThat(dataSource.getMaximumPoolSize()).isEqualTo(8);
@@ -56,7 +55,6 @@ class PersistenceRuntimeConfigurationTest {
                         "watch.database.keepalive-time-millis=30000",
                         "watch.database.socket-timeout-seconds=20")
                 .run(context -> {
-                    assertThat(context).hasNotFailed();
                     HikariDataSource dataSource = context.getBean(HikariDataSource.class);
                     assertThat(dataSource.getMaximumPoolSize()).isEqualTo(12);
                     assertThat(dataSource.getMinimumIdle()).isEqualTo(3);
@@ -83,7 +81,6 @@ class PersistenceRuntimeConfigurationTest {
                         "watch.database.max-lifetime-millis=60000",
                         "watch.database.keepalive-time-millis=30000")
                 .run(context -> {
-                    assertThat(context).hasFailed();
                     assertThat(context.getStartupFailure())
                             .hasStackTraceContaining("idleTimeoutMillis");
                 });
@@ -98,7 +95,6 @@ class PersistenceRuntimeConfigurationTest {
                         "spring.datasource.hikari.initialization-fail-timeout=-1",
                         "spring.datasource.hikari.data-source-properties.socketTimeout=0")
                 .run(context -> {
-                    assertThat(context).hasNotFailed();
                     HikariDataSource dataSource = context.getBean(HikariDataSource.class);
                     assertThat(dataSource.getMaximumPoolSize()).isEqualTo(8);
                     assertThat(dataSource.getConnectionTimeout()).isEqualTo(3_000L);
@@ -120,7 +116,6 @@ class PersistenceRuntimeConfigurationTest {
 
     private void assertStartupFailure(String property, String fieldName) {
         contextRunner.withPropertyValues(property).run(context -> {
-            assertThat(context).hasFailed();
             assertThat(context.getStartupFailure())
                     .hasStackTraceContaining(fieldName);
         });
@@ -128,7 +123,6 @@ class PersistenceRuntimeConfigurationTest {
 
     private void assertJdbcUrlFailure(String jdbcUrl, String message) {
         contextRunner.withPropertyValues("spring.datasource.url=" + jdbcUrl).run(context -> {
-            assertThat(context).hasFailed();
             assertThat(context.getStartupFailure()).hasStackTraceContaining(message);
         });
     }

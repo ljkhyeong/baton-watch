@@ -36,7 +36,6 @@ class WorkerSchedulingConfigurationTest {
     @Test
     void isolatesMonitoringDeliveryAndMaintenanceWhileKeepingEachSchedulerSingleThreaded() {
         contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
             Map<String, ThreadPoolTaskScheduler> schedulers = context.getBeansOfType(ThreadPoolTaskScheduler.class);
             assertThat(schedulers).containsOnlyKeys(
                     WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER,

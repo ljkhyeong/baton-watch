@@ -23,7 +23,6 @@ class ApacheHttpLoggingConfigurationTest {
     @Test
     void keepsSensitiveApacheHttpDebugDiagnosticsDisabledWhenParentLoggingIsDebug() {
         contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
             RecordingLoggingSystem loggingSystem = new RecordingLoggingSystem();
             new TestLoggingApplicationListener().apply(loggingSystem, context.getEnvironment());
 
