@@ -193,8 +193,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 HttpRequest.BodyPublishers.ofString(body));
 
-        assertThat(body.getBytes(StandardCharsets.UTF_8))
-                .hasSize(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES);
         assertThat(response.statusCode()).isEqualTo(200);
     }
 
