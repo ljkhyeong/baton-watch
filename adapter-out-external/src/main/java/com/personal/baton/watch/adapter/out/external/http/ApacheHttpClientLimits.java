@@ -12,8 +12,8 @@ public record ApacheHttpClientLimits(
         int maxHeaderLineLength) {
 
     public ApacheHttpClientLimits {
-        connectTimeout = requirePositive(connectTimeout, "connectTimeout");
-        responseTimeout = requirePositive(responseTimeout, "responseTimeout");
+        requirePositive(connectTimeout, "connectTimeout");
+        requirePositive(responseTimeout, "responseTimeout");
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
@@ -30,12 +30,11 @@ public record ApacheHttpClientLimits(
                 maxHeaderLineLength);
     }
 
-    private static Duration requirePositive(Duration value, String name) {
+    private static void requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
         if (!value.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
-        return value;
     }
 
     private static Duration min(Duration first, Duration second) {

@@ -16,9 +16,9 @@ public record CheckerLimits(
         int maxHeaderLineLength) {
 
     public CheckerLimits {
-        connectTimeout = requirePositive(connectTimeout, "connectTimeout");
-        responseTimeout = requirePositive(responseTimeout, "responseTimeout");
-        totalTimeout = requirePositive(totalTimeout, "totalTimeout");
+        requirePositive(connectTimeout, "connectTimeout");
+        requirePositive(responseTimeout, "responseTimeout");
+        requirePositive(totalTimeout, "totalTimeout");
         requireNanosRepresentable(totalTimeout, "totalTimeout");
         OutboundResourceBounds.requireResponseBytes(
                 maxResponseBytes, OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
@@ -26,12 +26,11 @@ public record CheckerLimits(
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
-    private static Duration requirePositive(Duration value, String name) {
+    private static void requirePositive(Duration value, String name) {
         Objects.requireNonNull(value, name);
         if (!value.isPositive()) {
             throw new IllegalArgumentException(name + " must be positive");
         }
-        return value;
     }
 
     private static void requireNanosRepresentable(Duration value, String name) {
