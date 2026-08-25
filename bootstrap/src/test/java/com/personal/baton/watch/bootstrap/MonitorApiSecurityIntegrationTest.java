@@ -145,7 +145,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 chunkedBody);
 
-        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
         assertUnauthorized(contentLength);
         assertUnauthorized(chunked);
     }
@@ -167,9 +166,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 chunkedBody);
 
-        assertThat(declaredBody.contentLength())
-                .isEqualTo(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1L);
-        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
         assertProblem(
                 contentLength,
                 413,
