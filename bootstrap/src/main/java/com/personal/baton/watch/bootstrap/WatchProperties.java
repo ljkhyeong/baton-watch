@@ -46,7 +46,7 @@ public record WatchProperties(
             Pattern.compile("[A-Za-z0-9\\-._~+/]{32,}=*");
 
     public WatchProperties {
-        apiToken = requireToken(apiToken);
+        requireToken(apiToken);
         if (http != null
                 && leaseDuration != null
                 && leaseDuration.isPositive()
@@ -107,14 +107,13 @@ public record WatchProperties(
         }
     }
 
-    private static String requireToken(String token) {
+    private static void requireToken(String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
         Objects.requireNonNull(token, "apiToken");
         if (token.length() > MAX_API_TOKEN_LENGTH || !BEARER_TOKEN.matcher(token).matches()) {
             throw new IllegalArgumentException(
                     "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
-        return token;
     }
 
 }

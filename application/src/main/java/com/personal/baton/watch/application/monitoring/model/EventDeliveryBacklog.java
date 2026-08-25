@@ -10,7 +10,7 @@ public record EventDeliveryBacklog(long pendingCount, Optional<Duration> oldestE
         if (pendingCount < 0) {
             throw new IllegalArgumentException("pending count must be non-negative");
         }
-        oldestEventAge = Objects.requireNonNull(oldestEventAge, "oldestEventAge");
+        Objects.requireNonNull(oldestEventAge, "oldestEventAge");
         if ((pendingCount == 0) != oldestEventAge.isEmpty()) {
             throw new IllegalArgumentException("oldest event age must match pending count");
         }

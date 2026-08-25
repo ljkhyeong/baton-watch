@@ -15,29 +15,24 @@ public record PersistenceProperties(
     private static final long MAX_TIMEOUT_SECONDS = 30;
 
     public PersistenceProperties {
-        queryTimeout = requireWholeSeconds(queryTimeout, "queryTimeout");
-        transactionTimeout = requireWholeSeconds(transactionTimeout, "transactionTimeout");
-        lockTimeout = requireWholeMilliseconds(lockTimeout);
+        requireWholeSeconds(queryTimeout, "queryTimeout");
+        requireWholeSeconds(transactionTimeout, "transactionTimeout");
+        Objects.requireNonNull(lockTimeout, "lockTimeout");
+        if (!lockTimeout.isPositive()
+                || !lockTimeout.truncatedTo(ChronoUnit.MILLIS).equals(lockTimeout)) {
+            throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
+        }
         if (lockTimeout.compareTo(transactionTimeout) >= 0) {
             throw new IllegalArgumentException("lockTimeout must be shorter than transactionTimeout");
         }
     }
 
-    private static Duration requireWholeSeconds(Duration value, String name) {
+    private static void requireWholeSeconds(Duration value, String name) {
         Objects.requireNonNull(value, name);
         long seconds = value.getSeconds();
         if (seconds < 1 || value.getNano() != 0 || seconds > MAX_TIMEOUT_SECONDS) {
             throw new IllegalArgumentException(
                     name + " must be a whole-second duration between 1 and 30 seconds");
         }
-        return value;
-    }
-
-    private static Duration requireWholeMilliseconds(Duration value) {
-        Objects.requireNonNull(value, "lockTimeout");
-        if (!value.isPositive() || !value.truncatedTo(ChronoUnit.MILLIS).equals(value)) {
-            throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
-        }
-        return value;
     }
 }

@@ -22,7 +22,7 @@ public record HealthChangeEventPayload(
         Objects.requireNonNull(eventId, "eventId");
         Objects.requireNonNull(resourceReference, "resourceReference");
         Objects.requireNonNull(sourceRevision, "sourceRevision");
-        attemptId = Objects.requireNonNull(attemptId, "attemptId");
+        Objects.requireNonNull(attemptId, "attemptId");
         Objects.requireNonNull(previousHealth, "previousHealth");
         Objects.requireNonNull(currentHealth, "currentHealth");
         Objects.requireNonNull(changedAt, "changedAt");

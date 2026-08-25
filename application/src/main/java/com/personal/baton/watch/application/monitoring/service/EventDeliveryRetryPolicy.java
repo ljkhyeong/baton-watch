@@ -6,8 +6,8 @@ import java.time.Instant;
 public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay) {
 
     public EventDeliveryRetryPolicy {
-        initialDelay = TimeBoundaryPolicy.requireEventDeliveryRetryDelay(initialDelay, "initialDelay");
-        maxDelay = TimeBoundaryPolicy.requireEventDeliveryRetryDelay(maxDelay, "maxDelay");
+        TimeBoundaryPolicy.requireEventDeliveryRetryDelay(initialDelay, "initialDelay");
+        TimeBoundaryPolicy.requireEventDeliveryRetryDelay(maxDelay, "maxDelay");
         if (initialDelay.compareTo(maxDelay) > 0) {
             throw new IllegalArgumentException("initialDelay must not exceed maxDelay");
         }
