@@ -3,7 +3,6 @@ package com.personal.baton.watch.domain.monitoring;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Pattern;
 
@@ -77,12 +76,9 @@ public record TargetUrl(String value) {
     }
 
     private static void validateUri(URI uri) {
-        if (!uri.isAbsolute()) {
-            throw invalid();
-        }
-
-        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
-        if (!scheme.equals("http") && !scheme.equals("https")) {
+        String scheme = uri.getScheme();
+        boolean http = "http".equalsIgnoreCase(scheme);
+        if (!http && !"https".equalsIgnoreCase(scheme)) {
             throw invalid();
         }
         if (uri.getRawFragment() != null) {
@@ -95,7 +91,7 @@ public record TargetUrl(String value) {
         }
 
         int port = uri.getPort();
-        int defaultPort = scheme.equals("http") ? 80 : 443;
+        int defaultPort = http ? 80 : 443;
         if (port != -1 && port != defaultPort) {
             throw invalid();
         }
@@ -106,7 +102,7 @@ public record TargetUrl(String value) {
     }
 
     private static boolean isIpLiteral(String host) {
-        if (host.indexOf(':') >= 0 || host.startsWith("[") || host.endsWith("]")) {
+        if (host.indexOf(':') >= 0) {
             return true;
         }
         return Arrays.stream(host.split("\\.", -1))
