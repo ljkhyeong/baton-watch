@@ -1,0 +1,4 @@
+# BATON WATCH 주소 정책 검토에 사용하는 IANA 원본의 SHA-256과 URL이다.
+ebff425bb1acbbea29c4f28146930873faddd5ee57260e95b57ed9e04ea21dd8 https://www.iana.org/assignments/ipv6-unicast-address-assignments/ipv6-unicast-address-assignments.csv
+775feea0621dec8735a44fbf30f762e721e8f0a1b3ab7eb341961a88cfce2139 https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry-1.csv
+e3e39e76d00b1677335db8e9a805c7b9480ea2f4dc9e33f0b93cd3a905128d73 https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry-1.csv

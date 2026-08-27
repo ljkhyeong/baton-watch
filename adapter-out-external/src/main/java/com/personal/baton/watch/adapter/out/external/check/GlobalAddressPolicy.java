@@ -16,6 +16,7 @@ public final class GlobalAddressPolicy {
      * 2025-10-10 일자의 IANA 레지스트리 스냅샷에 등재된, 할당된 공개 IPv6 글로벌 유니캐스트
      * 접두사다. 미등재 범위와 향후 할당은 검토되기 전까지 실패 폐쇄 방식으로 거부한다.
      * IANA 프로토콜 할당과 6to4는 의도적으로 제외했다.
+     * 월간 드리프트 작업이 원본 레지스트리 변경을 감지하면 정책과 경계 테스트를 수동 검토한다.
      * 출처: https://www.iana.org/assignments/ipv6-unicast-address-assignments/
      */
     private static final List<Cidr> ALLOCATED_PUBLIC_IPV6 = List.of(
