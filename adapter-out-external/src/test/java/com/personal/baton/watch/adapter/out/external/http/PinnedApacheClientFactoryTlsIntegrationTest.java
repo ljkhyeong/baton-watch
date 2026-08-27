@@ -6,7 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.sun.net.httpserver.HttpsConfigurator;
 import com.sun.net.httpserver.HttpsExchange;
 import com.sun.net.httpserver.HttpsServer;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetAddress;
@@ -14,7 +13,6 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
-import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -22,16 +20,15 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.ExtendedSSLSession;
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SNIHostName;
 import javax.net.ssl.SNIServerName;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
-import javax.net.ssl.TrustManagerFactory;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.ssl.SSLContexts;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,25 +122,22 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
     }
 
     private static KeyStore loadServerKeyStore() throws Exception {
-        try (InputStream input = PinnedApacheClientFactoryTlsIntegrationTest.class
-                .getResourceAsStream("/tls/pinned-host-server.p12.base64")) {
-            byte[] encoded = Objects.requireNonNull(input, "TLS test key store resource")
-                    .readAllBytes();
-            byte[] keyStoreBytes = Base64.getMimeDecoder().decode(encoded);
+        InputStream encoded = Objects.requireNonNull(
+                PinnedApacheClientFactoryTlsIntegrationTest.class
+                        .getResourceAsStream("/tls/pinned-host-server.p12.base64"),
+                "TLS test key store resource");
+        try (InputStream decoded = Base64.getMimeDecoder().wrap(encoded)) {
             KeyStore keyStore = KeyStore.getInstance("PKCS12");
-            keyStore.load(new ByteArrayInputStream(keyStoreBytes), KEYSTORE_PASSWORD);
+            keyStore.load(decoded, KEYSTORE_PASSWORD);
             return keyStore;
         }
     }
 
     private static SSLContext serverContext(KeyStore keyStore)
             throws GeneralSecurityException {
-        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance(
-                KeyManagerFactory.getDefaultAlgorithm());
-        keyManagerFactory.init(keyStore, KEYSTORE_PASSWORD);
-        SSLContext context = SSLContext.getInstance("TLS");
-        context.init(keyManagerFactory.getKeyManagers(), null, new SecureRandom());
-        return context;
+        return SSLContexts.custom()
+                .loadKeyMaterial(keyStore, KEYSTORE_PASSWORD)
+                .build();
     }
 
     private static SSLContext clientContext(KeyStore serverKeyStore)
@@ -152,12 +146,9 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
         trustStore.load(null, null);
         trustStore.setCertificateEntry(
                 KEY_ALIAS, Objects.requireNonNull(serverKeyStore.getCertificate(KEY_ALIAS)));
-        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(
-                TrustManagerFactory.getDefaultAlgorithm());
-        trustManagerFactory.init(trustStore);
-        SSLContext context = SSLContext.getInstance("TLS");
-        context.init(null, trustManagerFactory.getTrustManagers(), new SecureRandom());
-        return context;
+        return SSLContexts.custom()
+                .loadTrustMaterial(trustStore, null)
+                .build();
     }
 
     private static String requestedHostname(List<SNIServerName> serverNames) {
