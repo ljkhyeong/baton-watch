@@ -4,9 +4,12 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
-readonly TEMP_DIR="$(mktemp -d)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly BASE_CONFIG="$TEMP_DIR/base.json"
 readonly TUNNEL_CONFIG="$TEMP_DIR/tunnel.json"
 

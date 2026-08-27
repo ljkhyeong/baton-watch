@@ -4,12 +4,15 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly IMAGE_REVISION="${WATCH_TEST_IMAGE_REVISION:-$(git -C "$REPOSITORY_ROOT" rev-parse HEAD)}"
 readonly PROJECT_NAME="baton-watch-db-test-$$-${RANDOM}"
 readonly POSTGRES_VOLUME="${PROJECT_NAME}-postgres"
-readonly TEMP_DIR="$(mktemp -d)"
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"
 readonly RUNTIME_ROLE="baton_watch_runtime"
@@ -50,6 +53,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 runtime_psql() {
+    # shellcheck disable=SC2016
     staging_compose run --rm --no-deps -T \
         --entrypoint /opt/watch/run-as-database-user.sh \
         --env PGUSER="$RUNTIME_ROLE" \

@@ -40,6 +40,9 @@ jobs:
       - name: Require Docker
         run: docker version
 
+      - name: Validate shell scripts
+        run: shellcheck ops/*.sh ops/tests/*.sh
+
       - name: Run clean verification
         run: ./gradlew clean test --no-daemon --no-build-cache
 

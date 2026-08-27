@@ -4,9 +4,12 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
-readonly TEMP_DIR="$(mktemp -d)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly RUNTIME_PRIVILEGES_CALLBACK="$REPOSITORY_ROOT/ops/flyway/afterMigrate__runtime_privileges.sql"
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"

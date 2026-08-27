@@ -83,11 +83,13 @@ configure_runtime_role() {
 
     {
         printf 'BEGIN;\n'
+        # shellcheck disable=SC2016
         printf 'DO $watch$\nBEGIN\n'
         printf "  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '%s') THEN\n" \
             "$WATCH_DB_RUNTIME_USER"
         printf "    EXECUTE 'CREATE ROLE %s LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS';\n" \
             "$WATCH_DB_RUNTIME_USER"
+        # shellcheck disable=SC2016
         printf '  END IF;\nEND\n$watch$;\n'
         printf "ALTER ROLE %s LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 32 VALID UNTIL 'infinity';\n" \
             "$WATCH_DB_RUNTIME_USER"
@@ -96,6 +98,7 @@ configure_runtime_role() {
             "$WATCH_DB_RUNTIME_USER" "$PGDATABASE"
         printf 'ALTER ROLE %s SET search_path TO pg_catalog, public;\n' \
             "$WATCH_DB_RUNTIME_USER"
+        # shellcheck disable=SC2016
         printf 'DO $watch$\nDECLARE\n  runtime_role_oid OID;\nBEGIN\n'
         printf "  SELECT oid INTO STRICT runtime_role_oid FROM pg_roles WHERE rolname = '%s';\n" \
             "$WATCH_DB_RUNTIME_USER"
@@ -104,6 +107,7 @@ configure_runtime_role() {
         printf '  END IF;\n'
         printf "  IF EXISTS (SELECT 1 FROM pg_shdepend WHERE refclassid = 'pg_authid'::regclass AND refobjid = runtime_role_oid AND deptype = 'o') THEN\n"
         printf "    RAISE EXCEPTION 'runtime database role must not own database objects';\n"
+        # shellcheck disable=SC2016
         printf '  END IF;\nEND\n$watch$;\n'
         printf 'REVOKE CREATE ON SCHEMA public FROM PUBLIC;\n'
         printf 'REVOKE TEMPORARY ON DATABASE %s FROM PUBLIC;\n' "$PGDATABASE"

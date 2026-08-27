@@ -4,10 +4,13 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly SCRIPT="$REPOSITORY_ROOT/ops/staging-event-delivery-preflight.sh"
-readonly TEMP_DIR="$(mktemp -d)"
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly FAKE_BIN="$TEMP_DIR/bin"
 readonly CURL_CALLS="$TEMP_DIR/curl-calls"
 
