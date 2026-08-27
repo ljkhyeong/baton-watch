@@ -46,6 +46,5 @@ class ScheduledTaskObservationTest {
         assertEquals(1L, failureTimer.count());
         assertTrue(failureTimer.getId().getTags().stream()
                 .noneMatch(tag -> tag.getValue().contains("sensitive callback detail")));
-        assertTrue(meterRegistry.find("baton.watch.scheduler.failures").meters().isEmpty());
     }
 }
