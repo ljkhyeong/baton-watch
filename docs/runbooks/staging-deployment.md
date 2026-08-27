@@ -2,7 +2,7 @@
 
 상태: 운영자용 실행 절차서이며, 저장소 산출물은 실제 배포의 증거가 아님
 
-최종 수정일: 2026-08-14
+최종 수정일: 2026-08-27
 
 ## 목적과 현재 경계
 
@@ -49,7 +49,10 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   이미지의 일회성 `database-role-init`가 런타임 역할을 설정하고,
   일회성 `migrate`가 소유자 자격 증명으로 Flyway를 완료한 뒤에만
   WATCH가 런타임 역할로 시작합니다. 역할 초기화에 워크트리 바인드
-  마운트를 사용하지 않습니다.
+  마운트를 사용하지 않습니다. 데이터베이스 작업·마이그레이션 컨테이너는 시작
+  직후 root만 읽을 수 있는 Compose 비밀을 각자의 tmpfs로 복사한 뒤 UID 70과
+  UID 65532로 즉시 권한을 낮춥니다. 이 초기 전환에만 `CHOWN`, `SETGID`,
+  `SETUID` capability를 사용하며 SQL과 Flyway 실행은 비루트 주체가 담당합니다.
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 애플리케이션 테이블에
   필요한 DML만 사용하고 `flyway_schema_history`를 읽거나 변경할 수 없으며,
   `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접
@@ -255,10 +258,24 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 
 ## 정확한 로컬 리비전 빌드
 
-다이제스트로 고정된 PostgreSQL, Cloudflare Tunnel, Flyway 이미지를
-명시적으로 가져옵니다. 데이터베이스 작업·마이그레이션·WATCH 이미지는 세 개 모두
-`pull_policy: never`를 사용하므로 배포 중에 로컬에서 빌드한 SHA 태그 이미지를
-레지스트리 이미지로 몰래 대체할 수 없습니다.
+다이제스트로 고정된 PostgreSQL과 Cloudflare Tunnel 이미지는 Compose 정의를
+정본으로 삼아 가져옵니다. Flyway를 포함한 빌드 기반 이미지는 Dockerfile의
+다이제스트 고정값을 `docker build --pull`이 가져옵니다. 데이터베이스
+작업·마이그레이션·WATCH 이미지는 세 개 모두 `pull_policy: never`를 사용하므로
+배포 중에 로컬에서 빌드한 SHA 태그 이미지를 레지스트리 이미지로 몰래 대체할 수
+없습니다.
+
+모든 작업에서 터널 오버레이를 사용하도록 헬퍼 하나를 먼저 정의합니다.
+
+~~~bash
+staging_compose() {
+  docker compose \
+    --env-file "$STAGING_ENV_FILE" \
+    -f compose.staging.yml \
+    -f compose.staging-tunnel.yml \
+    "$@"
+}
+~~~
 
 ~~~bash
 VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
@@ -266,9 +283,7 @@ VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
 ./gradlew clean test :bootstrap:bootJar --no-daemon --no-build-cache
-docker pull postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
-docker pull cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
-docker pull flyway/flyway:12.4.0-alpine@sha256:b43c3d9b7227687682a9124451ac3dbc9b0003eca65290ad1dcda760345bc680
+staging_compose pull postgres cloudflared
 docker build --pull --target database-operations \
   --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
   --tag "$WATCH_DATABASE_OPERATIONS_IMAGE" \
@@ -295,23 +310,13 @@ test "$BUILT_MIGRATION_IMAGE_REVISION" = "$DEPLOY_SHA"
 이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `Verify` 워크플로가 성공했고
 전체 로컬 테스트 작업도 통과해야 합니다. `Verify`는 공식 SHA-256으로
 고정된 Gradle Wrapper, 고정된 GitHub Actions, PostgreSQL 통합 증거,
-`staging-compose-policy-test.sh`, `staging-database-operation-test.sh`를 검증합니다.
+`staging-compose-policy-test.sh`, `staging-database-operation-test.sh`,
+`staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션
+스모크를 검증합니다.
 Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
 업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
 사항이 남아 있는 작업 트리,
 `latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
-
-모든 작업에서 터널 오버레이를 사용하도록 헬퍼 하나를 정의합니다.
-
-~~~bash
-staging_compose() {
-  docker compose \
-    --env-file "$STAGING_ENV_FILE" \
-    -f compose.staging.yml \
-    -f compose.staging-tunnel.yml \
-    "$@"
-}
-~~~
 
 어떤 항목도 시작하기 전에 병합된 모델을 검증합니다.
 
