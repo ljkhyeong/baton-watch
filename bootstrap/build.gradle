@@ -27,4 +27,36 @@ jar {
 
 bootJar {
     archiveFileName = 'baton-watch.jar'
+    from(rootProject.file('LICENSE')) {
+        into 'META-INF'
+    }
+}
+
+def projectLicense = rootProject.layout.projectDirectory.file('LICENSE')
+def bootArchive = tasks.named('bootJar').flatMap { it.archiveFile }
+
+tasks.register('verifyBootJarLicense') {
+    dependsOn tasks.named('bootJar')
+    inputs.file(projectLicense)
+    inputs.file(bootArchive)
+
+    doLast {
+        new java.util.zip.ZipFile(bootArchive.get().asFile).withCloseable { archive ->
+            def licenseEntry = archive.getEntry('META-INF/LICENSE')
+            if (licenseEntry == null) {
+                throw new GradleException('bootJar에 META-INF/LICENSE가 없습니다.')
+            }
+
+            def packagedLicense = archive.getInputStream(licenseEntry).withCloseable { input ->
+                input.readAllBytes()
+            }
+            if (!Arrays.equals(projectLicense.asFile.bytes, packagedLicense)) {
+                throw new GradleException('bootJar의 META-INF/LICENSE가 저장소 LICENSE와 다릅니다.')
+            }
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyBootJarLicense')
 }
