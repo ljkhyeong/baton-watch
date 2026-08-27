@@ -206,10 +206,21 @@ stat -f '%Lp %N' "$STAGING_STATE_FILE"
 for DATABASE_SECRET_FILE in \
   "$STAGING_CONFIG_DIR/secrets/postgres-owner-password" \
   "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"; do
-  test "$(wc -l < "$DATABASE_SECRET_FILE" | tr -d ' ')" = 1
-  grep -Eq '^[A-Za-z0-9._~-]{32,200}$' "$DATABASE_SECRET_FILE"
+  DATABASE_SECRET_VALUE=
+  DATABASE_SECRET_EXTRA=
+  if [ ! -r "$DATABASE_SECRET_FILE" ] || ! {
+    IFS= read -r DATABASE_SECRET_VALUE \
+      && ! IFS= read -r DATABASE_SECRET_EXTRA \
+      && [ -z "$DATABASE_SECRET_EXTRA" ]
+  } < "$DATABASE_SECRET_FILE"; then
+    printf '%s\n' \
+      '데이터베이스 비밀 파일은 마지막 줄바꿈이 있는 정확히 한 줄이어야 합니다' >&2
+    exit 1
+  fi
+  printf '%s' "$DATABASE_SECRET_VALUE" \
+    | grep -Eq '^[A-Za-z0-9._~-]{32,200}$'
 done
-unset DATABASE_SECRET_FILE
+unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 ~~~
 
 각 `stat` 출력 줄은 `600`으로 시작해야 합니다. 환경 템플릿 파일에는
@@ -218,8 +229,9 @@ unset DATABASE_SECRET_FILE
 비밀값이 아닌 할당 하나로 선택하며, 셸에 내보낸 값이 환경 템플릿의 초기 값보다
 우선합니다. 두 파일 중 어느 것도 셸에서
 실행하지 않고 해당 값을 읽어 검증합니다. 데이터베이스 비밀 검사는 파일
-값을 터미널에 출력하지 않으며, 일회성 역할 초기화와 마이그레이션 스크립트도
-같은 문법을 다시 검증합니다.
+값을 터미널에 출력하지 않습니다. 각 파일은 마지막 줄바꿈이 있는 정확히 한 줄만
+허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
+초기화와 마이그레이션 스크립트도 같은 문법과 파일 경계를 다시 검증합니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -282,7 +294,7 @@ VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
   --workflow Verify --commit "$DEPLOY_SHA" --status success --limit 20 \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
-./gradlew clean test :bootstrap:bootJar --no-daemon --no-build-cache
+./gradlew clean test --no-daemon --no-build-cache
 staging_compose pull postgres cloudflared
 docker build --pull --target database-operations \
   --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
@@ -312,7 +324,8 @@ test "$BUILT_MIGRATION_IMAGE_REVISION" = "$DEPLOY_SHA"
 고정된 Gradle Wrapper, 고정된 GitHub Actions, PostgreSQL 통합 증거,
 `staging-compose-policy-test.sh`, `staging-database-operation-test.sh`,
 `staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션
-스모크를 검증합니다.
+스모크를 검증합니다. 호스트 Gradle 실행은 전체 테스트를 소유하고, 최종 WATCH
+Docker 이미지 빌드는 이미지에 포함할 실행 가능한 부트 JAR 생성을 소유합니다.
 Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
 업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
 사항이 남아 있는 작업 트리,

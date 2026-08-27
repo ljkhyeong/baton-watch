@@ -24,7 +24,7 @@
 - 어댑터 소유 영속성 트랜잭션에는 기본 5초이며 1~30초로 제한되는 JDBC 구문·트랜잭션 기한과 트랜잭션 로컬 1초 PostgreSQL 행 잠금 제한 시간이 적용된다. 작업 시작 전에 기존 외부 Spring 트랜잭션을 거부하여 네트워크 I/O를 트랜잭션 밖에 두는 경계를 보존한다.
 - Boot의 공유 `JdbcTemplate`과 자동 구성된 `JdbcClient`는 `WATCH_PERSISTENCE_QUERY_TIMEOUT`의 기본 5초 구문 제한을 비트랜잭션 프로젝션·백로그 조회에도 적용한다. 검증된 WATCH 데이터베이스 설정이 실제 `HikariDataSource`를 직접 구성하므로 별도 `spring.datasource.hikari.*` 설정은 상한을 우회하지 못한다. HikariCP 풀은 최대 32개, 연결·검증은 최대 30초, 유휴·생존 확인은 최대 30분, 최대 수명은 60분, 초기화 실패는 최대 30초로 제한하고 상호 크기 관계도 검증한다. pgJDBC 연결·로그인·취소는 최대 30초, 소켓은 최대 120초이며 TCP keepalive는 불리언만 허용한다. JDBC URL은 계층형 PostgreSQL 형식과 테스트 연결의 `loggerLevel=OFF`만 허용하여 URL 속성이 드라이버 상한을 덮어쓸 수 없게 한다. 점검과 전달 리스는 연결 획득 뒤 선점 트랜잭션의 `transaction_timestamp()`를 기준으로 하며, 시각에 더하거나 빼는 양의 설정 기간은 365일, 전달 재시도는 30일 상한을 적용한다.
 - 별도 포트의 Actuator 상태·Prometheus 엔드포인트와 낮은 카디널리티의 `baton.watch.check.attempts{outcome}`·`baton.watch.check.duration{outcome}` 점검 메트릭, 스케줄러·백로그·가장 오래된 미전달 이벤트의 경과 시간·완료 처리·전달 결과 텔레메트리가 구성되어 있으며, Compose는 관리 포트를 공개하지 않는다. 외부 알림 스택, 프런트엔드, 브로커, 운영 배포는 존재하지 않는다. 스케줄러 오류는 Spring `tasks.scheduled.execution` 타이머를 사용하며, 실패는 비식별화 핸들러가 클래스만 기록하고 고정 지연 작업을 계속 예약하기 전에 해당 관측에 도달한다. 저장소 내 소비자가 없는 중복 WATCH 소유 스케줄러 실패 카운터는 제거되었다. 관리 허용 목록은 정확히 `health,prometheus`로 유지되며, Spring 내부 작업 진단이 원본 예외를 보유하므로 `scheduledtasks`는 노출하지 않는다.
-- GitHub Actions `Verify` 작업은 전체 SHA로 고정된 공식 checkout·Java·Gradle 액션을 사용하고, 공식 SHA-256으로 고정된 Gradle Wrapper를 검증하며, Docker를 요구하고 캐시 없는 깨끗한 테스트·빌드를 실행한다. 필수 PostgreSQL·운영 루트 컨텍스트 실행 증거, 스테이징 Compose 정책, 빠른 역할 초기화·마이그레이션 생성 검사, 전달 사전검사 호출 계약과 실제 PostgreSQL 역할·마이그레이션 스모크를 실패 폐쇄 방식으로 요구한다. Jackson 3.1.5, Apache HttpClient 5.6.3, pgJDBC 42.7.12를 명시적으로 고정했고 Gradle·GitHub Actions·Docker 주간 Dependabot 설정을 추가했다.
+- GitHub Actions `Verify` 작업은 전체 SHA로 고정된 공식 checkout·Java·Gradle 액션을 사용하고, 공식 SHA-256으로 고정된 Gradle Wrapper를 검증하며 Docker를 요구한다. 호스트 Gradle 실행은 캐시 없는 깨끗한 전체 테스트를, 최종 WATCH Docker 이미지 빌드는 실행 가능한 부트 JAR 생성을 소유한다. 필수 PostgreSQL·운영 루트 컨텍스트 실행 증거, 스테이징 Compose 정책, 빠른 역할 초기화·마이그레이션 생성 검사, 전달 사전검사 호출 계약과 실제 PostgreSQL 역할·마이그레이션 스모크를 실패 폐쇄 방식으로 요구한다. Jackson 3.1.5, Apache HttpClient 5.6.3, pgJDBC 42.7.12를 명시적으로 고정했고 Gradle·GitHub Actions·Docker 주간 Dependabot 설정을 추가했다.
 - 기본 GitHub 저장소는 공개 상태다. `main`은 앱 ID `15368`의 GitHub Actions `verify` 검사를 엄격히 요구하고 관리자에게도 적용하며, 단독 저장소 리뷰를 요구하지 않는 대신 강제 푸시와 브랜치 삭제를 금지한다.
 - 저장소 Actions 정책은 GitHub 소유 액션과 전체 SHA로 고정된 `gradle/actions/setup-gradle` 액션만 허용하고, 전체 커밋 SHA 참조를 요구하며, 기본 워크플로 토큰을 읽기 전용으로 유지하고, 외부 기여자의 포크 워크플로 실행 전에 승인을 요구한다. 비밀값 검사와 푸시 보호가 활성화되어 있으며 열린 비밀값 경고는 없다.
 - 공개 저장소는 작성자·커미터 이메일을 정규화한 이력에서만 생성되었다. 이전 저장소 식별자는 비공개 이력 전용 보관본으로 남아 있으며, 재작성 전 대표 커밋 SHA는 공개 저장소 API에서 확인할 수 없다.
@@ -33,7 +33,7 @@
 
 ## 검증
 
-- Gradle 9.2.1에서 `./gradlew --no-daemon clean test :bootstrap:bootJar --no-build-cache`를 재실행했다. 전체 341개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 19개, `adapter-out-external` 203개, `adapter-out-persistence` 36개, `bootstrap` 53개다.
+- Gradle 9.2.1에서 `./gradlew clean test --no-daemon --no-build-cache`를 재실행했다. 전체 341개가 실패·오류·건너뜀 없이 통과했고, 모듈별로 `domain` 8개, `application` 22개, `adapter-in-web` 19개, `adapter-out-external` 203개, `adapter-out-persistence` 36개, `bootstrap` 53개다. 이어서 데이터베이스 작업·마이그레이션·WATCH 이미지를 빌드했으며, 최종 WATCH 이미지의 Docker 빌드 단계에서 `:bootstrap:bootJar`가 통과했다.
 - 실제 `BatonWatchApplication` 루트 컨텍스트가 Flyway V1/V2/V3, Spring Security, 영속성 어댑터 3개, 아웃바운드 점검·전달 클라이언트, 활성화된 전달 워커, 이름이 지정된 스케줄러 3개와 함께 서비스 연결된 PostgreSQL 18.4 컨테이너를 대상으로 시작됐다. HTTP 스모크는 공개 상태 접근, 쓰기 없는 미인증 PUT 거부, 인증된 `INACTIVE` 동기화, 인증된 프로젝션 재조회, 시도나 이벤트가 없는 영속 `UNKNOWN`/`INACTIVE` 행을 증명했다.
 - CI와 동일한 결과 증거 파서가 필수 PostgreSQL 모음과 운영 루트 스모크가 누락·건너뜀·실패 없이 실행됐음을 검증했다.
 - 공개 저장소 커밋 `f5502a7`의 첫 번째 깨끗한 `Verify / verify` 실행은 Docker 사전 검사, 캐시 없는 깨끗한 테스트, 부트 JAR 생성, 필수 테스트 모음 증거 검증을 포함한 모든 단계를 1분 32초에 통과했다.
@@ -57,7 +57,7 @@
 - 모니터 API 인증 경계는 비어 있지 않은 서블릿 컨텍스트 경로에서 실제 내장 서버 테스트를 갖는다. Bearer 챌린지, 정확한 `401` 문제 필드, 실패 폐쇄형 `/api/v1/**` 처리, 무상태성, 공개 상태 접근, CSRF 없는 인증 PUT을 검증한다. 같은 서버 테스트는 엄격한 방화벽이 세미콜론·중복 슬래시 경로를 거부할 때 거부된 경로나 리소스 참조를 노출하지 않는 고정 비식별화 HTTP `400` 문제를 반환함을 확인한다. 범위를 좁힌 예외 핸들러 테스트는 커밋된 응답이 Spring의 원본 예외 메시지 대체 로그를 유발할 수 없음을 증명한다.
 - 스테이징 Compose 산출물은 `compose.staging.yml`, `compose.staging-tunnel.yml`, `ops/staging.env.example`로 제공된다. 병합 구성은 두 모드 모두 호스트 포트를 공개하지 않으면서 불변 데이터베이스 작업·마이그레이션·WATCH 이미지 세 개, 외부 PostgreSQL 볼륨, 파일 기반 비밀값 4개를 요구하도록 설계됐다. 이는 정적 산출물 증거일 뿐이며, 실제 Cloudflare 커넥터나 외부 엔드포인트 테스트는 아직 통과하지 않았다.
 - 실행 가능한 PostgreSQL 18.4 격리 스모크에서 배포용 데이터베이스 작업·마이그레이션 이미지를 통해 Flyway 버전 `1,2,3`을 적용했다. 런타임 역할의 `TEMPORARY`/모니터 조회/`flyway_schema_history` 조회/백로그 요약 직접 변경/백로그 함수 직접 실행 권한은 각각 `f|t|f|f|f`였고, 런타임 이벤트 쓰기에 따른 보호된 트리거 경로는 백로그 `1`을 정상 반영했다. V3 함수는 모든 `public` 객체를 완전 수식하고 `search_path=pg_catalog,pg_temp`를 고정하며 `PUBLIC EXECUTE`를 회수한다. 싱글턴 행을 먼저 잠근 뒤 READ COMMITTED의 새 문장에서 요약을 갱신하고 필요한 경우 최소 시각을 재집계하여 동시 변경의 정확성을 유지한다.
-- 실행 가능한 스테이징 Compose 정책 및 데이터베이스 작업 테스트가 기본·터널 렌더링, 네 역할·비밀 경계, 일회성 서비스 순서, 비밀값 비식별화를 검증했다. 실제 스모크의 테스트 컨테이너·네트워크·볼륨과 임시 비밀 파일은 범위를 좁혀 제거했고, 검증에 사용한 로컬 SHA 태그 이미지는 유지했다. 이는 로컬 데이터베이스·오리진 경로만 증명하며 Cloudflare 커넥터나 공개 배포를 증명하지 않는다.
+- 실행 가능한 스테이징 Compose 정책 및 데이터베이스 작업 테스트가 기본·터널 렌더링, 네 역할·비밀 경계, 일회성 서비스 순서, 비밀값 비식별화를 검증했다. 데이터베이스 비밀 파일은 마지막 줄바꿈이 있는 정확히 한 줄만 허용하며 빈 둘째 줄과 마지막 줄바꿈이 없는 추가 내용도 거부한다. 실제 스모크의 테스트 컨테이너·네트워크·볼륨·임시 비밀 파일과 이번 검증용 일회성 이미지 태그는 범위를 좁혀 제거했다. 이는 로컬 데이터베이스·오리진 경로만 증명하며 Cloudflare 커넥터나 공개 배포를 증명하지 않는다.
 
 ## 다음 권장 작업
 
