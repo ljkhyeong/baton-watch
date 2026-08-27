@@ -97,10 +97,12 @@ fi
 printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/postgres-owner-password"
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/postgres-runtime-password"
 printf '%s\n' 'watch-api-token-0123456789-abcdef' > "$TEMP_DIR/watch-api-token"
+printf '%s\n' 'cloudflare-tunnel-token-permission-smoke' > "$TEMP_DIR/cloudflare-tunnel-token"
 chmod 0600 \
     "$TEMP_DIR/postgres-owner-password" \
     "$TEMP_DIR/postgres-runtime-password" \
     "$TEMP_DIR/watch-api-token"
+chmod 0444 "$TEMP_DIR/cloudflare-tunnel-token"
 
 for image in \
     "baton-watch-database-operations:${IMAGE_REVISION}" \
@@ -110,6 +112,17 @@ for image in \
         fail "필수 테스트 이미지가 없습니다: $image"
     fi
 done
+
+if ! docker run --rm \
+        --user 65532:65532 \
+        --cap-drop ALL \
+        --read-only \
+        --mount "type=bind,src=$TEMP_DIR/cloudflare-tunnel-token,dst=/run/secrets/cloudflare-tunnel-token,readonly" \
+        --entrypoint /bin/sh \
+        "baton-watch-database-operations:${IMAGE_REVISION}" \
+        -c 'test -r /run/secrets/cloudflare-tunnel-token && test -s /run/secrets/cloudflare-tunnel-token'; then
+    fail "Cloudflared 비루트 UID가 터널 토큰 파일을 읽을 수 없습니다"
+fi
 
 docker volume create "$POSTGRES_VOLUME" >/dev/null
 staging_compose up -d --wait postgres

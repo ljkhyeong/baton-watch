@@ -178,6 +178,10 @@ assert_digest_pinned(
     "cloudflare/cloudflared",
     "cloudflared",
 )
+require(
+    cloudflared.get("user") == "65532:65532",
+    "cloudflared must retain its fixed non-root user",
+)
 assert_digest_pinned(postgres.get("image", ""), "postgres", "PostgreSQL")
 require(
     database_role_init.get("image")
