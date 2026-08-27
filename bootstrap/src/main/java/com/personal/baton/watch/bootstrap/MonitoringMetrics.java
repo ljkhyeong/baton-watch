@@ -25,12 +25,19 @@ final class MonitoringMetrics {
     private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
 
     private final MeterRegistry registry;
+    private final AtomicLong inFlightChecks = new AtomicLong();
     private final AtomicLong maximumCheckScheduleDelaySeconds = new AtomicLong();
     private final AtomicLong eventDeliveryBacklog = new AtomicLong();
     private final AtomicLong oldestEventAgeSeconds = new AtomicLong();
 
     MonitoringMetrics(MeterRegistry registry) {
         this.registry = registry;
+        Gauge.builder(
+                        "baton.watch.check.inflight",
+                        inFlightChecks,
+                        AtomicLong::get)
+                .description("현재 실행 중인 URL 점검 수")
+                .register(registry);
         Gauge.builder(
                         "baton.watch.check.schedule.delay",
                         maximumCheckScheduleDelaySeconds,
@@ -39,12 +46,20 @@ final class MonitoringMetrics {
                 .description("최근 점검 배치에서 선점한 작업의 최대 일정 지연")
                 .register(registry);
         Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
-                .description("Health-change events that are not yet delivered")
+                .description("아직 전달되지 않은 상태 변경 이벤트 수")
                 .register(registry);
         Gauge.builder("baton.watch.event.delivery.oldest.age", oldestEventAgeSeconds, AtomicLong::get)
                 .baseUnit("seconds")
-                .description("Age of the oldest undelivered health-change event")
+                .description("가장 오래된 미전달 상태 변경 이벤트의 경과 시간")
                 .register(registry);
+    }
+
+    void checkStarted() {
+        inFlightChecks.incrementAndGet();
+    }
+
+    void checkFinished() {
+        inFlightChecks.decrementAndGet();
     }
 
     void recordCheckBatch(DueCheckBatchResult result) {

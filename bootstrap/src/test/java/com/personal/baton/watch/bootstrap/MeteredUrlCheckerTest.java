@@ -21,18 +21,23 @@ class MeteredUrlCheckerTest {
     @Test
     void recordsBoundedOutcomeAndDurationWithoutTargetData() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
         CheckObservation expected = CheckObservation.forHttpStatus(
                 204,
                 Duration.ofMillis(37),
                 123,
                 0);
         MeteredUrlChecker checker = new MeteredUrlChecker(
-                ignored -> expected,
-                new MonitoringMetrics(registry));
+                ignored -> {
+                    assertEquals(1.0, registry.get("baton.watch.check.inflight").gauge().value());
+                    return expected;
+                },
+                metrics);
 
         CheckObservation actual = checker.check(TARGET);
 
         assertSame(expected, actual);
+        assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
         assertEquals(
                 1.0,
                 registry.get("baton.watch.check.attempts")
@@ -63,6 +68,7 @@ class MeteredUrlCheckerTest {
         CheckObservation observation = checker.check(TARGET);
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
         assertEquals(
                 1.0,
                 registry.get("baton.watch.check.attempts")

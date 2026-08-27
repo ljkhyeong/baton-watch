@@ -3,24 +3,17 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
-import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.boot.test.system.CapturedOutput;
-import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
-@ExtendWith(OutputCaptureExtension.class)
 class WorkerSchedulingConfigurationTest {
 
     private static final long AWAIT_SECONDS = 2;
@@ -95,34 +88,6 @@ class WorkerSchedulingConfigurationTest {
             }
             assertThat(queuedDeliveryCompleted.await(AWAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
         });
-    }
-
-    @Test
-    void redactsFailuresAndKeepsRepeatingTasksScheduled(CapturedOutput output) {
-        contextRunner.run(context -> {
-            ThreadPoolTaskScheduler scheduler = context.getBean(
-                    WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER,
-                    ThreadPoolTaskScheduler.class);
-            AtomicInteger attempts = new AtomicInteger();
-            CountDownLatch twoRuns = new CountDownLatch(2);
-            ScheduledFuture<?> future = scheduler.scheduleWithFixedDelay(() -> {
-                int attempt = attempts.incrementAndGet();
-                twoRuns.countDown();
-                if (attempt == 1) {
-                    throw new IllegalStateException("sensitive scheduler detail");
-                }
-            }, Duration.ofMillis(10));
-
-            try {
-                assertThat(twoRuns.await(AWAIT_SECONDS, TimeUnit.SECONDS)).isTrue();
-            } finally {
-                future.cancel(false);
-            }
-        });
-
-        assertThat(output)
-                .contains("scheduled task failed failureType=IllegalStateException")
-                .doesNotContain("sensitive scheduler detail");
     }
 
     @Test

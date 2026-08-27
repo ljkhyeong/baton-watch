@@ -22,6 +22,8 @@ class MonitoringMetricsTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
+        assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
+
         metrics.recordCheckBatch(new DueCheckBatchResult(
                 3,
                 1,
