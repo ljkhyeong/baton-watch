@@ -97,6 +97,9 @@ jobs:
       - name: Validate staging database operations
         run: ./ops/tests/staging-database-operation-test.sh
 
+      - name: Validate staging event delivery preflight
+        run: ./ops/tests/staging-event-delivery-preflight-test.sh
+
       - name: Build pinned runtime images
         run: |
           docker build --target database-operations --tag baton-watch-database-operations:verify .
