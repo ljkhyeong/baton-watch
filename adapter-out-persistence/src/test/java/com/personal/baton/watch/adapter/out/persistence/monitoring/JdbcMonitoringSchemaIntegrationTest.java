@@ -55,6 +55,37 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
     }
 
     @Test
+    void maintenanceIndexesMatchTheClaimAndRetentionAccessPaths() {
+        String deliveryDueIndex = jdbc.queryForObject(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = ?
+                """,
+                String.class,
+                "ix_watch_health_event_delivery_due");
+        String monitorLeaseIndex = jdbc.queryForObject(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = ?
+                """,
+                String.class,
+                "ix_watch_monitor_lease_attempt");
+
+        assertThat(deliveryDueIndex)
+                .contains("(next_attempt_at, changed_at, event_id)")
+                .contains("INCLUDE (delivery_lease_expires_at)")
+                .contains("delivery_status")
+                .contains("'PENDING'");
+        assertThat(monitorLeaseIndex)
+                .contains("(lease_attempt_id)")
+                .contains("lease_attempt_id IS NOT NULL");
+    }
+
+    @Test
     void laterMigrationsMakeExistingOutboxEventsPendingDueAndSummarized() {
         Flyway versionOne = Flyway.configure()
                 .dataSource(testDataSource)
