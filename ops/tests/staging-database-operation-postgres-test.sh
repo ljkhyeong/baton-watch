@@ -69,6 +69,20 @@ owner_psql() {
         --dbname "$DATABASE_NAME"
 }
 
+assert_runtime_rejects() {
+    local case_name="$1"
+    local sql="$2"
+    local output="$TEMP_DIR/${case_name}-output"
+
+    if printf '\\set VERBOSITY verbose\n%s\n' "$sql" \
+            | runtime_psql >"$output" 2>&1; then
+        fail "런타임 역할이 금지된 ${case_name} 변경을 허용했습니다"
+    fi
+    if ! grep -Fq '42501' "$output"; then
+        fail "런타임 역할의 ${case_name} 거부가 권한 오류가 아닙니다"
+    fi
+}
+
 if [[ ! "$IMAGE_REVISION" =~ ^[0-9a-f]{40}$ ]]; then
     fail "테스트 이미지 리비전은 전체 Git SHA여야 합니다"
 fi
@@ -103,8 +117,8 @@ migration_evidence="$(
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$migration_evidence" != "1,2,3" ]]; then
-    fail "Flyway V1~V3 적용 증거가 올바르지 않습니다"
+if [[ "$migration_evidence" != "1,2,3,4" ]]; then
+    fail "Flyway V1~V4 적용 증거가 올바르지 않습니다"
 fi
 
 privilege_evidence="$(
@@ -112,13 +126,21 @@ privilege_evidence="$(
         "SELECT concat_ws('|'," \
         "  has_database_privilege('${RUNTIME_ROLE}', current_database(), 'TEMPORARY')," \
         "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_monitor', 'SELECT')," \
+        "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_monitor', 'DELETE')," \
+        "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_attempt', 'DELETE')," \
+        "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_attempt', 'claimed_at', 'UPDATE')," \
+        "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_result', 'INSERT')," \
+        "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_result', 'outcome', 'UPDATE')," \
+        "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'DELETE')," \
+        "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'changed_at', 'UPDATE')," \
+        "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'delivery_status', 'UPDATE')," \
         "  has_table_privilege('${RUNTIME_ROLE}', 'public.flyway_schema_history', 'SELECT')," \
         "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event_backlog', 'UPDATE')," \
         "  has_function_privilege('${RUNTIME_ROLE}', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" \
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$privilege_evidence" != "f|t|f|f|f" ]]; then
+if [[ "$privilege_evidence" != "f|t|f|t|f|t|f|t|f|t|f|f|f" ]]; then
     fail "런타임 역할의 최소 권한 증거가 올바르지 않습니다"
 fi
 
@@ -152,6 +174,89 @@ backlog_evidence="$(
 )"
 if [[ "$backlog_evidence" != "1" ]]; then
     fail "런타임 이벤트 쓰기의 보호된 백로그 갱신 증거가 올바르지 않습니다"
+fi
+
+printf '%s\n' \
+    "INSERT INTO public.watch_attempt (" \
+    "  attempt_id, resource_reference, source_revision, target_url," \
+    "  lease_token, claimed_at, lease_expires_at" \
+    ") VALUES (" \
+    "  '00000000-0000-0000-0000-000000000010', 'ops-runtime-smoke', 1," \
+    "  'https://runtime-smoke.example/path'," \
+    "  '00000000-0000-0000-0000-000000000011'," \
+    "  transaction_timestamp() - INTERVAL '1 second'," \
+    "  transaction_timestamp() + INTERVAL '1 minute'" \
+    ");" \
+    "INSERT INTO public.watch_result (" \
+    "  attempt_id, outcome, http_status_code, completed_at," \
+    "  duration_seconds, duration_nanos, response_bytes, redirect_count" \
+    ") VALUES (" \
+    "  '00000000-0000-0000-0000-000000000010', 'SUCCESS', 204," \
+    "  transaction_timestamp(), 0, 0, 0, 0" \
+    ");" \
+    "INSERT INTO public.watch_health_change_event (" \
+    "  event_id, resource_reference, source_revision, attempt_id," \
+    "  previous_health, current_health, changed_at," \
+    "  delivery_status, delivery_attempt, next_attempt_at" \
+    ") VALUES (" \
+    "  '00000000-0000-0000-0000-000000000020', 'ops-runtime-smoke', 1, NULL," \
+    "  'HEALTHY', 'UNKNOWN', transaction_timestamp()," \
+    "  'PENDING', 0, transaction_timestamp()" \
+    ");" \
+    "UPDATE public.watch_monitor" \
+    "SET updated_at = transaction_timestamp()" \
+    "WHERE resource_reference = 'ops-runtime-smoke';" \
+    "UPDATE public.watch_health_change_event" \
+    "SET delivery_attempt = delivery_attempt + 1," \
+    "    delivery_lease_token = '00000000-0000-0000-0000-000000000021'," \
+    "    delivery_lease_expires_at = next_attempt_at + INTERVAL '1 minute'" \
+    "WHERE event_id = '00000000-0000-0000-0000-000000000020';" \
+    "UPDATE public.watch_health_change_event" \
+    "SET delivery_status = 'DELIVERED'," \
+    "    next_attempt_at = NULL," \
+    "    delivery_lease_token = NULL," \
+    "    delivery_lease_expires_at = NULL," \
+    "    delivered_at = transaction_timestamp()," \
+    "    last_delivery_outcome = 'DELIVERED'," \
+    "    last_http_status_code = 204" \
+    "WHERE event_id = '00000000-0000-0000-0000-000000000020';" \
+    | runtime_psql \
+    >/dev/null
+
+assert_runtime_rejects \
+    "attempt-update" \
+    "UPDATE public.watch_attempt SET target_url = target_url WHERE attempt_id = '00000000-0000-0000-0000-000000000010';"
+assert_runtime_rejects \
+    "result-update" \
+    "UPDATE public.watch_result SET outcome = outcome WHERE attempt_id = '00000000-0000-0000-0000-000000000010';"
+assert_runtime_rejects \
+    "event-payload-update" \
+    "UPDATE public.watch_health_change_event SET changed_at = changed_at WHERE event_id = '00000000-0000-0000-0000-000000000001';"
+
+printf '%s\n' \
+    "DELETE FROM public.watch_health_change_event" \
+    "WHERE event_id = '00000000-0000-0000-0000-000000000020';" \
+    "DELETE FROM public.watch_attempt" \
+    "WHERE attempt_id = '00000000-0000-0000-0000-000000000010';" \
+    | runtime_psql \
+    >/dev/null
+
+retention_evidence="$(
+    printf '%s\n' \
+        "SELECT concat_ws('|'," \
+        "  (SELECT COUNT(*) FROM public.watch_attempt" \
+        "   WHERE attempt_id = '00000000-0000-0000-0000-000000000010')," \
+        "  (SELECT COUNT(*) FROM public.watch_result" \
+        "   WHERE attempt_id = '00000000-0000-0000-0000-000000000010')," \
+        "  (SELECT COUNT(*) FROM public.watch_health_change_event" \
+        "   WHERE event_id = '00000000-0000-0000-0000-000000000020')," \
+        "  (SELECT pending_count FROM public.watch_health_change_event_backlog" \
+        "   WHERE singleton));" \
+        | owner_psql \
+        | tr -d '[:space:]'
+)"
+if [[ "$retention_evidence" != "0|0|0|1" ]]; then
+    fail "런타임 역할의 허용된 보존 DML 또는 백로그 증거가 올바르지 않습니다"
 fi
 
 staging_compose up -d --wait --no-deps watch

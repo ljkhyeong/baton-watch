@@ -114,8 +114,12 @@ grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public R
 grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE ALL ON SEQUENCES FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
 grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE ALL ON FUNCTIONS FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
 grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO baton_watch_runtime' "$TEMP_DIR/role.sql"
 grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC' "$TEMP_DIR/role.sql"
+if grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public GRANT' \
+        "$TEMP_DIR/role.sql"; then
+    printf '[staging-database-operation-test] 새 객체에 런타임 기본 권한을 부여했습니다\n' >&2
+    exit 1
+fi
 if grep -Fq 'PASSWORD' "$TEMP_DIR/role.sql" || grep -Fq "$RUNTIME_SECRET" "$TEMP_DIR/role.sql"; then
     printf '[staging-database-operation-test] 역할 SQL 파일에 런타임 비밀번호가 포함됐습니다\n' >&2
     exit 1
@@ -176,6 +180,16 @@ grep -Fq 'ON ALL FUNCTIONS IN SCHEMA public' "$RUNTIME_PRIVILEGES_CALLBACK"
 grep -Fq 'ON TABLE flyway_schema_history' "$RUNTIME_PRIVILEGES_CALLBACK"
 grep -Fq 'REVOKE INSERT, UPDATE, DELETE' "$RUNTIME_PRIVILEGES_CALLBACK"
 grep -Fq 'ON TABLE watch_health_change_event_backlog' "$RUNTIME_PRIVILEGES_CALLBACK"
+grep -Fq 'ON TABLE watch_monitor' "$RUNTIME_PRIVILEGES_CALLBACK"
+grep -Fq 'ON TABLE watch_attempt' "$RUNTIME_PRIVILEGES_CALLBACK"
+grep -Fq 'ON TABLE watch_result' "$RUNTIME_PRIVILEGES_CALLBACK"
+grep -Fq 'ON TABLE watch_health_change_event' "$RUNTIME_PRIVILEGES_CALLBACK"
+grep -Fq 'delivery_lease_token' "$RUNTIME_PRIVILEGES_CALLBACK"
+if grep -Fq 'GRANT SELECT, INSERT, UPDATE, DELETE' "$RUNTIME_PRIVILEGES_CALLBACK" \
+        || grep -Fq 'GRANT USAGE, SELECT, UPDATE' "$RUNTIME_PRIVILEGES_CALLBACK"; then
+    printf '[staging-database-operation-test] 런타임 콜백이 광범위한 테이블 또는 시퀀스 권한을 부여했습니다\n' >&2
+    exit 1
+fi
 grep -Fq 'SET search_path = pg_catalog, pg_temp' \
     "$REPOSITORY_ROOT/adapter-out-persistence/src/main/resources/db/migration/V3__bound_persistence_maintenance.sql"
 grep -Fq 'UPDATE public.watch_health_change_event_backlog' \

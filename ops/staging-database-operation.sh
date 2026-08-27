@@ -144,10 +144,6 @@ configure_runtime_role() {
             "$PGUSER"
         printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s REVOKE ALL ON SEQUENCES FROM PUBLIC;\n' \
             "$PGUSER"
-        printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %s;\n' \
-            "$PGUSER" "$WATCH_DB_RUNTIME_USER"
-        printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %s;\n' \
-            "$PGUSER" "$WATCH_DB_RUNTIME_USER"
         # 함수 EXECUTE의 PostgreSQL 기본 PUBLIC 부여는 전역 기본값이므로 스키마 범위에서 취소할 수 없다.
         printf 'ALTER DEFAULT PRIVILEGES FOR ROLE %s REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;\n' \
             "$PGUSER"
