@@ -29,7 +29,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
   `baton-watch:<full-git-sha>` 런타임 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
-- Compose 비밀값으로 마운트하는 권한 모드 `0600` 비밀 파일 네 개
+- Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 비밀
+  파일 세 개와, 권한 모드 `0700` 상위 디렉터리 안의 `0444` 터널 토큰 파일
 
 이 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다. Compose
 파일은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정합니다. 이 실행 절차서를
@@ -54,6 +55,11 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   UID 65532로 즉시 권한을 낮춥니다. 이 초기 전환에만 `CHOWN`,
   `DAC_READ_SEARCH`, `SETGID`, `SETUID` capability를 사용하며 SQL과 Flyway 실행은
   비루트 주체가 담당합니다.
+- WATCH 이미지는 기본적으로 UID/GID `10001`로 실행합니다. 스테이징에서는 시작
+  래퍼만 root와 `CHOWN`, `DAC_READ_SEARCH`, `SETGID`, `SETUID` capability로
+  데이터베이스 비밀번호와 API 토큰을 전용 `/run/watch-secrets` tmpfs에 복사한 뒤
+  Java를 UID/GID `10001`의 PID 1로 실행합니다. 복사 뒤 디렉터리는 `0500`, 파일은
+  `0400`이며 Java와 상태 점검 프로세스에는 capability가 남지 않습니다.
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
   시도 조회·삽입·보존 삭제, 결과 조회·삽입, 이벤트 조회·삽입·보존 삭제와
   지정된 전달 메타데이터 열 갱신만 허용받습니다. 불변 시도·결과 열과 이벤트 페이로드
@@ -66,7 +72,9 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 - 관리 서버는 WATCH 컨테이너 내부의 `127.0.0.1:8081`에 계속 바인딩되며,
   터널을 통해 접근할 수 없습니다.
 - `cloudflared`는 `watch-edge`에만 참여하고 호스트 포트를 공개하지 않으며,
-  `http://watch:8080`으로 WATCH에 접근합니다.
+  `http://watch:8080`으로 WATCH에 접근합니다. 공식 이미지의 UID/GID `65532`가
+  file-source bind mount를 읽을 수 있도록 터널 토큰만 `0444`로 두되, 호스트의
+  상위 비밀 디렉터리는 운영자 소유 `0700`으로 유지합니다.
 - Mac에는 인바운드 방화벽이나 라우터 포트 포워딩이 필요하지 않습니다. QUIC용
   아웃바운드 UDP 7844와 터널 대체 연결용 TCP 7844를 허용하세요. WATCH에는
   대상 점검을 위해 기존에 의도한 DNS 및 공개 HTTP/HTTPS 아웃바운드 접근도
@@ -225,7 +233,7 @@ PostgreSQL 소유자 비밀번호는 데이터베이스 소유자 역할과, 런
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/watch-api-token"
-chmod 0600 "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
+chmod 0444 "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 test -s "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
 test -s "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -s "$STAGING_CONFIG_DIR/secrets/watch-api-token"
@@ -238,6 +246,15 @@ test -r "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
 test -r "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 test -r "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 test -r "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
+for SECRET_FILE in \
+  "$STAGING_CONFIG_DIR/secrets/postgres-owner-password" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password" \
+  "$STAGING_CONFIG_DIR/secrets/watch-api-token" \
+  "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"; do
+  test -f "$SECRET_FILE"
+  test ! -L "$SECRET_FILE"
+done
+unset SECRET_FILE
 test -O "$STAGING_ENV_FILE"
 test -O "$STAGING_STATE_FILE"
 test -r "$STAGING_ENV_FILE"
@@ -246,6 +263,7 @@ stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
 stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/watch-api-token"
 stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
+stat -f '%Lp %N' "$STAGING_CONFIG_DIR/secrets"
 stat -f '%Lp %N' "$STAGING_ENV_FILE"
 stat -f '%Lp %N' "$STAGING_STATE_FILE"
 for DATABASE_SECRET_FILE in \
@@ -268,7 +286,11 @@ done
 unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 ~~~
 
-각 `stat` 출력 줄은 `600`으로 시작해야 합니다. 환경 템플릿 파일에는
+데이터베이스·WATCH 비밀 세 개와 환경·상태 파일의 `stat` 출력은 `600`, 터널
+토큰은 `444`, 상위 비밀 디렉터리는 `700`으로 시작해야 합니다. 터널 토큰의
+호스트 접근은 파일 자체가 아니라 운영자만 탐색할 수 있는 `0700` 상위 디렉터리가
+차단합니다. Compose file source는 호스트 파일을 bind mount하므로 컨테이너 UID를
+위한 `uid`, `gid`, `mode` 선언으로 이 권한을 대신할 수 없습니다. 환경 템플릿 파일에는
 의도적으로 이미지 리비전, 파일 경로, 데이터베이스 식별자·초기 볼륨 이름,
 제한이 설정된 애플리케이션 설정만 들어 있습니다. 활성 볼륨은 상태 파일의
 비밀값이 아닌 할당 하나로 선택하며, 셸에 내보낸 값이 환경 템플릿의 초기 값보다
@@ -277,6 +299,14 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 값을 터미널에 출력하지 않습니다. 각 파일은 마지막 줄바꿈이 있는 정확히 한 줄만
 허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
 초기화와 마이그레이션 스크립트도 같은 문법과 파일 경계를 다시 검증합니다.
+
+WATCH API 토큰이나 터널 토큰을 교체할 때는 같은 `secrets` 디렉터리에 새 일반
+파일을 만들고 각각 `0600`, `0444`를 적용한 뒤 원래 경로로 원자적으로 바꾸세요.
+symlink나 기존 파일에 대한 제자리 덮어쓰기는 허용하지 않습니다. bind mount는 이전
+inode를 계속 참조할 수 있으므로 교체 뒤에는 `restart`가 아니라
+`staging_compose up -d --no-deps --force-recreate watch` 또는
+`staging_compose up -d --no-deps --force-recreate cloudflared`를 실행하고 상태 점검을
+다시 통과시켜야 합니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -502,9 +532,9 @@ WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합�
 호스트와 터널에서 계속 접근할 수 없어야 합니다.
 
 ~~~bash
-staging_compose exec -T watch \
+staging_compose exec --user 10001:10001 -T watch \
   wget -q -O - http://127.0.0.1:8081/actuator/health
-staging_compose exec -T watch sh -c \
+staging_compose exec --user 10001:10001 -T watch sh -c \
   'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
 MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
   'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT string_agg(version, chr(44) ORDER BY installed_rank) FROM flyway_schema_history WHERE success"')"
