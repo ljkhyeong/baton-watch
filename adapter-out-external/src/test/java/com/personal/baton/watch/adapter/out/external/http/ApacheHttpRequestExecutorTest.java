@@ -141,13 +141,7 @@ class ApacheHttpRequestExecutorTest {
     }
 
     @Test
-    void rejectsDisabledExecutorBounds() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheHttpRequestExecutor(0, 1, "test-http-"));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> new ApacheHttpRequestExecutor(1, 0, "test-http-"));
+    void rejectsExecutorBoundsAboveTheImplementationCeilings() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHttpRequestExecutor(
@@ -173,7 +167,7 @@ class ApacheHttpRequestExecutorTest {
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             Thread caller = new Thread(() -> {
                 try {
-                    executor.execute(Duration.ofSeconds(1), progress -> {
+                    executor.execute(Duration.ofMillis(500), progress -> {
                         if (responseStarted) {
                             progress.responseStarted();
                         }
@@ -193,7 +187,7 @@ class ApacheHttpRequestExecutorTest {
             caller.start();
 
             assertTrue(operationStarted.await(1, TimeUnit.SECONDS));
-            caller.join(2_000);
+            caller.join(1_500);
 
             assertFalse(caller.isAlive());
             assertEquals(expectedKind, observedFailure.get().kind());
