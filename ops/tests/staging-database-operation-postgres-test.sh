@@ -69,6 +69,13 @@ owner_psql() {
         --dbname "$DATABASE_NAME"
 }
 
+wait_for_watch() {
+    if ! staging_compose up -d --wait --no-deps watch; then
+        staging_compose logs --no-color watch >&2 || true
+        fail "WATCH 런타임이 정상 상태로 시작되지 않았습니다"
+    fi
+}
+
 assert_runtime_rejects() {
     local case_name="$1"
     local sql="$2"
@@ -259,11 +266,36 @@ if [[ "$retention_evidence" != "0|0|0|1" ]]; then
     fail "런타임 역할의 허용된 보존 DML 또는 백로그 증거가 올바르지 않습니다"
 fi
 
-staging_compose up -d --wait --no-deps watch
+wait_for_watch
+staging_compose restart watch
+wait_for_watch
 
-runtime_uid="$(staging_compose exec -T watch id -u | tr -d '[:space:]')"
-if [[ -z "$runtime_uid" || "$runtime_uid" == "0" ]]; then
-    fail "WATCH 런타임은 비루트 사용자로 실행되어야 합니다"
+runtime_identity="$(
+    # shellcheck disable=SC2016
+    staging_compose exec -T watch sh -c '
+        printf "%s|" "$(cat /proc/1/comm)"
+        sed -n \
+            -e "s/^Uid:[[:space:]]*\([0-9]*\).*/\1|/p" \
+            -e "s/^Gid:[[:space:]]*\([0-9]*\).*/\1|/p" \
+            -e "s/^CapPrm:[[:space:]]*\([0-9a-f]*\).*/\1|/p" \
+            -e "s/^CapEff:[[:space:]]*\([0-9a-f]*\).*/\1|/p" \
+            -e "s/^NoNewPrivs:[[:space:]]*\([0-9]*\).*/\1/p" \
+            /proc/1/status
+    ' | tr -d '[:space:]'
+)"
+if [[ "$runtime_identity" != "java|10001|10001|0000000000000000|0000000000000000|1" ]]; then
+    fail "WATCH Java 프로세스의 PID 1·비루트 사용자·권한 제거 증거가 올바르지 않습니다"
+fi
+
+secret_permission_evidence="$(
+    staging_compose exec -T watch sh -c '
+        stat -c "%u:%g:%a" /run/watch-secrets
+        stat -c "%u:%g:%a" /run/watch-secrets/spring.datasource.password
+        stat -c "%u:%g:%a" /run/watch-secrets/watch.api-token
+    ' | tr '\n' '|'
+)"
+if [[ "$secret_permission_evidence" != "10001:10001:500|10001:10001:400|10001:10001:400|" ]]; then
+    fail "WATCH 복사 비밀의 소유권 또는 접근 권한이 올바르지 않습니다"
 fi
 
 status_response="$(

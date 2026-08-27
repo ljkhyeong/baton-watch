@@ -154,6 +154,13 @@ jobs:
               }
               if invalid:
                   raise SystemExit(f"{image}의 OCI 레이블이 올바르지 않습니다: {invalid}")
+
+              if image.startswith("baton-watch:"):
+                  runtime_user = inspected.get("Config", {}).get("User")
+                  if runtime_user != "10001:10001":
+                      raise SystemExit(
+                          f"WATCH 이미지 기본 사용자가 올바르지 않습니다: {runtime_user}"
+                      )
           PY
 
           expected_license_digest="$(sha256sum LICENSE | awk '{print $1}')"

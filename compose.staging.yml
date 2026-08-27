@@ -141,9 +141,12 @@ services:
   watch:
     image: "baton-watch:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
     pull_policy: never
+    user: "0:0"
+    entrypoint: ["/opt/watch/run-as-watch-user.sh"]
+    command: ["java", "-jar", "/app/baton-watch.jar"]
     environment:
       JAVA_TOOL_OPTIONS: "${WATCH_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}"
-      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SPRING_CONFIG_IMPORT: configtree:/run/watch-secrets/
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${WATCH_DB_NAME:-baton_watch}"
       SPRING_DATASOURCE_USERNAME: "${WATCH_DB_RUNTIME_USER:-baton_watch_runtime}"
       SPRING_FLYWAY_ENABLED: "false"
@@ -181,19 +184,24 @@ services:
       - watch-db
       - watch-edge
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      test: ["CMD", "su-exec", "10001:10001", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
       interval: 10s
       timeout: 3s
       retries: 12
       start_period: 30s
     restart: unless-stopped
     stop_grace_period: 110s
-    init: true
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /run/watch-secrets:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 256

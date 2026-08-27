@@ -151,6 +151,15 @@ require(
     "WATCH image revision interpolation changed",
 )
 require(watch.get("pull_policy") == "never", "WATCH image must be the locally selected immutable tag")
+require(watch.get("user") == "0:0", "staging WATCH must start its secret copy as root")
+require(
+    watch.get("entrypoint") == ["/opt/watch/run-as-watch-user.sh"],
+    "staging WATCH must use the secret-copy entrypoint",
+)
+require(
+    watch.get("command") == ["java", "-jar", "/app/baton-watch.jar"],
+    "staging WATCH command changed",
+)
 require(
     migrate.get("image")
     == "baton-watch-migrations:0000000000000000000000000000000000000001",
@@ -186,8 +195,8 @@ require(
 
 watch_environment = watch["environment"]
 require(
-    watch_environment.get("SPRING_CONFIG_IMPORT") == "configtree:/run/secrets/",
-    "WATCH must import file secrets through Spring configtree",
+    watch_environment.get("SPRING_CONFIG_IMPORT") == "configtree:/run/watch-secrets/",
+    "WATCH must import copied file secrets through Spring configtree",
 )
 require(
     watch_environment.get("MANAGEMENT_SERVER_ADDRESS") == "127.0.0.1",
@@ -337,6 +346,8 @@ require(
     watch["healthcheck"].get("test")
     == [
         "CMD",
+        "su-exec",
+        "10001:10001",
         "wget",
         "-q",
         "-O",
@@ -360,12 +371,19 @@ require(
     == {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"},
     "migration must only retain secret-read and identity-drop capabilities",
 )
-require(not watch.get("cap_add"), "WATCH must not add Linux capabilities")
+require(
+    watch.get("cap_add") == ["CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"],
+    "WATCH must only retain secret-copy and identity-drop capabilities",
+)
 require(not cloudflared.get("cap_add"), "cloudflared must not add Linux capabilities")
-require(watch.get("init") is True, "WATCH must retain an init process")
+require(not watch.get("init", False), "WATCH must run Java directly as container PID 1")
 require(cloudflared.get("init") is True, "cloudflared must retain an init process")
 require(
-    watch.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=64m"],
+    set(watch.get("tmpfs", []))
+    == {
+        "/tmp:rw,noexec,nosuid,nodev,size=64m",
+        "/run/watch-secrets:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
+    },
     "WATCH tmpfs boundary changed",
 )
 require(

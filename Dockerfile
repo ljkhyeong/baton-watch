@@ -85,13 +85,15 @@ LABEL org.opencontainers.image.title="BATON WATCH" \
 RUN command -v wget >/dev/null \
     && apk add --no-cache \
         "libcrypto3=3.5.8-r0" \
-        "libssl3=3.5.8-r0"
+        "libssl3=3.5.8-r0" \
+        "su-exec=0.3-r0"
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch \
-    && addgroup -S baton \
-    && adduser -S baton -G baton
+    && addgroup -S -g 10001 baton \
+    && adduser -S -D -H -u 10001 -G baton baton
 WORKDIR /app
 COPY --from=build /workspace/bootstrap/build/libs/baton-watch.jar ./baton-watch.jar
-USER baton
+COPY --chmod=0555 ops/run-as-watch-user.sh /opt/watch/run-as-watch-user.sh
+USER 10001:10001
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/baton-watch.jar"]
