@@ -347,7 +347,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
     @Test
     void retentionIsBoundedStrictlyBeforeCutoffAndKeepsOutboxAttemptFacts() {
-        Instant cutoff = Instant.now().plus(Duration.ofDays(1));
+        Instant cutoff = databaseClock().plus(Duration.ofDays(1));
         List<ClaimedCheck> attempts = List.of(
                 claimed("resource:abandoned"),
                 claimed("resource:before"),
@@ -382,7 +382,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
     @Test
     void retentionSkipsALockedOldestAttemptAndPurgesAnotherBoundedCandidate() throws Exception {
-        Instant cutoff = Instant.now().plus(Duration.ofDays(1));
+        Instant cutoff = databaseClock().plus(Duration.ofDays(1));
         ClaimedCheck locked = claimed("resource:purge-locked");
         ClaimedCheck available = claimed("resource:purge-available");
         finalizeAt(locked, cutoff.minusSeconds(2));

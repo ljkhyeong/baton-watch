@@ -319,6 +319,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         UUID oldOne = insertDeliveredEvent("resource:event-retention", BASE_TIME, cutoff.minusSeconds(2));
         UUID oldTwo = insertDeliveredEvent("resource:event-retention", BASE_TIME.plusSeconds(1), cutoff.minusSeconds(1));
         UUID atCutoff = insertDeliveredEvent("resource:event-retention", BASE_TIME.plusSeconds(2), cutoff);
+        UUID afterCutoff = insertDeliveredEvent(
+                "resource:event-retention", BASE_TIME.plusSeconds(3), cutoff.plusSeconds(1));
         UUID pending = insertPendingEvent("resource:event-retention", BASE_TIME.minus(Duration.ofDays(90)));
 
         assertThat(deliveryAdapter.purgeDeliveredEvents(cutoff, 1)).isEqualTo(1);
@@ -327,7 +329,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
         assertThat(jdbc.queryForList(
                         "SELECT event_id FROM watch_health_change_event ORDER BY event_id", UUID.class))
-                .containsExactlyInAnyOrder(atCutoff, pending)
+                .containsExactlyInAnyOrder(atCutoff, afterCutoff, pending)
                 .doesNotContain(oldOne, oldTwo);
         EventDeliveryBacklogSnapshot retainedBacklog = deliveryAdapter.getBacklogSnapshot();
         assertThat(retainedBacklog.pendingCount()).isEqualTo(1);
@@ -336,6 +338,49 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         ClaimedHealthChangeEvent pendingClaim = claimOneDelivery();
         assertThat(pendingClaim.payload().eventId()).isEqualTo(pending);
         assertThat(pendingClaim.payload().attemptId()).isEmpty();
+    }
+
+    @Test
+    void deliveredEventRetentionSkipsLockedLeadingEventAndPurgesAnotherCandidate() throws Exception {
+        String reference = "resource:event-retention-locked";
+        monitorPersistence.synchronize(
+                SynchronizeMonitorCommand.inactive(
+                        new ResourceReference(reference), new SourceRevision(1)),
+                BASE_TIME);
+        Instant cutoff = BASE_TIME.plus(Duration.ofDays(30));
+        UUID locked = insertDeliveredEvent(reference, BASE_TIME, cutoff.minusSeconds(2));
+        UUID available = insertDeliveredEvent(
+                reference, BASE_TIME.plusSeconds(1), cutoff.minusSeconds(1));
+
+        DataSourceTransactionManager lockTransactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
+        TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
+                new DefaultTransactionDefinition());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Integer> purgeFuture = null;
+        try {
+            assertThat(lockJdbc.queryForObject("""
+                    SELECT event_id
+                    FROM watch_health_change_event
+                    WHERE event_id = ?
+                    FOR UPDATE
+                    """, UUID.class, locked)).isEqualTo(locked);
+
+            JdbcHealthChangeEventDeliveryAdapter competingAdapter = newDeliveryAdapter();
+            purgeFuture = executor.submit(() -> competingAdapter.purgeDeliveredEvents(cutoff, 1));
+
+            assertThat(purgeFuture.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .isEqualTo(1);
+            assertThat(jdbc.queryForList(
+                            "SELECT event_id FROM watch_health_change_event ORDER BY event_id", UUID.class))
+                    .contains(locked)
+                    .doesNotContain(available);
+        } finally {
+            cancelIfRunning(purgeFuture);
+            lockTransactionManager.rollback(lockTransaction);
+            shutdownAndAwait(executor);
+        }
     }
 
     private JdbcHealthChangeEventDeliveryAdapter newDeliveryAdapter() {

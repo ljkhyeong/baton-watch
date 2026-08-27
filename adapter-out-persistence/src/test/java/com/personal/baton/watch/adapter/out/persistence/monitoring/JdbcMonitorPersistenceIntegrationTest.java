@@ -28,6 +28,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
@@ -227,6 +231,75 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(projection.health()).isEqualTo(Health.UNKNOWN);
         assertThat(projection.consecutiveFailures()).isEqualTo(1);
         assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(2);
+    }
+
+    @Test
+    void staleSweepSkipsLockedLeadingProjectionAndMarksAnotherCandidate() throws Exception {
+        String lockedReference = "resource:stale-locked-leading";
+        String availableReference = "resource:stale-after-locked";
+        synchronize(
+                lockedReference,
+                1,
+                "https://stale-locked.example/path",
+                BASE_TIME.minusSeconds(1));
+        synchronize(availableReference, 1, "https://stale-available.example/path", BASE_TIME);
+
+        ClaimedCheck locked = claimOne();
+        Instant lockedCompletedAt = locked.claimedAt();
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        locked,
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        lockedCompletedAt,
+                        lockedCompletedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
+        ClaimedCheck available = claimOne();
+        Instant availableCompletedAt = available.claimedAt().isAfter(lockedCompletedAt)
+                ? available.claimedAt()
+                : lockedCompletedAt.plusNanos(1_000);
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        available,
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        availableCompletedAt,
+                        availableCompletedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
+
+        DataSourceTransactionManager lockTransactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
+        TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
+                new DefaultTransactionDefinition());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Integer> sweepFuture = null;
+        try {
+            assertThat(lockJdbc.queryForObject("""
+                    SELECT resource_reference
+                    FROM watch_monitor
+                    WHERE resource_reference = ?
+                    FOR UPDATE
+                    """, String.class, lockedReference)).isEqualTo(lockedReference);
+
+            JdbcMonitorPersistenceAdapter competingPersistence = new JdbcMonitorPersistenceAdapter(
+                    new JdbcTemplate(testDataSource), newTransactionOperations());
+            Instant markedAt = availableCompletedAt.plusSeconds(600);
+            sweepFuture = executor.submit(() -> competingPersistence.markStaleUnknown(
+                    availableCompletedAt, markedAt, 1));
+
+            assertThat(sweepFuture.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .isEqualTo(1);
+            assertThat(projection(lockedReference).health()).isEqualTo(Health.HEALTHY);
+            assertThat(projection(availableReference).health()).isEqualTo(Health.UNKNOWN);
+            assertThat(jdbc.queryForList("""
+                    SELECT previous_health || '->' || current_health
+                    FROM watch_health_change_event
+                    WHERE resource_reference = ?
+                    ORDER BY changed_at
+                    """, String.class, availableReference))
+                    .containsExactly("UNKNOWN->HEALTHY", "HEALTHY->UNKNOWN");
+        } finally {
+            cancelIfRunning(sweepFuture);
+            lockTransactionManager.rollback(lockTransaction);
+            shutdownAndAwait(executor);
+        }
     }
 
     @Test
