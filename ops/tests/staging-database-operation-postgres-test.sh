@@ -79,7 +79,8 @@ chmod 0600 \
 
 for image in \
     "baton-watch-database-operations:${IMAGE_REVISION}" \
-    "baton-watch-migrations:${IMAGE_REVISION}"; do
+    "baton-watch-migrations:${IMAGE_REVISION}" \
+    "baton-watch:${IMAGE_REVISION}"; do
     if ! docker image inspect "$image" >/dev/null 2>&1; then
         fail "필수 테스트 이미지가 없습니다: $image"
     fi
@@ -149,4 +150,26 @@ if [[ "$backlog_evidence" != "1" ]]; then
     fail "런타임 이벤트 쓰기의 보호된 백로그 갱신 증거가 올바르지 않습니다"
 fi
 
-printf '[staging-database-operation-postgres-test] 실제 PostgreSQL 역할·마이그레이션 경계가 통과했습니다\n'
+staging_compose up -d --wait --no-deps watch
+
+runtime_uid="$(staging_compose exec -T watch id -u | tr -d '[:space:]')"
+if [[ -z "$runtime_uid" || "$runtime_uid" == "0" ]]; then
+    fail "WATCH 런타임은 비루트 사용자로 실행되어야 합니다"
+fi
+
+status_response="$(
+    staging_compose exec -T watch \
+        wget -q -O - http://127.0.0.1:8080/api/v1/system/status
+)"
+if ! printf '%s' "$status_response" | python3 -c '
+import json
+import sys
+
+response = json.load(sys.stdin)
+if response.get("service") != "baton-watch" or response.get("status") != "UP":
+    raise SystemExit(1)
+'; then
+    fail "WATCH 런타임 상태 응답이 올바르지 않습니다"
+fi
+
+printf '[staging-database-operation-postgres-test] 실제 PostgreSQL 역할·마이그레이션·WATCH 런타임 경계가 통과했습니다\n'
