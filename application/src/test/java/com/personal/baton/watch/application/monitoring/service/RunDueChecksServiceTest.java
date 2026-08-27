@@ -82,12 +82,12 @@ class RunDueChecksServiceTest {
     void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
         Instant databaseClaimedAt = NOW.plusSeconds(5);
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
-        persistence.claim = new ClaimedCheck(
+        persistence.claims = List.of(new ClaimedCheck(
                 CLAIM.attemptId(),
                 CLAIM.leaseToken(),
                 CLAIM.targetUrl(),
                 CLAIM.scheduledAt(),
-                databaseClaimedAt);
+                databaseClaimedAt));
         RunDueChecksService service = new RunDueChecksService(
                 persistence,
                 target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
@@ -103,13 +103,43 @@ class RunDueChecksServiceTest {
         assertEquals(databaseClaimedAt.plus(INTERVAL), persistence.finalization.nextCheckAt());
     }
 
+    @Test
+    void reportsTheMaximumScheduleDelayAcrossTheClaimedBatch() {
+        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
+        persistence.claims = List.of(
+                claim(1, 3),
+                claim(2, 17),
+                claim(3, 5));
+        RunDueChecksService service = new RunDueChecksService(
+                persistence,
+                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                LEASE,
+                INTERVAL,
+                INTERNAL_RETRY,
+                3);
+
+        DueCheckBatchResult result = service.runDueChecks();
+
+        assertEquals(new DueCheckBatchResult(3, 3, 0, 0, Duration.ofSeconds(17)), result);
+    }
+
+    private static ClaimedCheck claim(long sequence, long scheduleDelaySeconds) {
+        return new ClaimedCheck(
+                new UUID(0, sequence),
+                new UUID(1, sequence),
+                CLAIM.targetUrl(),
+                NOW.minusSeconds(scheduleDelaySeconds),
+                NOW);
+    }
+
     private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
 
         private final List<String> calls;
         private Duration leaseDuration;
         private int limit;
         private CheckFinalization finalization;
-        private ClaimedCheck claim = CLAIM;
+        private List<ClaimedCheck> claims = List.of(CLAIM);
 
         private RecordingWorkPersistence(List<String> calls) {
             this.calls = calls;
@@ -120,7 +150,7 @@ class RunDueChecksServiceTest {
             calls.add("claim");
             this.leaseDuration = leaseDuration;
             this.limit = limit;
-            return List.of(claim);
+            return claims;
         }
 
         @Override
