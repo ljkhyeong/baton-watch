@@ -321,11 +321,13 @@ test "$BUILT_MIGRATION_IMAGE_REVISION" = "$DEPLOY_SHA"
 
 이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `Verify` 워크플로가 성공했고
 전체 로컬 테스트 작업도 통과해야 합니다. `Verify`는 공식 SHA-256으로
-고정된 Gradle Wrapper, 고정된 GitHub Actions, PostgreSQL 통합 증거,
+고정된 Gradle Wrapper, Gradle 의존성 검증 메타데이터, 전체 SHA로 고정된
+GitHub Actions, 변경 의존성 검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
 `staging-compose-policy-test.sh`, `staging-database-operation-test.sh`,
-`staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션
-스모크를 검증합니다. 호스트 Gradle 실행은 전체 테스트를 소유하고, 최종 WATCH
-Docker 이미지 빌드는 이미지에 포함할 실행 가능한 부트 JAR 생성을 소유합니다.
+`staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
+비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 호스트 Gradle
+실행은 전체 테스트를 소유하고, 최종 WATCH Docker 이미지 빌드는 이미지에 포함할
+실행 가능한 부트 JAR 생성을 소유합니다.
 Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
 업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
 사항이 남아 있는 작업 트리,
