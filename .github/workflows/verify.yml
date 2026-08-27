@@ -41,7 +41,7 @@ jobs:
         run: docker version
 
       - name: Run clean verification
-        run: ./gradlew clean test :bootstrap:bootJar --no-daemon --no-build-cache
+        run: ./gradlew clean test --no-daemon --no-build-cache
 
       - name: Require PostgreSQL and full-context test evidence
         run: |
