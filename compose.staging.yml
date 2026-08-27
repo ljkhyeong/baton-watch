@@ -52,7 +52,6 @@ services:
   database-role-init:
     image: "baton-watch-database-operations:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
     pull_policy: never
-    user: "70:70"
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -72,9 +71,13 @@ services:
     restart: "no"
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=70,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=0,mode=0730
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 64
@@ -111,9 +114,13 @@ services:
     restart: "no"
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=0,mode=0730
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 128

@@ -339,6 +339,14 @@ require(
     postgres.get("cap_add") == ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
     "PostgreSQL capability allowlist changed",
 )
+require(
+    set(database_role_init.get("cap_add", [])) == {"CHOWN", "SETGID", "SETUID"},
+    "database role initialization must only retain identity-drop capabilities",
+)
+require(
+    set(migrate.get("cap_add", [])) == {"CHOWN", "SETGID", "SETUID"},
+    "migration must only retain identity-drop capabilities",
+)
 require(not watch.get("cap_add"), "WATCH must not add Linux capabilities")
 require(not cloudflared.get("cap_add"), "cloudflared must not add Linux capabilities")
 require(watch.get("init") is True, "WATCH must retain an init process")
@@ -361,12 +369,12 @@ require(
 )
 require(
     database_role_init.get("tmpfs")
-    == ["/tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=70,mode=0700"],
+    == ["/tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=0,mode=0730"],
     "database role initialization tmpfs boundary changed",
 )
 require(
     migrate.get("tmpfs")
-    == ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700"],
+    == ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=0,mode=0730"],
     "migration tmpfs boundary changed",
 )
 require(
