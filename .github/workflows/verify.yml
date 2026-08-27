@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +25,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
+        with:
+          languages: java-kotlin
+          build-mode: manual
 
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -111,3 +122,6 @@ jobs:
 
       - name: Validate database operations against PostgreSQL
         run: ./ops/tests/staging-database-operation-postgres-test.sh
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
