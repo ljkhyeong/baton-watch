@@ -20,11 +20,16 @@ require_identifier() {
 read_secret() {
     secret_file="$1"
     label="$2"
-    if [ ! -r "$secret_file" ] || [ "$(wc -l < "$secret_file" | tr -d ' ')" -ne 1 ]; then
+    secret_value=
+    extra_value=
+    if [ ! -r "$secret_file" ] || ! {
+        IFS= read -r secret_value \
+            && ! IFS= read -r extra_value \
+            && [ -z "$extra_value" ]
+    } < "$secret_file"; then
         printf '[staging-database-operation] %s 비밀 파일 형식이 올바르지 않습니다\n' "$label" >&2
         exit 1
     fi
-    secret_value="$(sed -n '1p' "$secret_file")"
     if ! printf '%s' "$secret_value" | grep -Eq '^[A-Za-z0-9._~-]{32,200}$'; then
         printf '[staging-database-operation] %s 비밀값 형식이 올바르지 않습니다\n' "$label" >&2
         exit 1

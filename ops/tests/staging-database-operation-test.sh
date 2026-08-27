@@ -69,6 +69,24 @@ run_operation() {
         "$REPOSITORY_ROOT/ops/staging-database-operation.sh" "$operation"
 }
 
+assert_rejects_runtime_secret_file() {
+    local case_name="$1"
+    local secret_fragment="$2"
+    local output="$TEMP_DIR/${case_name}-output"
+
+    if run_operation configure-runtime-role "$TEMP_DIR/${case_name}.sql" \
+            > "$output" 2>&1; then
+        printf '[staging-database-operation-test] 잘못된 %s 비밀 파일을 허용했습니다\n' \
+            "$case_name" >&2
+        exit 1
+    fi
+    if grep -Fq "$secret_fragment" "$output"; then
+        printf '[staging-database-operation-test] %s 실패 출력이 비밀값을 노출했습니다\n' \
+            "$case_name" >&2
+        exit 1
+    fi
+}
+
 role_output="$TEMP_DIR/role-output"
 run_operation configure-runtime-role "$TEMP_DIR/role.sql" > "$role_output" 2>&1
 grep -Fq 'CREATE ROLE baton_watch_runtime LOGIN NOINHERIT NOSUPERUSER' "$TEMP_DIR/role.sql"
@@ -164,15 +182,21 @@ if grep -Fq "$OWNER_SECRET" "$migration_output"; then
     exit 1
 fi
 
+printf '%s' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
+assert_rejects_runtime_secret_file "마지막-줄바꿈-없음" "$RUNTIME_SECRET"
+
+printf '%s\n\n' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
+assert_rejects_runtime_secret_file "빈-둘째-줄" "$RUNTIME_SECRET"
+
+printf '%s\n%s\n' "$RUNTIME_SECRET" 'extra-content' > "$TEMP_DIR/runtime-password"
+assert_rejects_runtime_secret_file "추가-줄" "$RUNTIME_SECRET"
+
+printf '%s\n%s' "$RUNTIME_SECRET" 'extra-content' > "$TEMP_DIR/runtime-password"
+assert_rejects_runtime_secret_file "줄바꿈-없는-추가-내용" "$RUNTIME_SECRET"
+
 printf '%s\n' 'invalid:database-password' > "$TEMP_DIR/runtime-password"
-if run_operation configure-runtime-role "$TEMP_DIR/invalid.sql" \
-        > "$TEMP_DIR/invalid-output" 2>&1; then
-    printf '[staging-database-operation-test] 잘못된 비밀값을 허용했습니다\n' >&2
-    exit 1
-fi
-if grep -Fq 'invalid:database-password' "$TEMP_DIR/invalid-output"; then
-    printf '[staging-database-operation-test] 실패 출력이 비밀값을 노출했습니다\n' >&2
-    exit 1
-fi
+assert_rejects_runtime_secret_file "잘못된-문자" 'invalid:database-password'
+
+printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
 
 printf '[staging-database-operation-test] 데이터베이스 역할과 마이그레이션 경계가 통과했습니다\n'
