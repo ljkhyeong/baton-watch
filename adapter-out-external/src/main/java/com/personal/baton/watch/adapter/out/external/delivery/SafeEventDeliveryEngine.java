@@ -51,7 +51,7 @@ final class SafeEventDeliveryEngine {
             byte[] body = serializer.apply(payload);
             Duration remaining = remaining(startedAt);
             if (remaining.isZero()) {
-                return EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE);
+                return EventDeliveryObservation.failure(EventDeliveryOutcome.CONNECT_TIMEOUT);
             }
 
             List<InetAddress> resolved;

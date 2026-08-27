@@ -177,6 +177,27 @@ class SafeEventDeliveryEngineTest {
         assertTrue(transport.requests.isEmpty());
     }
 
+    @Test
+    void serializationIsIncludedInTheTotalDeadline() throws Exception {
+        MutableClock clock = new MutableClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("8.8.8.8")));
+        RecordingTransport transport = new RecordingTransport(204);
+        SafeEventDeliveryEngine engine = engine(
+                dns,
+                transport,
+                clock,
+                payload -> {
+                    clock.advance(DEFAULT_LIMITS.totalTimeout());
+                    return new byte[] {1};
+                });
+
+        EventDeliveryObservation observation = engine.send(event());
+
+        assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, observation.outcome());
+        assertEquals(0, dns.calls);
+        assertTrue(transport.requests.isEmpty());
+    }
+
     private static SafeEventDeliveryEngine engine(
             DnsLookup dns, DeliveryTransport transport, LongSupplier clock) {
         return engine(
