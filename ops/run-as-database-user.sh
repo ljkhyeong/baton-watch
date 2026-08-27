@@ -32,4 +32,4 @@ if [ -r "$runtime_secret_source" ]; then
     export WATCH_DB_RUNTIME_PASSWORD_FILE="$runtime_secret_target"
 fi
 
-exec gosu "$target_uid:$target_gid" "$@"
+exec su-exec "$target_uid:$target_gid" "$@"
