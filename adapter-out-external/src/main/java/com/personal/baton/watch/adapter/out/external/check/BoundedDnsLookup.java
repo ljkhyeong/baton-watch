@@ -89,7 +89,6 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
                 Thread.ofPlatform()
                         .daemon()
                         .name("watch-dns-", 1)
-                        .factory(),
-                new ThreadPoolExecutor.AbortPolicy());
+                        .factory());
     }
 }

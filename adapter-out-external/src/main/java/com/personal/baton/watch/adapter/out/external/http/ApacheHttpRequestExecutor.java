@@ -136,8 +136,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
                 Thread.ofPlatform()
                         .daemon()
                         .name(threadNamePrefix, 1)
-                        .factory(),
-                new ThreadPoolExecutor.AbortPolicy());
+                        .factory());
     }
 
     private static final class RequestProgress implements Progress {
