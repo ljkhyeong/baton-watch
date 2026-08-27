@@ -50,9 +50,10 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   일회성 `migrate`가 소유자 자격 증명으로 Flyway를 완료한 뒤에만
   WATCH가 런타임 역할로 시작합니다. 역할 초기화에 워크트리 바인드
   마운트를 사용하지 않습니다. 데이터베이스 작업·마이그레이션 컨테이너는 시작
-  직후 root만 읽을 수 있는 Compose 비밀을 각자의 tmpfs로 복사한 뒤 UID 70과
-  UID 65532로 즉시 권한을 낮춥니다. 이 초기 전환에만 `CHOWN`, `SETGID`,
-  `SETUID` capability를 사용하며 SQL과 Flyway 실행은 비루트 주체가 담당합니다.
+  직후 `DAC_READ_SEARCH`로 Compose 비밀을 읽어 각자의 tmpfs로 복사한 뒤 UID 70과
+  UID 65532로 즉시 권한을 낮춥니다. 이 초기 전환에만 `CHOWN`,
+  `DAC_READ_SEARCH`, `SETGID`, `SETUID` capability를 사용하며 SQL과 Flyway 실행은
+  비루트 주체가 담당합니다.
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
   시도 조회·삽입·보존 삭제, 결과 조회·삽입, 이벤트 조회·삽입·보존 삭제와
   지정된 전달 메타데이터 열 갱신만 허용받습니다. 불변 시도·결과 열과 이벤트 페이로드

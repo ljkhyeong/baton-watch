@@ -351,12 +351,14 @@ require(
     "PostgreSQL capability allowlist changed",
 )
 require(
-    set(database_role_init.get("cap_add", [])) == {"CHOWN", "SETGID", "SETUID"},
-    "database role initialization must only retain identity-drop capabilities",
+    set(database_role_init.get("cap_add", []))
+    == {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"},
+    "database role initialization must only retain secret-read and identity-drop capabilities",
 )
 require(
-    set(migrate.get("cap_add", [])) == {"CHOWN", "SETGID", "SETUID"},
-    "migration must only retain identity-drop capabilities",
+    set(migrate.get("cap_add", []))
+    == {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"},
+    "migration must only retain secret-read and identity-drop capabilities",
 )
 require(not watch.get("cap_add"), "WATCH must not add Linux capabilities")
 require(not cloudflared.get("cap_add"), "cloudflared must not add Linux capabilities")
