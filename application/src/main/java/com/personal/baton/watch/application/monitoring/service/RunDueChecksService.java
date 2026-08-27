@@ -57,7 +57,13 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
+        Duration maximumScheduleDelay = Duration.ZERO;
         for (ClaimedCheck claimedCheck : claimedChecks) {
+            Duration scheduleDelay = Duration.between(
+                    claimedCheck.scheduledAt(), claimedCheck.claimedAt());
+            if (scheduleDelay.compareTo(maximumScheduleDelay) > 0) {
+                maximumScheduleDelay = scheduleDelay;
+            }
             CheckObservation observation = check(claimedCheck);
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
@@ -79,7 +85,8 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                 case STALE_CLAIM -> staleClaims++;
             }
         }
-        return new DueCheckBatchResult(claimedChecks.size(), applied, alreadyFinalized, staleClaims);
+        return new DueCheckBatchResult(
+                claimedChecks.size(), applied, alreadyFinalized, staleClaims, maximumScheduleDelay);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

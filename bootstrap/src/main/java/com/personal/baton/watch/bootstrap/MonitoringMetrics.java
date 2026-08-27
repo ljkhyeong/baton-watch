@@ -25,11 +25,19 @@ final class MonitoringMetrics {
     private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
 
     private final MeterRegistry registry;
+    private final AtomicLong maximumCheckScheduleDelaySeconds = new AtomicLong();
     private final AtomicLong eventDeliveryBacklog = new AtomicLong();
     private final AtomicLong oldestEventAgeSeconds = new AtomicLong();
 
     MonitoringMetrics(MeterRegistry registry) {
         this.registry = registry;
+        Gauge.builder(
+                        "baton.watch.check.schedule.delay",
+                        maximumCheckScheduleDelaySeconds,
+                        AtomicLong::get)
+                .baseUnit("seconds")
+                .description("최근 점검 배치에서 선점한 작업의 최대 일정 지연")
+                .register(registry);
         Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
                 .description("Health-change events that are not yet delivered")
                 .register(registry);
@@ -40,6 +48,7 @@ final class MonitoringMetrics {
     }
 
     void recordCheckBatch(DueCheckBatchResult result) {
+        maximumCheckScheduleDelaySeconds.set(result.maximumScheduleDelay().toSeconds());
         increment(CHECK_CLAIMED, result.claimed());
         increment(CHECK_FINALIZATIONS, "status", "applied", result.applied());
         increment(CHECK_FINALIZATIONS, "status", "already_finalized", result.alreadyFinalized());

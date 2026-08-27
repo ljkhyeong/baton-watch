@@ -22,7 +22,12 @@ class MonitoringMetricsTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
-        metrics.recordCheckBatch(new DueCheckBatchResult(3, 1, 1, 1));
+        metrics.recordCheckBatch(new DueCheckBatchResult(
+                3,
+                1,
+                1,
+                1,
+                Duration.ofSeconds(17)));
         metrics.recordCheckAttempt(CheckObservation.failure(
                 CheckOutcome.CONNECT_TIMEOUT,
                 Duration.ofMillis(125),
@@ -37,6 +42,7 @@ class MonitoringMetricsTest {
         metrics.recordEventDeliveryAttempt(EventDeliveryOutcome.CONNECT_TIMEOUT);
 
         assertEquals(3.0, registry.get("baton.watch.check.claimed").counter().count());
+        assertEquals(17.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
         assertEquals(
                 1.0,
                 registry.get("baton.watch.check.attempts")
@@ -75,6 +81,9 @@ class MonitoringMetricsTest {
         assertTrue(registry.find("baton.watch.check.duration").meters().stream()
                 .allMatch(meter -> meter.getId().getTags().stream()
                         .allMatch(tag -> tag.getKey().equals("outcome"))));
+
+        metrics.recordCheckBatch(new DueCheckBatchResult(0, 0, 0, 0, Duration.ZERO));
+        assertEquals(0.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
     }
 
     @Test

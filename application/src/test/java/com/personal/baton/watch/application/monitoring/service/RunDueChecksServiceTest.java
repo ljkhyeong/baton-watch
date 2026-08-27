@@ -29,6 +29,7 @@ class RunDueChecksServiceTest {
             UUID.fromString("00000000-0000-0000-0000-000000000001"),
             UUID.fromString("00000000-0000-0000-0000-000000000002"),
             new TargetUrl("https://example.com/health"),
+            NOW.minusSeconds(12),
             NOW);
 
     @Test
@@ -50,7 +51,7 @@ class RunDueChecksServiceTest {
         DueCheckBatchResult result = service.runDueChecks();
 
         assertEquals(List.of("claim", "check", "finalize"), calls);
-        assertEquals(new DueCheckBatchResult(1, 1, 0, 0), result);
+        assertEquals(new DueCheckBatchResult(1, 1, 0, 0, Duration.ofSeconds(12)), result);
         assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(5, persistence.limit);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
@@ -85,6 +86,7 @@ class RunDueChecksServiceTest {
                 CLAIM.attemptId(),
                 CLAIM.leaseToken(),
                 CLAIM.targetUrl(),
+                CLAIM.scheduledAt(),
                 databaseClaimedAt);
         RunDueChecksService service = new RunDueChecksService(
                 persistence,
