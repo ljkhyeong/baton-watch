@@ -1,4 +1,4 @@
-name: Verify
+name: 검증
 
 on:
   pull_request:
@@ -21,43 +21,45 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: 저장소 가져오기
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Review dependency changes
+      - name: 의존성 변경 검토
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml
 
-      - name: Initialize CodeQL
+      - name: CodeQL 초기화
         uses: github/codeql-action/init@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
         with:
           languages: java-kotlin
           build-mode: manual
 
-      - name: Set up Java
+      - name: Java 설정
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Gradle
+      - name: Gradle 설정
         uses: gradle/actions/setup-gradle@67621b124fd2e251c5e8a0e6e3b91318f2287669 # v6.3.0
         with:
           cache-provider: basic
           validate-wrappers: true
 
-      - name: Require Docker
+      - name: Docker 사용 가능 여부 확인
         run: docker version
 
-      - name: Validate shell scripts
+      - name: 셸 스크립트 정적 검사
         run: shellcheck ops/*.sh ops/tests/*.sh
 
-      - name: Run clean verification
-        run: ./gradlew clean test --no-daemon --no-build-cache
+      - name: 전체 Gradle 검증
+        run: ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
 
-      - name: Require PostgreSQL and full-context test evidence
+      - name: PostgreSQL과 전체 조립 테스트 증거 확인
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -88,7 +90,7 @@ jobs:
 
           missing = expected - found.keys()
           if missing:
-              raise SystemExit("Missing required test suites: " + ", ".join(sorted(missing)))
+              raise SystemExit("필수 테스트 스위트가 없습니다: " + ", ".join(sorted(missing)))
 
           invalid = {
               name: found[name]
@@ -99,29 +101,229 @@ jobs:
               or found[name]["errors"] != 0
           }
           if invalid:
-              raise SystemExit(f"Invalid required test suite results: {invalid}")
+              raise SystemExit(f"필수 테스트 스위트 결과가 올바르지 않습니다: {invalid}")
 
           total = sum(found[name]["tests"] for name in expected)
-          print(f"Verified {len(expected)} required suites and {total} tests")
+          print(f"필수 스위트 {len(expected)}개와 테스트 {total}개를 확인했습니다")
           PY
 
-      - name: Validate staging deployment policy
+      - name: 스테이징 배포 정책 검증
         run: ./ops/tests/staging-compose-policy-test.sh
 
-      - name: Validate staging database operations
+      - name: 스테이징 데이터베이스 작업 검증
         run: ./ops/tests/staging-database-operation-test.sh
 
-      - name: Validate staging event delivery preflight
+      - name: 스테이징 이벤트 전달 사전 검사 검증
         run: ./ops/tests/staging-event-delivery-preflight-test.sh
 
-      - name: Build pinned runtime images
+      - name: 고정된 런타임 이미지 빌드
         run: |
-          docker build --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
-          docker build --target migrations --tag "baton-watch-migrations:${GITHUB_SHA}" .
-          docker build --tag "baton-watch:${GITHUB_SHA}" .
+          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
+          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target migrations --tag "baton-watch-migrations:${GITHUB_SHA}" .
+          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target runtime --tag "baton-watch:${GITHUB_SHA}" .
 
-      - name: Validate database operations against PostgreSQL
+      - name: 런타임 이미지 라이선스와 OCI 메타데이터 검증
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          images = {
+              f"baton-watch-database-operations:{os.environ['GITHUB_SHA']}": "BATON WATCH 데이터베이스 운영 작업",
+              f"baton-watch-migrations:{os.environ['GITHUB_SHA']}": "BATON WATCH 마이그레이션",
+              f"baton-watch:{os.environ['GITHUB_SHA']}": "BATON WATCH",
+          }
+          common_labels = {
+              "org.opencontainers.image.source": "https://github.com/ljkhyeong/baton-watch",
+              "org.opencontainers.image.version": "0.1.0-SNAPSHOT",
+              "org.opencontainers.image.revision": os.environ["GITHUB_SHA"],
+              "org.opencontainers.image.licenses": "Apache-2.0",
+          }
+
+          for image, title in images.items():
+              inspected = json.loads(
+                  subprocess.check_output(["docker", "image", "inspect", image], text=True)
+              )[0]
+              labels = inspected.get("Config", {}).get("Labels") or {}
+              expected = common_labels | {"org.opencontainers.image.title": title}
+              invalid = {
+                  key: {"expected": value, "actual": labels.get(key)}
+                  for key, value in expected.items()
+                  if labels.get(key) != value
+              }
+              if invalid:
+                  raise SystemExit(f"{image}의 OCI 레이블이 올바르지 않습니다: {invalid}")
+          PY
+
+          expected_license_digest="$(sha256sum LICENSE | awk '{print $1}')"
+          for image in \
+            "baton-watch-database-operations:${GITHUB_SHA}" \
+            "baton-watch-migrations:${GITHUB_SHA}" \
+            "baton-watch:${GITHUB_SHA}"
+          do
+            actual_license_digest="$(
+              docker run --rm --entrypoint sha256sum "${image}" /usr/share/licenses/baton-watch/LICENSE \
+                | awk '{print $1}'
+            )"
+            if [ "${actual_license_digest}" != "${expected_license_digest}" ]; then
+              echo "${image}의 LICENSE가 저장소 LICENSE와 다릅니다." >&2
+              exit 1
+            fi
+          done
+
+      - name: 배포 산출물 SBOM 생성과 취약점 검사
+        run: |
+          reports_dir="${PWD}/build/supply-chain"
+          inputs_dir="${RUNNER_TEMP}/supply-chain-input"
+          cache_dir="${RUNNER_TEMP}/trivy-cache"
+          mkdir -p "${reports_dir}" "${inputs_dir}/jar" "${inputs_dir}/images" "${cache_dir}"
+          cp bootstrap/build/libs/baton-watch.jar "${inputs_dir}/jar/baton-watch.jar"
+          docker save --output "${inputs_dir}/images/database-operations.tar" \
+            "baton-watch-database-operations:${GITHUB_SHA}"
+          docker save --output "${inputs_dir}/images/migrations.tar" \
+            "baton-watch-migrations:${GITHUB_SHA}"
+          docker save --output "${inputs_dir}/images/runtime.tar" \
+            "baton-watch:${GITHUB_SHA}"
+
+          trivy_image="docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
+          scan_rootfs() {
+            docker run --rm \
+              --volume "${reports_dir}:/reports" \
+              --volume "${inputs_dir}/jar:/inputs:ro" \
+              --volume "${cache_dir}:/root/.cache/trivy" \
+              "${trivy_image}" rootfs \
+              --cache-dir /root/.cache/trivy \
+              --format cyclonedx \
+              --output /reports/baton-watch.cdx.json \
+              --scanners vuln \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --skip-version-check \
+              --no-progress \
+              /inputs
+          }
+          scan_image_archive() {
+            archive="$1"
+            report="$2"
+            docker run --rm \
+              --volume "${reports_dir}:/reports" \
+              --volume "${inputs_dir}/images:/inputs:ro" \
+              --volume "${cache_dir}:/root/.cache/trivy" \
+              "${trivy_image}" image \
+              --cache-dir /root/.cache/trivy \
+              --format cyclonedx \
+              --output "/reports/${report}" \
+              --scanners vuln \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --skip-version-check \
+              --no-progress \
+              --input "/inputs/${archive}"
+          }
+
+          scan_rootfs
+          scan_image_archive database-operations.tar database-operations.cdx.json
+          scan_image_archive migrations.tar migrations.cdx.json
+          scan_image_archive runtime.tar runtime.cdx.json
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          reports = Path("build/supply-chain")
+          for report in sorted(reports.glob("*.cdx.json")):
+              document = json.loads(report.read_text())
+              if document.get("bomFormat") != "CycloneDX":
+                  raise SystemExit(f"CycloneDX 보고서가 올바르지 않습니다: {report}")
+              if not document.get("components"):
+                  raise SystemExit(f"SBOM에 구성요소가 없습니다: {report}")
+
+          allowed = set()
+          reading_allowlist = False
+          for line in Path(".github/dependency-review-config.yml").read_text().splitlines():
+              if line == "allow-licenses:":
+                  reading_allowlist = True
+                  continue
+              if reading_allowlist and line.startswith("  - "):
+                  allowed.add(line.removeprefix("  - "))
+                  continue
+              if reading_allowlist and line.strip():
+                  break
+          if not allowed:
+              raise SystemExit("런타임 라이선스 허용 목록이 비어 있습니다.")
+
+          # Trivy 0.74가 라이선스를 싣지 않지만 배포 POM은 Apache-2.0을 선언한다.
+          approved_missing = {
+              "pkg:maven/org.flywaydb/flyway-database-postgresql@12.4.0",
+              "pkg:maven/org.jspecify/jspecify@1.0.0",
+          }
+
+          document = json.loads((reports / "baton-watch.cdx.json").read_text())
+          missing = set()
+          rejected = {}
+          for component in document["components"]:
+              identifiers = {
+                  entry.get("license", {}).get("id")
+                  for entry in component.get("licenses", [])
+              } - {None}
+              purl = component.get("purl", component.get("bom-ref", "알 수 없는 구성요소"))
+              if not identifiers:
+                  missing.add(purl)
+              elif identifiers.isdisjoint(allowed):
+                  rejected[purl] = sorted(identifiers)
+          if missing != approved_missing:
+              raise SystemExit(
+                  "라이선스를 판별하지 못한 런타임 의존성이 승인 목록과 다릅니다: "
+                  f"실제={sorted(missing)}, 승인={sorted(approved_missing)}"
+              )
+          if rejected:
+              raise SystemExit(f"허용되지 않은 런타임 라이선스가 있습니다: {rejected}")
+          PY
+
+          cp "${inputs_dir}/jar/baton-watch.jar" "${reports_dir}/baton-watch.jar"
+          (
+            cd build/supply-chain
+            sha256sum baton-watch.jar ./*.cdx.json > SHA256SUMS
+          )
+
+      - name: 공급망 산출물 보관
+        if: ${{ !cancelled() && hashFiles('build/supply-chain/*') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: supply-chain-${{ github.sha }}
+          path: build/supply-chain
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 실제 PostgreSQL 데이터베이스 작업 검증
         run: ./ops/tests/staging-database-operation-postgres-test.sh
 
-      - name: Analyze with CodeQL
+      - name: CodeQL 분석
         uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
+
+  attest:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+
+    steps:
+      - name: 공급망 산출물 내려받기
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: supply-chain-${{ github.sha }}
+          path: supply-chain
+
+      - name: 공급망 산출물 출처 증명
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
+        with:
+          subject-path: supply-chain/**

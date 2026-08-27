@@ -1,0 +1,23 @@
+# Dependency Review가 판별한 변경 의존성에 허용할 라이선스만 명시한다.
+fail-on-severity: high
+fail-on-scopes:
+  - runtime
+  - development
+vulnerability-check: true
+license-check: true
+allow-licenses:
+  - 0BSD
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - CC0-1.0
+  - EDL-1.0
+  - EPL-2.0
+  - ISC
+  - MIT
+  - MIT-0
+  - MPL-2.0
+  - PostgreSQL
+  - Unicode-3.0
+  - Unlicense
+  - Zlib
