@@ -102,6 +102,9 @@ jobs:
 
       - name: Build pinned runtime images
         run: |
-          docker build --target database-operations --tag baton-watch-database-operations:verify .
-          docker build --target migrations --tag baton-watch-migrations:verify .
-          docker build --tag baton-watch:verify .
+          docker build --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
+          docker build --target migrations --tag "baton-watch-migrations:${GITHUB_SHA}" .
+          docker build --tag "baton-watch:${GITHUB_SHA}" .
+
+      - name: Validate database operations against PostgreSQL
+        run: ./ops/tests/staging-database-operation-postgres-test.sh
