@@ -11,6 +11,17 @@ spring:
         await-termination: true
         await-termination-period: 65s
 
+server:
+  max-http-request-header-size: 8KB
+  tomcat:
+    max-http-response-header-size: 8KB
+    max-connections: 128
+    accept-count: 32
+    threads:
+      max: 32
+      min-spare: 4
+      max-queue-capacity: 64
+
 logging:
   level:
     org.apache.hc.client5.http.headers: OFF

@@ -26,6 +26,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Optional;
+import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -36,6 +37,8 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.tomcat.TomcatWebServer;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -65,10 +68,29 @@ class MonitorApiSecurityIntegrationTest {
     private int serverPort;
 
     private final ObjectMapper objectMapper;
+    private final ServletWebServerApplicationContext applicationContext;
 
     @Autowired
-    MonitorApiSecurityIntegrationTest(ObjectMapper objectMapper) {
+    MonitorApiSecurityIntegrationTest(
+            ObjectMapper objectMapper,
+            ServletWebServerApplicationContext applicationContext) {
         this.objectMapper = objectMapper;
+        this.applicationContext = applicationContext;
+    }
+
+    @Test
+    void embeddedTomcatAppliesFiniteInboundResourceBounds() {
+        var webServer = (TomcatWebServer) applicationContext.getWebServer();
+        var connector = webServer.getTomcat().getConnector();
+        var protocol = (AbstractHttp11Protocol<?>) connector.getProtocolHandler();
+
+        assertThat(protocol.getMaxHttpRequestHeaderSize()).isEqualTo(8 * 1024);
+        assertThat(protocol.getMaxHttpResponseHeaderSize()).isEqualTo(8 * 1024);
+        assertThat(protocol.getMaxConnections()).isEqualTo(128);
+        assertThat(protocol.getAcceptCount()).isEqualTo(32);
+        assertThat(protocol.getMaxThreads()).isEqualTo(32);
+        assertThat(protocol.getMinSpareThreads()).isEqualTo(4);
+        assertThat(protocol.getMaxQueueSize()).isEqualTo(64);
     }
 
     @Test
