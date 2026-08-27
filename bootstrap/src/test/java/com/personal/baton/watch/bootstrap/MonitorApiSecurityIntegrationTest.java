@@ -24,7 +24,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -438,29 +437,7 @@ class MonitorApiSecurityIntegrationTest {
 
         @Bean
         WatchProperties watchProperties() {
-            return new WatchProperties(
-                    API_TOKEN,
-                    Duration.ofSeconds(1),
-                    Duration.ofMinutes(1),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(1),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(10),
-                    Duration.ofDays(30),
-                    1,
-                    100,
-                    new WatchProperties.Http(
-                            Duration.ofSeconds(2),
-                            Duration.ofSeconds(3),
-                            Duration.ofSeconds(5),
-                            64 * 1024,
-                            3,
-                            100,
-                            8 * 1024,
-                            2,
-                            8,
-                            1,
-                            1));
+            return BootstrapTestFixtures.watchProperties(API_TOKEN);
         }
 
         @Bean

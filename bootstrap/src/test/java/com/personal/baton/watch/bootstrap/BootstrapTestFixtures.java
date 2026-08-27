@@ -9,8 +9,12 @@ final class BootstrapTestFixtures {
     }
 
     static WatchProperties watchProperties() {
+        return watchProperties("a-test-token-that-is-longer-than-32-characters");
+    }
+
+    static WatchProperties watchProperties(String apiToken) {
         return new WatchProperties(
-                "a-test-token-that-is-longer-than-32-characters",
+                apiToken,
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(30),
