@@ -73,6 +73,10 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 엔드포인트는 포트 `443`의 절대 공개 글로벌 HTTPS URL이어야 하며 사용자 정보, 쿼리, 프래그먼트, IP 리터럴 호스트를 포함할 수 없습니다. BATON은 Bearer 토큰을 인증하고 `2xx`로 응답하기 전에 `Idempotency-Key`/`eventId`를 내구성 있게 중복 제거해야 합니다. 정확한 페이로드와 재시도 동작은 전달 계약을 참고합니다.
 콜백 Bearer 토큰은 모니터 API 토큰과 달라야 하고 `[A-Za-z0-9._~-]` 문자 32~200개로 구성합니다.
 
+## 라이선스
+
+이 프로젝트는 [Apache License 2.0](LICENSE) 조건으로 사용할 수 있습니다.
+
 ## 유지 문서
 
 - [제품 기준선](docs/PRD/0001_product-baseline/spec.md)
