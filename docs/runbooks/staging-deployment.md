@@ -53,11 +53,13 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   직후 root만 읽을 수 있는 Compose 비밀을 각자의 tmpfs로 복사한 뒤 UID 70과
   UID 65532로 즉시 권한을 낮춥니다. 이 초기 전환에만 `CHOWN`, `SETGID`,
   `SETUID` capability를 사용하며 SQL과 Flyway 실행은 비루트 주체가 담당합니다.
-- WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 애플리케이션 테이블에
-  필요한 DML만 사용하고 `flyway_schema_history`를 읽거나 변경할 수 없으며,
-  `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접
-  변경하거나 보호된 트리거 함수를 직접 실행할 수 없습니다. `PUBLIC`과
-  런타임 역할의 데이터베이스 `TEMPORARY` 권한도 회수합니다.
+- WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
+  시도 조회·삽입·보존 삭제, 결과 조회·삽입, 이벤트 조회·삽입·보존 삭제와
+  지정된 전달 메타데이터 열 갱신만 허용받습니다. 불변 시도·결과 열과 이벤트 페이로드
+  열은 갱신할 수 없습니다. `flyway_schema_history`를 읽거나 변경할 수 없고,
+  `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접 변경하거나
+  보호된 트리거 함수를 직접 실행할 수 없습니다. `PUBLIC`과 런타임 역할의
+  데이터베이스 `TEMPORARY` 권한도 회수합니다.
 - WATCH는 호스트 포트를 공개하지 않고 `watch-db`와 `watch-edge`에 참여하며,
   해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
 - 관리 서버는 WATCH 컨테이너 내부의 `127.0.0.1:8081`에 계속 바인딩되며,
@@ -110,6 +112,48 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 
 Cloudflare 설정, DNS, Active 인증서만으로는 오리진이 실행 중임을 입증할 수
 없습니다. 내부 및 외부 스모크 테스트 증거를 모두 보관하세요.
+
+## 공개 인바운드와 용량 승인 기준
+
+WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수락 대기를 32개,
+워커 스레드를 최대 32개·최소 유휴 4개, 워커 큐를 64개로 고정합니다. 이 값에는
+환경 변수 재정의를 열지 않았습니다. 이 상한은 단일 오리진의 유한 자원 경계이며
+지원 용량이나 요청 속도 제한이 아닙니다.
+
+현재 기본 점검 설정은 단일 스케줄러 레인, 배치 크기 1, 요청당 전체 제한 시간
+5초입니다. 모든 점검이 제한 시간을 소진하면 데이터베이스 처리 시간을 제외해도
+이론상 처리량은 분당 약 12건까지 내려갈 수 있습니다. 이 계산은 지원 용량이나
+SLO가 아니라 부하 시험을 시작하기 위한 보수적 하한입니다. 이벤트 전달도 단일
+레인에서 배치 10개를 직렬 처리하고 각 시도에 최대 5초를 사용하므로, 기본 60초
+리스의 여유를 운영 지연이 잠식할 수 있습니다.
+
+공개 배포 전에 다음 증거를 별도로 남기세요.
+
+- 예상 활성 모니터 수, 분당 동기화 요청 수, 상태 변경 이벤트 폭주량을 포함한
+  부하 시나리오와 승인된 지원 규모
+- `baton_watch_check_inflight`, `baton_watch_check_schedule_delay_seconds`,
+  `baton_watch_event_delivery_backlog`,
+  `baton_watch_event_delivery_oldest_age_seconds`의 정상 범위와 경보 임계치
+- 최대 HTTP 제한 시간과 데이터베이스 지연을 포함한 부하에서 일정 지연과
+  전달 백로그가 계속 증가하지 않고 회복되는지에 대한 결과
+- 데이터베이스 연결 풀 포화, Spring `tasks.scheduled.execution` 오류와 기존
+  저카디널리티 WATCH 메트릭을 연결한 외부 대시보드와 알림 전달 경로
+- 부분 배치의 완료 처리 실패와 만료 리스 회수를 별도로 구분해야 하는 지원 규모라면
+  전용 메트릭·대시보드·경보의 설계와 구현을 운영 승인 전에 완료했다는 증거
+
+현재 저장소에는 지원 규모, 외부 대시보드와 알림 임계치가 확정되어 있지 않으므로
+이 증거 없이 운영 용량을 주장해서는 안 됩니다. 부분 완료 처리 실패와 만료 리스
+회수를 구분하는 전용 메트릭도 아직 없으므로 기존 메트릭이 해당 구분을 제공한다고
+가정해서는 안 됩니다.
+
+Cloudflare에는 상태 경로와 인증된 모니터 경로를 구분한 요청 속도 제한을
+설정하세요. 모니터 경로의 허용량은 BATON의 정상 최대 동기화량보다 높고 검증된
+서버 처리량보다 낮아야 하며, 초과 요청은 터널과 WATCH에 도달하기 전에 `429`로
+거부해야 합니다. 공개 상태 경로에는 별도의 더 낮은 제한을 적용합니다. 제한값,
+적용 범위, 우회 목록과 `429` 외부 스모크 결과를 기록하고, 실제 BATON 요청과
+상태 점검이 정상적으로 통과하는지도 함께 확인하세요. WATCH의 인증과 16 KiB
+본문 제한, Tomcat 연결·대기열·워커 상한은 요청별 계약과 오리진 자원 경계일 뿐
+요청 빈도 제한을 대신하지 않습니다.
 
 ## Mac 준비
 
@@ -291,43 +335,66 @@ staging_compose() {
 
 ~~~bash
 VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
-  --workflow Verify --commit "$DEPLOY_SHA" --status success --limit 20 \
+  --workflow verify.yml --commit "$DEPLOY_SHA" --status success --limit 20 \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
-./gradlew clean test --no-daemon --no-build-cache
+./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
 staging_compose pull postgres cloudflared
 docker build --pull --target database-operations \
-  --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
+  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_DATABASE_OPERATIONS_IMAGE" \
   .
 docker build --pull --target migrations \
-  --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
+  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_MIGRATION_IMAGE" \
   .
-docker build --pull \
-  --label "org.opencontainers.image.revision=${DEPLOY_SHA}" \
+docker build --pull --target runtime \
+  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_IMAGE" \
   .
-BUILT_IMAGE_REVISION="$(docker image inspect "$WATCH_IMAGE" \
-  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-BUILT_DATABASE_OPERATIONS_IMAGE_REVISION="$(docker image inspect "$WATCH_DATABASE_OPERATIONS_IMAGE" \
-  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-BUILT_MIGRATION_IMAGE_REVISION="$(docker image inspect "$WATCH_MIGRATION_IMAGE" \
-  --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
-test "$BUILT_IMAGE_REVISION" = "$DEPLOY_SHA"
-test "$BUILT_DATABASE_OPERATIONS_IMAGE_REVISION" = "$DEPLOY_SHA"
-test "$BUILT_MIGRATION_IMAGE_REVISION" = "$DEPLOY_SHA"
+EXPECTED_LICENSE_DIGEST="$(shasum -a 256 LICENSE | awk '{print $1}')"
+for BUILT_IMAGE in \
+  "$WATCH_DATABASE_OPERATIONS_IMAGE" \
+  "$WATCH_MIGRATION_IMAGE" \
+  "$WATCH_IMAGE"; do
+  test "$(docker image inspect "$BUILT_IMAGE" \
+    --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = \
+    "$DEPLOY_SHA"
+  test "$(docker image inspect "$BUILT_IMAGE" \
+    --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = \
+    'https://github.com/ljkhyeong/baton-watch'
+  test "$(docker image inspect "$BUILT_IMAGE" \
+    --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = \
+    '0.1.0-SNAPSHOT'
+  test "$(docker image inspect "$BUILT_IMAGE" \
+    --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
+    'Apache-2.0'
+  BUILT_LICENSE_DIGEST="$(docker run --rm --entrypoint sha256sum \
+    "$BUILT_IMAGE" /usr/share/licenses/baton-watch/LICENSE | awk '{print $1}')"
+  test "$BUILT_LICENSE_DIGEST" = "$EXPECTED_LICENSE_DIGEST"
+done
+unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
+./ops/tests/staging-database-operation-postgres-test.sh
 ~~~
 
-이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `Verify` 워크플로가 성공했고
-전체 로컬 테스트 작업도 통과해야 합니다. `Verify`는 공식 SHA-256으로
+이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `검증` 워크플로가 성공했고
+전체 로컬 테스트 작업도 통과해야 합니다. `검증`은 공식 SHA-256으로
 고정된 Gradle Wrapper, Gradle 의존성 검증 메타데이터, 전체 SHA로 고정된
-GitHub Actions, 변경 의존성 검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
+GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적용한 변경 의존성
+검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
 `staging-compose-policy-test.sh`, `staging-database-operation-test.sh`,
 `staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
-비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 호스트 Gradle
-실행은 전체 테스트를 소유하고, 최종 WATCH Docker 이미지 빌드는 이미지에 포함할
+비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
+레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. Trivy는 독립 부트 JAR과
+세 이미지의 CycloneDX SBOM 네 개를 만들고 수정 가능한 `HIGH`·`CRITICAL`
+취약점이 있으면 실패합니다. 검증 산출물은 실행 가능한 JAR, SBOM 네 개와
+체크섬 목록이며 14일 동안 보관합니다. `main` 푸시에서는 이 파일 묶음에 GitHub
+출처 증명을 추가합니다. 현재 워크플로는 컨테이너 이미지 자체를 출처 증명 대상으로
+삼지 않으므로 이미지 증명으로 해석하지 마세요. 호스트 Gradle 실행은 전체 테스트와
+부트 JAR 라이선스 검증을 소유하고, 최종 WATCH Docker 이미지 빌드는 이미지에 포함할
 실행 가능한 부트 JAR 생성을 소유합니다.
+로컬 실제 PostgreSQL 스모크는 Flyway V1~V4, 허용된 런타임 DML, 불변 시도·결과·
+이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
 Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
 업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
 사항이 남아 있는 작업 트리,
@@ -440,12 +507,20 @@ staging_compose exec -T watch sh -c \
   'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
 MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
   'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT string_agg(version, chr(44) ORDER BY installed_rank) FROM flyway_schema_history WHERE success"')"
-test "$MIGRATION_EVIDENCE" = 1,2,3
+test "$MIGRATION_EVIDENCE" = 1,2,3,4
 RUNTIME_PRIVILEGE_EVIDENCE="$(
   printf '%s\n' \
     "SELECT concat_ws('|'," \
     "  has_database_privilege(:'runtime_role', current_database(), 'TEMPORARY')," \
     "  has_table_privilege(:'runtime_role', 'public.watch_monitor', 'SELECT')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_monitor', 'DELETE')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_attempt', 'DELETE')," \
+    "  has_column_privilege(:'runtime_role', 'public.watch_attempt', 'claimed_at', 'UPDATE')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_result', 'INSERT')," \
+    "  has_column_privilege(:'runtime_role', 'public.watch_result', 'outcome', 'UPDATE')," \
+    "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event', 'DELETE')," \
+    "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'changed_at', 'UPDATE')," \
+    "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'delivery_status', 'UPDATE')," \
     "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT')," \
     "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event_backlog', 'UPDATE')," \
     "  has_function_privilege(:'runtime_role', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" |
@@ -453,15 +528,18 @@ RUNTIME_PRIVILEGE_EVIDENCE="$(
     postgres sh -c \
     'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --set=runtime_role="$WATCH_DB_RUNTIME_USER"'
 )"
-test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|f|f'
+test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
 ~~~
 
 데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
-비활성화 검증과 V1·V2·V3 마이그레이션 증거 검사는 종료 코드 0으로
+비활성화 검증과 V1~V4 마이그레이션 증거 검사는 종료 코드 0으로
 끝나야 합니다. WATCH 상태는 런타임 역할의 데이터베이스 연결 성공을
 확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
-`TEMPORARY`·모니터 조회·`flyway_schema_history` 조회·백로그 요약 직접 변경·보호된
-함수 직접 실행 권한이 순서대로 `f|t|f|f|f`인지도 직접 검증합니다.
+`TEMPORARY`, 모니터 조회와 삭제 거부, 시도 보존 삭제와 불변 열 갱신 거부,
+결과 삽입과 갱신 거부, 이벤트 보존 삭제와 페이로드 열 갱신 거부, 전달 상태 열
+갱신, `flyway_schema_history` 조회 거부, 백로그 요약 직접 변경 거부와 보호된
+함수 직접 실행 거부가 순서대로
+`f|t|f|t|f|t|f|t|f|t|f|f|f`인지 직접 검증합니다.
 
 ## 외부 HTTPS 스모크 테스트
 
