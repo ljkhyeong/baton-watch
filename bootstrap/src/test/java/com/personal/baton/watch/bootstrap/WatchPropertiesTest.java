@@ -11,8 +11,20 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WatchPropertiesTest {
 
     @Test
-    void rejectsAConfigurationWhoseChecksCanOutliveTheLease() {
+    void enforcesTheLeaseBudgetAndLetsTheTotalTimeoutCapHttpPhases() {
         assertThrows(IllegalArgumentException.class, () -> properties(Duration.ofSeconds(10), 2));
+        new WatchProperties.Http(
+                Duration.ofSeconds(6),
+                Duration.ofSeconds(7),
+                Duration.ofSeconds(5),
+                65_536,
+                3,
+                100,
+                8_192,
+                2,
+                8,
+                1,
+                1);
     }
 
     @Test

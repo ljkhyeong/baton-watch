@@ -72,19 +72,6 @@ public record EventDeliveryProperties(
             @Min(1) @Max(OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY) int dnsQueueCapacity,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_THREADS) int requestThreads,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
-
-        public Http {
-            if (connectTimeout != null
-                    && connectTimeout.isPositive()
-                    && responseTimeout != null
-                    && responseTimeout.isPositive()
-                    && totalTimeout != null
-                    && totalTimeout.isPositive()
-                    && (connectTimeout.compareTo(totalTimeout) > 0
-                            || responseTimeout.compareTo(totalTimeout) > 0)) {
-                throw new IllegalArgumentException("event delivery HTTP phase timeout cannot exceed totalTimeout");
-            }
-        }
     }
 
 }

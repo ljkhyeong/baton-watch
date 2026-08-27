@@ -9,13 +9,24 @@ import org.junit.jupiter.api.Test;
 class EventDeliveryPropertiesTest {
 
     @Test
-    void rejectsAConfigurationWhoseBatchCanOutliveTheLease() {
+    void enforcesTheLeaseBudgetAndLetsTheTotalTimeoutCapHttpPhases() {
         assertThrows(IllegalArgumentException.class, () -> properties(
                 true,
                 URI.create("https://baton.example.com/events"),
                 "a-separate-delivery-token-longer-than-32-characters",
                 Duration.ofSeconds(50),
                 10));
+        new EventDeliveryProperties.Http(
+                Duration.ofSeconds(6),
+                Duration.ofSeconds(7),
+                Duration.ofSeconds(5),
+                8_192,
+                100,
+                8_192,
+                2,
+                8,
+                1,
+                1);
     }
 
     private static EventDeliveryProperties properties(
