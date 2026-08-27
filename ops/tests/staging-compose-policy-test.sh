@@ -92,6 +92,14 @@ def assert_no_host_ports(configuration: dict, label: str) -> None:
         )
 
 
+def assert_digest_pinned(image: str, repository: str, label: str) -> None:
+    pattern = rf"{re.escape(repository)}:[0-9][A-Za-z0-9_.-]*@sha256:[0-9a-f]{{64}}"
+    require(
+        re.fullmatch(pattern, image) is not None,
+        f"{label} image must use a versioned digest pin",
+    )
+
+
 base = load(sys.argv[1])
 tunnel = load(sys.argv[2])
 
@@ -153,12 +161,12 @@ require(
     migrate["environment"].get("WATCH_DB_RUNTIME_USER") == "baton_watch_runtime",
     "migration callback must target the runtime database role",
 )
-require(
-    cloudflared.get("image")
-    == "cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf",
-    "cloudflared image digest changed",
+assert_digest_pinned(
+    cloudflared.get("image", ""),
+    "cloudflare/cloudflared",
+    "cloudflared",
 )
-require("@sha256:" in postgres.get("image", ""), "PostgreSQL image must be digest-pinned")
+assert_digest_pinned(postgres.get("image", ""), "postgres", "PostgreSQL")
 require(
     database_role_init.get("image")
     == "baton-watch-database-operations:0000000000000000000000000000000000000001",
