@@ -2,7 +2,7 @@
 
 상태: 운영자용 실행 절차서이며, 저장소 산출물은 실제 배포의 증거가 아님
 
-최종 수정일: 2026-08-27
+최종 수정일: 2026-08-29
 
 ## 목적과 현재 경계
 
@@ -24,7 +24,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
 - 비밀값이 없는 환경 템플릿인
   [ops/staging.env.example](../../ops/staging.env.example)
-- 로컬에서 빌드한 불변
+- 로컬에서 빌드하고 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관한
   `baton-watch-database-operations:<full-git-sha>` 데이터베이스 작업 이미지,
   `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
   `baton-watch:<full-git-sha>` 런타임 이미지
@@ -126,7 +126,8 @@ Cloudflare 설정, DNS, Active 인증서만으로는 오리진이 실행 중임�
 
 WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수락 대기를 32개,
 워커 스레드를 최대 32개·최소 유휴 4개, 워커 큐를 64개로 고정합니다. 이 값에는
-환경 변수 재정의를 열지 않았습니다. 이 상한은 단일 오리진의 유한 자원 경계이며
+외부 설정보다 우선하는 Spring Boot 환경 후처리기 속성 소스를 사용하므로 환경
+변수·시스템 속성·명령행 인수로 완화할 수 없습니다. 이 상한은 단일 오리진의 유한 자원 경계이며
 지원 용량이나 요청 속도 제한이 아닙니다.
 
 현재 기본 점검 설정은 단일 스케줄러 레인, 배치 크기 1, 요청당 전체 제한 시간
@@ -160,6 +161,12 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 현재 저장소에는 지원 규모, 외부 대시보드와 알림 임계치가 확정되어 있지 않으므로
 이 증거 없이 운영 용량을 주장해서는 안 됩니다.
 
+또한 대상 점검의 DNS·공개 HTTP/HTTPS 이그레스만 허용하고 사설·메타데이터·
+플랫폼 예약 목적지를 네트워크 계층에서도 차단하는 인프라 정책이 승인되지
+않았습니다. 이그레스 정책, 지원 규모와 SLO, Cloudflare 요청 속도 제한,
+외부 대시보드·알림 전달 경로와 임계치가 모두 승인되고 장애 주입으로 검증되기
+전에는 이 문서의 공개 Cloudflare 배포 단계를 실행하지 마세요.
+
 Cloudflare에는 상태 경로와 인증된 모니터 경로를 구분한 요청 속도 제한을
 설정하세요. 모니터 경로의 허용량은 BATON의 정상 최대 동기화량보다 높고 검증된
 서버 처리량보다 낮아야 하며, 초과 요청은 터널과 WATCH에 도달하기 전에 `429`로
@@ -189,6 +196,7 @@ export WATCH_MIGRATION_IMAGE="baton-watch-migrations:${WATCH_IMAGE_REVISION}"
 export STAGING_CONFIG_DIR="${HOME}/.config/baton-watch/staging"
 export STAGING_ENV_FILE="${STAGING_CONFIG_DIR}/staging.env"
 export STAGING_STATE_FILE="${STAGING_CONFIG_DIR}/staging-state.env"
+export WATCH_IMAGE_ARCHIVE_DIR="${STAGING_CONFIG_DIR}/images/${DEPLOY_SHA}"
 ~~~
 
 비밀값이 없는 환경 파일을 설치하고 비밀 디렉터리를 생성합니다. 여섯 파일을
@@ -411,6 +419,8 @@ for BUILT_IMAGE in \
 done
 unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
 ./ops/tests/staging-database-operation-postgres-test.sh
+./ops/staging-image-evidence.sh archive
+./ops/staging-image-evidence.sh verify
 ~~~
 
 이미지를 빌드하기 전에 정확한 SHA에 대한 GitHub `검증` 워크플로가 성공했고
@@ -418,7 +428,8 @@ unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
 고정된 Gradle Wrapper, Gradle 의존성 검증 메타데이터, 전체 SHA로 고정된
 GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적용한 변경 의존성
 검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
-`staging-compose-policy-test.sh`, `staging-database-operation-test.sh`,
+`staging-compose-policy-test.sh`, `staging-image-evidence-test.sh`,
+`staging-database-operation-test.sh`,
 `staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. Trivy는 독립 부트 JAR과
@@ -436,6 +447,9 @@ Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이�
 업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
 사항이 남아 있는 작업 트리,
 `latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
+`archive`는 같은 리비전의 기존 보관 디렉터리를 덮어쓰지 않습니다. 보관된
+`manifest.tsv`와 세 아카이브는 태그만으로는 증명할 수 없는 실제 이미지 ID와
+체크섬을 롤백 기간 동안 유지합니다.
 
 어떤 항목도 시작하기 전에 병합된 모델을 검증합니다.
 
@@ -523,6 +537,7 @@ SHA, 복원 테스트 결과만 기록합니다. 격리된 데이터베이스에
 모두 통과해야 합니다.
 
 ~~~bash
+./ops/staging-image-evidence.sh verify
 staging_compose stop watch cloudflared
 test -z "$(staging_compose ps --status running --services watch cloudflared)"
 staging_compose up -d --no-build --wait --wait-timeout 180
@@ -577,6 +592,67 @@ test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
 갱신, `flyway_schema_history` 조회 거부, 백로그 요약 직접 변경 거부와 보호된
 함수 직접 실행 거부가 순서대로
 `f|t|f|t|f|t|f|t|f|t|f|f|f`인지 직접 검증합니다.
+
+## 데이터베이스 비밀번호 교체
+
+데이터베이스 소유자와 런타임 비밀번호는 별도로 교체합니다. 새 값은 비밀 관리
+시스템에서 생성하고 현재 소유자·런타임 값과 모두 달라야 합니다. 아래 명령은
+새 값을 명령행이나 SQL 파일에 넣지 않고 `psql`의 `\password` 입력으로 전달하며,
+교체 전후 자격 증명으로 실제 연결을 확인합니다. 먼저 런타임 비밀번호를 교체하고
+WATCH 비밀 파일을 원자적으로 바꾼 뒤 WATCH를 강제 재생성하세요.
+
+~~~bash
+set +x
+umask 077
+NEW_DATABASE_SECRET="${STAGING_CONFIG_DIR}/secrets/postgres-new-password"
+install -m 0600 /dev/null "$NEW_DATABASE_SECRET"
+# 비밀 관리 시스템이 새 런타임 값을 마지막 개행 하나와 함께 기록합니다.
+test -s "$NEW_DATABASE_SECRET"
+test -f "$NEW_DATABASE_SECRET"
+test ! -L "$NEW_DATABASE_SECRET"
+
+staging_compose stop watch
+staging_compose run --rm --no-deps -T \
+  --entrypoint /opt/watch/run-as-database-user.sh \
+  --volume "$NEW_DATABASE_SECRET:/run/secrets/postgres-new-password:ro" \
+  --env WATCH_DB_NEW_PASSWORD_FILE=/run/secrets/postgres-new-password \
+  database-role-init \
+  70 70 /opt/watch/staging-database-operation.sh rotate-runtime-password
+mv "$NEW_DATABASE_SECRET" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
+staging_compose up -d --no-deps --force-recreate --wait watch
+staging_compose exec --user 10001:10001 -T watch \
+  wget -q -O - http://127.0.0.1:8081/actuator/health
+~~~
+
+소유자 비밀번호는 WATCH를 정지하지 않고 같은 방식으로 교체할 수 있습니다.
+`database-role-init`과 `migrate`를 다시 실행해 새 소유자 자격 증명과 기존
+런타임 비밀 파일이 함께 동작하는지 확인합니다.
+
+~~~bash
+install -m 0600 /dev/null "$NEW_DATABASE_SECRET"
+# 비밀 관리 시스템이 새 소유자 값을 마지막 개행 하나와 함께 기록합니다.
+test -s "$NEW_DATABASE_SECRET"
+staging_compose run --rm --no-deps -T \
+  --entrypoint /opt/watch/run-as-database-user.sh \
+  --volume "$NEW_DATABASE_SECRET:/run/secrets/postgres-new-password:ro" \
+  --env WATCH_DB_NEW_PASSWORD_FILE=/run/secrets/postgres-new-password \
+  database-role-init \
+  70 70 /opt/watch/staging-database-operation.sh rotate-owner-password
+mv "$NEW_DATABASE_SECRET" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-owner-password"
+staging_compose run --rm --no-deps -T database-role-init
+staging_compose run --rm --no-deps -T migrate
+unset NEW_DATABASE_SECRET
+~~~
+
+교체 전 비밀번호는 검증이 끝날 때까지 비밀 관리 시스템의 이전 버전으로만
+보관하고 로컬 보조 파일로 남기지 마세요. 교체 또는 재생성이 실패하면 이전 값을
+새 비밀번호 입력으로 선택해 같은 명령을 다시 실행하고, 원래 비밀 파일을 원자적으로
+복원한 뒤 해당 서비스를 강제 재생성합니다. 데이터베이스 역할과 파일 중 한쪽만
+되돌리지 마세요.
 
 ## 외부 HTTPS 스모크 테스트
 
@@ -661,6 +737,9 @@ export WATCH_IMAGE_REVISION="$PREVIOUS_SHA"
 export WATCH_IMAGE="baton-watch:${WATCH_IMAGE_REVISION}"
 export WATCH_DATABASE_OPERATIONS_IMAGE="baton-watch-database-operations:${WATCH_IMAGE_REVISION}"
 export WATCH_MIGRATION_IMAGE="baton-watch-migrations:${WATCH_IMAGE_REVISION}"
+export WATCH_IMAGE_ARCHIVE_DIR="${STAGING_CONFIG_DIR}/images/${PREVIOUS_SHA}"
+./ops/staging-image-evidence.sh restore
+./ops/staging-image-evidence.sh verify
 ROLLBACK_IMAGE_REVISION="$(docker image inspect "$WATCH_IMAGE" \
   --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
 ROLLBACK_DATABASE_OPERATIONS_IMAGE_REVISION="$(docker image inspect "$WATCH_DATABASE_OPERATIONS_IMAGE" \
@@ -751,8 +830,9 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 ~~~
 
 일상적인 종료 명령에는 절대 `--volumes`를 추가하지 마세요. 롤백 가능 기간이
-끝난 뒤에만 이전 SHA 태그 이미지를 제거하며, 광범위한 이미지 정리 명령을
-실행하지 말고 정확한 태그를 지정하세요.
+끝난 뒤에만 이전 SHA 태그 이미지와 해당 SHA의 이미지 보관 디렉터리를 제거하며,
+광범위한 이미지 정리 명령을 실행하지 말고 정확한 태그와
+`${STAGING_CONFIG_DIR}/images/<full-git-sha>` 디렉터리를 지정하세요.
 
 영구 폐기할 때는 먼저 공개 호스트 이름을 비활성화하고 원격 관리형 터널을
 삭제하거나 비활성화한 뒤 Cloudflare에서 커넥터 토큰을 폐기합니다. 그런 다음

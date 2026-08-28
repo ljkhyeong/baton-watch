@@ -8,7 +8,7 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 
 - `GET /api/v1/system/status`
 - 인증된 `PUT` 및 `GET /api/v1/resource-monitors/{resourceReference}`. 조회 프로젝션은 마지막 점검 시각과 상태 도출에 반영한 마지막 확정 결과 시각을 구분하며, JSON `PUT` 본문은 인증 후 16 KiB로 제한되고 초과 시 `413 PAYLOAD_TOO_LARGE`를 반환
-- 요청·응답 헤더 8 KiB, 연결 128개, 수락 대기 32개, 워커 스레드 최대 32개·최소 유휴 4개, 워커 큐 64개로 고정한 내장 Tomcat 자원 상한
+- 외부 설정보다 우선하는 Spring Boot 환경 후처리기로 요청·응답 헤더 8 KiB, 연결 128개, 수락 대기 32개, 워커 스레드 최대 32개·최소 유휴 4개, 워커 큐 64개를 고정한 내장 Tomcat 자원 상한
 - 리비전 안전성을 보장하는 `ACTIVE`/`INACTIVE` 모니터 동기화
 - PostgreSQL 기반 일정, 리스, 불변 시도·결과, 현재 상태, 전달 리스와 재시도 상태를 포함한 내구성 있는 상태 변경 이벤트
 - 대상 점검과 콜백 전달을 항목 처리 직전에 한 건씩 점유하는 격리된 단일 스레드 실행 레인, 60초 직렬 배치 실행 예산, 제한된 JDBC 구문·트랜잭션·행 잠금 대기
@@ -19,7 +19,7 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 헥사고날 구조의 Gradle 6개 모듈 구성
 - 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
-운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다.
+운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 인프라 이그레스 정책, 지원 규모·SLO, Cloudflare 요청 속도 제한, 외부 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
 
 ## 기술과 모듈
 
@@ -75,7 +75,7 @@ curl http://localhost:8080/api/v1/system/status
 
 `WATCH_API_TOKEN`은 RFC 6750 `token68` 문자 집합을 사용하며 패딩 제외 문자가 32자 이상이고 전체 길이가 200자 이하여야 합니다. 32바이트 16진수 난수 값은 이 조건과 호환됩니다.
 
-로컬 Compose는 WATCH와 비공개 PostgreSQL 18.6 서비스를 시작합니다. 데이터베이스 포트와 WATCH 관리 포트 `8081`은 공개되지 않으며, 관리 포트는 런타임 네트워크 내부에서 Actuator 상태와 Prometheus 메트릭을 제공합니다. 스테이징 산출물은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch` 이미지 세 개를 사용합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다. 모니터를 동기화하려면 다음 명령을 사용합니다.
+로컬 Compose는 WATCH와 비공개 PostgreSQL 18.6 서비스를 시작합니다. 데이터베이스 포트와 WATCH 관리 포트 `8081`은 공개되지 않으며, 관리 포트는 런타임 네트워크 내부에서 Actuator 상태와 Prometheus 메트릭을 제공합니다. 스테이징 산출물은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch` 이미지 세 개를 사용합니다. 운영 런북은 세 이미지의 ID·OCI 리비전·아카이브 SHA-256을 보관하고, 소유자·런타임 비밀번호를 SQL이나 명령행에 노출하지 않고 별도로 교체·원복하는 절차를 제공합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다. 모니터를 동기화하려면 다음 명령을 사용합니다.
 
 ~~~bash
 curl -X PUT http://localhost:8080/api/v1/resource-monitors/role-resource-123 \
