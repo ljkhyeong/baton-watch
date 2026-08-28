@@ -118,7 +118,8 @@ class ResourceMonitorControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resourceReference").value("resource-1"))
                 .andExpect(jsonPath("$.lastOutcome").doesNotExist())
-                .andExpect(jsonPath("$.lastCheckedAt").doesNotExist());
+                .andExpect(jsonPath("$.lastCheckedAt").doesNotExist())
+                .andExpect(jsonPath("$.lastConclusiveAt").value("2026-07-31T23:59:00Z"));
     }
 
     @Test
@@ -272,6 +273,7 @@ class ResourceMonitorControllerTest {
                 new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.of(NOW.minusSeconds(60)),
                 Optional.of(NOW));
     }
 }

@@ -111,6 +111,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
+        assertThat(projection("resource:target-change").lastConclusiveAt()).contains(completedAt);
 
         jdbc.update("""
                 UPDATE watch_monitor
@@ -125,6 +126,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(changed.projection().health()).isEqualTo(Health.UNKNOWN);
         assertThat(changed.projection().lastOutcome()).isEmpty();
         assertThat(changed.projection().lastCheckedAt()).isEmpty();
+        assertThat(changed.projection().lastConclusiveAt()).isEmpty();
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,

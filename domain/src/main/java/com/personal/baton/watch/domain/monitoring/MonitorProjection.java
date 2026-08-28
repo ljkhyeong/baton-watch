@@ -11,6 +11,7 @@ public record MonitorProjection(
         HealthDerivation derivation,
         Optional<CheckOutcome> lastOutcome,
         Optional<Instant> lastCheckedAt,
+        Optional<Instant> lastConclusiveAt,
         Optional<Instant> nextCheckAt) {
 
     public MonitorProjection {
@@ -20,6 +21,7 @@ public record MonitorProjection(
         Objects.requireNonNull(derivation, "derivation");
         Objects.requireNonNull(lastOutcome, "lastOutcome");
         Objects.requireNonNull(lastCheckedAt, "lastCheckedAt");
+        Objects.requireNonNull(lastConclusiveAt, "lastConclusiveAt");
         Objects.requireNonNull(nextCheckAt, "nextCheckAt");
         if (monitoringState == MonitoringState.INACTIVE && nextCheckAt.isPresent()) {
             throw new IllegalArgumentException("inactive monitor cannot have a next check time");

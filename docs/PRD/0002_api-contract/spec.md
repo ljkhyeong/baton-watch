@@ -75,9 +75,15 @@ PUT과 GET은 `application/json`을 반환한다.
   "consecutiveFailures": 0,
   "lastOutcome": null,
   "lastCheckedAt": null,
+  "lastConclusiveAt": null,
   "nextCheckAt": "2026-08-01T00:00:00Z"
 }
 ~~~
+
+`lastCheckedAt`은 결과 분류와 관계없이 마지막으로 완료 처리한 점검 시각이다.
+`lastConclusiveAt`은 상태 도출에 반영할 수 있는 마지막 확정 결과의 완료 시각이며,
+내부 실패처럼 확정할 수 없는 결과만 이어지면 이전 값을 유지한다. 두 값이 없으면
+응답에서 해당 필드를 생략할 수 있다.
 
 검증 실패는 HTTP 400, 오래된 리비전 또는 같은 리비전의 페이로드 충돌은
 HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 인증된 JSON PUT의 16 KiB

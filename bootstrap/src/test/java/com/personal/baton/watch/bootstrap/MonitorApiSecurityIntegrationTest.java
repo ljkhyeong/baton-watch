@@ -437,6 +437,7 @@ class MonitorApiSecurityIntegrationTest {
                 new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
