@@ -111,6 +111,9 @@ jobs:
       - name: 스테이징 배포 정책 검증
         run: ./ops/tests/staging-compose-policy-test.sh
 
+      - name: 스테이징 이미지 보관 증거 검증
+        run: ./ops/tests/staging-image-evidence-test.sh
+
       - name: 스테이징 데이터베이스 작업 검증
         run: ./ops/tests/staging-database-operation-test.sh
 
