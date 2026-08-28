@@ -83,4 +83,13 @@ class MonitoringValueTypesTest {
             assertThrows(IllegalArgumentException.class, historicalTarget::requireSafeEncodedCharacters);
         }
     }
+
+    @Test
+    void hidesSensitiveValuesFromStringRepresentations() {
+        TargetUrl target = new TargetUrl("https://example.com/health?secret=hidden");
+        ResourceReference reference = new ResourceReference("sensitive-resource-reference");
+
+        assertEquals("[target-url]", target.toString());
+        assertEquals("[resource-reference]", reference.toString());
+    }
 }

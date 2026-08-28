@@ -90,6 +90,17 @@ class RunEventDeliveriesServiceTest {
         assertEquals(1, result.alreadyDelivered());
         assertEquals(0, result.retryScheduled());
         assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, persistence.finalization.observation().outcome());
+
+        RecordingPersistence stalePersistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
+        stalePersistence.status = EventDeliveryFinalizationStatus.STALE_CLAIM;
+
+        EventDeliveryBatchResult staleResult = service(
+                        stalePersistence,
+                        event -> EventDeliveryObservation.failure(EventDeliveryOutcome.CONNECT_TIMEOUT))
+                .runEventDeliveries();
+
+        assertEquals(1, staleResult.staleClaims());
+        assertEquals(0, staleResult.retryScheduled());
     }
 
     @Test

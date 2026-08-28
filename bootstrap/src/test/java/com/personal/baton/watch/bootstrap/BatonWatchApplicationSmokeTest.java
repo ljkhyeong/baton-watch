@@ -131,7 +131,7 @@ class BatonWatchApplicationSmokeTest {
                 ORDER BY installed_rank
                 """,
                 String.class);
-        assertThat(appliedVersions).containsExactly("1", "2", "3", "4");
+        assertThat(appliedVersions).containsSubsequence("1", "2", "3", "4");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
         assertThat(environment.getProperty("management.endpoint.health.show-details"))

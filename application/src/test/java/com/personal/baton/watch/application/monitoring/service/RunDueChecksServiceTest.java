@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class RunDueChecksServiceTest {
 
@@ -126,6 +128,31 @@ class RunDueChecksServiceTest {
         assertEquals(new DueCheckBatchResult(3, 3, 0, 0, Duration.ofSeconds(17)), result);
     }
 
+    @ParameterizedTest
+    @EnumSource(
+            value = CheckFinalizationStatus.class,
+            names = {"ALREADY_FINALIZED", "STALE_CLAIM"})
+    void reportsNonAppliedFinalizationsByTheirPersistenceStatus(CheckFinalizationStatus status) {
+        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
+        persistence.status = status;
+        RunDueChecksService service = new RunDueChecksService(
+                persistence,
+                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                LEASE,
+                INTERVAL,
+                INTERNAL_RETRY,
+                1);
+
+        DueCheckBatchResult result = service.runDueChecks();
+
+        int alreadyFinalized = status == CheckFinalizationStatus.ALREADY_FINALIZED ? 1 : 0;
+        int staleClaims = status == CheckFinalizationStatus.STALE_CLAIM ? 1 : 0;
+        assertEquals(
+                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims, Duration.ofSeconds(12)),
+                result);
+    }
+
     private static ClaimedCheck claim(long sequence, long scheduleDelaySeconds) {
         return new ClaimedCheck(
                 new UUID(0, sequence),
@@ -143,6 +170,7 @@ class RunDueChecksServiceTest {
         private int limit;
         private CheckFinalization finalization;
         private List<ClaimedCheck> claims = List.of(CLAIM);
+        private CheckFinalizationStatus status = CheckFinalizationStatus.APPLIED;
 
         private RecordingWorkPersistence(List<String> calls) {
             this.calls = calls;
@@ -165,7 +193,7 @@ class RunDueChecksServiceTest {
         public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
             calls.add("finalize");
             this.finalization = finalization;
-            return CheckFinalizationStatus.APPLIED;
+            return status;
         }
 
         @Override

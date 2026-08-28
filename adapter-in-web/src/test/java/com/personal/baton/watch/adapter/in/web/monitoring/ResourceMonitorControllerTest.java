@@ -113,6 +113,29 @@ class ResourceMonitorControllerTest {
     }
 
     @Test
+    void reportsSameRevisionWithDifferentDataAsAConflict() throws Exception {
+        synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.REVISION_CONFLICT, projection());
+        rebuildMockMvc();
+
+        mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceRevision": 42,
+                                  "monitoringState": "ACTIVE",
+                                  "targetUrl": "https://example.com/health?secret=hidden"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:baton-watch:problem:source-revision-conflict"))
+                .andExpect(jsonPath("$.code").value("SOURCE_REVISION_CONFLICT"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("secret=hidden"))));
+    }
+
+    @Test
     void returnsTheCurrentProjection() throws Exception {
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
                 .andExpect(status().isOk())
