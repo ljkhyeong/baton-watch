@@ -52,7 +52,14 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "server.servlet.context-path=/watch",
-            "management.server.port=-1"
+            "management.server.port=-1",
+            "server.max-http-request-header-size=64KB",
+            "server.tomcat.max-http-response-header-size=64KB",
+            "server.tomcat.max-connections=4096",
+            "server.tomcat.accept-count=1024",
+            "server.tomcat.threads.max=512",
+            "server.tomcat.threads.min-spare=64",
+            "server.tomcat.threads.max-queue-capacity=4096"
         })
 class MonitorApiSecurityIntegrationTest {
 
@@ -79,7 +86,7 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @Test
-    void embeddedTomcatAppliesFiniteInboundResourceBounds() {
+    void externalConfigurationCannotRelaxEmbeddedTomcatResourceBounds() {
         var webServer = (TomcatWebServer) applicationContext.getWebServer();
         var connector = webServer.getTomcat().getConnector();
         var protocol = (AbstractHttp11Protocol<?>) connector.getProtocolHandler();

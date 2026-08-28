@@ -18,11 +18,17 @@ class ApacheHttpLoggingConfigurationTest {
             .withInitializer(new ConfigDataApplicationContextInitializer())
             .withPropertyValues(
                     "logging.level.root=DEBUG",
-                    "logging.level.org.apache.hc.client5.http=DEBUG");
+                    "logging.level.org.apache.hc.client5.http=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.headers=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.wire=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.impl=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.ssl=DEBUG");
 
     @Test
     void keepsSensitiveApacheHttpDebugDiagnosticsDisabledWhenParentLoggingIsDebug() {
         contextRunner.run(context -> {
+            new RuntimeSafetyEnvironmentPostProcessor()
+                    .postProcessEnvironment(context.getEnvironment(), null);
             RecordingLoggingSystem loggingSystem = new RecordingLoggingSystem();
             new TestLoggingApplicationListener().apply(loggingSystem, context.getEnvironment());
 

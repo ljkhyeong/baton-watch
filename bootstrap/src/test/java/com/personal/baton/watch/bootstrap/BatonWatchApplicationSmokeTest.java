@@ -32,6 +32,8 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "management.server.port=-1",
+            "management.endpoint.health.show-details=always",
+            "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
             "spring.task.scheduling.shutdown.await-termination=false",
             "watch.api-token=full-context-monitor-token-0123456789abcdef",
@@ -132,6 +134,12 @@ class BatonWatchApplicationSmokeTest {
         assertThat(appliedVersions).containsExactly("1", "2", "3", "4");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
+        assertThat(environment.getProperty("management.endpoint.health.show-details"))
+                .isEqualTo("never");
+        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination"))
+                .isEqualTo("true");
+        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination-period"))
+                .isEqualTo("65s");
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {

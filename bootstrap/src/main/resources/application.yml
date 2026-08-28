@@ -5,30 +5,6 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
     password: ${SPRING_DATASOURCE_PASSWORD}
-  task:
-    scheduling:
-      shutdown:
-        await-termination: true
-        await-termination-period: 65s
-
-server:
-  max-http-request-header-size: 8KB
-  tomcat:
-    max-http-response-header-size: 8KB
-    max-connections: 128
-    accept-count: 32
-    threads:
-      max: 32
-      min-spare: 4
-      max-queue-capacity: 64
-
-logging:
-  level:
-    org.apache.hc.client5.http.headers: OFF
-    org.apache.hc.client5.http.wire: OFF
-    org.apache.hc.client5.http.impl: OFF
-    org.apache.hc.client5.http.ssl: OFF
-
 watch:
   api-token: ${WATCH_API_TOKEN}
   database:
@@ -98,10 +74,3 @@ watch:
 management:
   server:
     port: 8081
-  endpoint:
-    health:
-      show-details: never
-  endpoints:
-    web:
-      exposure:
-        include: health,prometheus
