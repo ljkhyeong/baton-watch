@@ -67,6 +67,7 @@ jobs:
 
           expected = {
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapterIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringSchemaIntegrationTest",
