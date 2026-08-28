@@ -15,7 +15,6 @@ import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
-import com.personal.baton.watch.application.monitoring.service.SynchronizeMonitorService;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -40,7 +39,7 @@ public class MonitoringConfiguration {
 
     @Bean
     SynchronizeMonitorUseCase synchronizeMonitorUseCase(MonitorPersistencePort persistence, Clock clock) {
-        return new SynchronizeMonitorService(persistence, clock);
+        return command -> persistence.synchronize(command, clock.instant());
     }
 
     @Bean
