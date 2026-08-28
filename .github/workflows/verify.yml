@@ -179,7 +179,7 @@ jobs:
             fi
           done
 
-      - name: 배포 산출물 SBOM 생성과 취약점 검사
+      - name: 배포 산출물 SBOM 생성과 취약점·라이선스 검사
         run: |
           reports_dir="${PWD}/build/supply-chain"
           inputs_dir="${RUNNER_TEMP}/supply-chain-input"
@@ -236,7 +236,7 @@ jobs:
           scan_image_archive migrations.tar migrations.cdx.json
           scan_image_archive runtime.tar runtime.cdx.json
 
-          python3 - <<'PY'
+          ignored_licenses="$(python3 - <<'PY'
           import json
           from pathlib import Path
 
@@ -267,28 +267,63 @@ jobs:
               "pkg:maven/org.flywaydb/flyway-database-postgresql@12.11.0",
               "pkg:maven/org.jspecify/jspecify@1.0.0",
           }
+          approved_alternatives = {
+              "pkg:maven/ch.qos.logback/logback-classic@1.5.34": {"LGPL-2.1-only"},
+              "pkg:maven/ch.qos.logback/logback-core@1.5.34": {"LGPL-2.1-only"},
+              "pkg:maven/jakarta.annotation/jakarta.annotation-api@3.0.0": {
+                  "GPL-2.0-only WITH classpath-exception"
+              },
+          }
 
           document = json.loads((reports / "baton-watch.cdx.json").read_text())
           missing = set()
-          rejected = {}
+          alternatives = {}
           for component in document["components"]:
               identifiers = {
                   entry.get("license", {}).get("id")
+                  or entry.get("license", {}).get("name")
+                  or entry.get("expression")
                   for entry in component.get("licenses", [])
               } - {None}
               purl = component.get("purl", component.get("bom-ref", "알 수 없는 구성요소"))
               if not identifiers:
                   missing.add(purl)
-              elif identifiers.isdisjoint(allowed):
-                  rejected[purl] = sorted(identifiers)
+                  continue
+              additional = identifiers - allowed
+              if additional:
+                  if identifiers.isdisjoint(allowed):
+                      continue
+                  alternatives[purl] = additional
           if missing != approved_missing:
               raise SystemExit(
                   "라이선스를 판별하지 못한 런타임 의존성이 승인 목록과 다릅니다: "
                   f"실제={sorted(missing)}, 승인={sorted(approved_missing)}"
               )
-          if rejected:
-              raise SystemExit(f"허용되지 않은 런타임 라이선스가 있습니다: {rejected}")
+          if alternatives != approved_alternatives:
+              raise SystemExit(
+                  "대체 라이선스가 있는 런타임 의존성이 승인 목록과 다릅니다: "
+                  f"실제={alternatives}, 승인={approved_alternatives}"
+              )
+
+          ignored = allowed | {
+              identifier
+              for identifiers in approved_alternatives.values()
+              for identifier in identifiers
+          }
+          print(",".join(sorted(ignored)))
           PY
+          )"
+
+          docker run --rm \
+            --volume "${reports_dir}:/reports:ro" \
+            "${trivy_image}" sbom \
+            --scanners license \
+            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignored-licenses "${ignored_licenses}" \
+            --skip-version-check \
+            --no-progress \
+            /reports/baton-watch.cdx.json
 
           cp "${inputs_dir}/jar/baton-watch.jar" "${reports_dir}/baton-watch.jar"
           (

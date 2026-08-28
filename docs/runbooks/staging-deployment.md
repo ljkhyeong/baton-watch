@@ -419,7 +419,8 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. Trivy는 독립 부트 JAR과
-세 이미지의 CycloneDX SBOM 네 개를 만들고 수정 가능한 `HIGH`·`CRITICAL`
+세 이미지의 CycloneDX SBOM 네 개를 만들고 부트 JAR의 라이선스를 명시적 허용
+목록으로 검사하며, 수정 가능한 `HIGH`·`CRITICAL`
 취약점이 있으면 실패합니다. 검증 산출물은 실행 가능한 JAR, SBOM 네 개와
 체크섬 목록이며 14일 동안 보관합니다. `main` 푸시에서는 이 파일 묶음에 GitHub
 출처 증명을 추가합니다. 현재 워크플로는 컨테이너 이미지 자체를 출처 증명 대상으로
