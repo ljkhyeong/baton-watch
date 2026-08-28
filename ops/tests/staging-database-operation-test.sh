@@ -13,6 +13,7 @@ readonly TEMP_DIR
 readonly RUNTIME_PRIVILEGES_CALLBACK="$REPOSITORY_ROOT/ops/flyway/afterMigrate__runtime_privileges.sql"
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"
+readonly NEW_SECRET="new-password-0123456789-abcdefgh"
 
 cleanup() {
     rm -rf "$TEMP_DIR"
@@ -22,6 +23,7 @@ trap cleanup EXIT
 mkdir -p "$TEMP_DIR/bin"
 printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/owner-password"
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
+printf '%s\n' "$NEW_SECRET" > "$TEMP_DIR/new-password"
 
 cat > "$TEMP_DIR/bin/psql" <<'SH'
 #!/bin/sh
@@ -34,7 +36,13 @@ for argument in "$@"; do
             ;;
         --command=*)
             cat > /dev/null
-            printf '%s\n' "${argument#--command=}" > "${WATCH_TEST_CAPTURE}.password-command"
+            command="${argument#--command=}"
+            printf '%s\n' "$command" >> "${WATCH_TEST_CAPTURE}.commands"
+            case "$command" in
+                \\password*)
+                    printf '%s\n' "$command" > "${WATCH_TEST_CAPTURE}.password-command"
+                    ;;
+            esac
             exit 0
             ;;
     esac
@@ -64,6 +72,7 @@ run_operation() {
     WATCH_TEST_CAPTURE="$capture" \
     WATCH_DB_OWNER_PASSWORD_FILE="$TEMP_DIR/owner-password" \
     WATCH_DB_RUNTIME_PASSWORD_FILE="$TEMP_DIR/runtime-password" \
+    WATCH_DB_NEW_PASSWORD_FILE="$TEMP_DIR/new-password" \
     WATCH_DB_RUNTIME_USER=baton_watch_runtime \
     PGHOST=postgres \
     PGPORT=5432 \
@@ -196,6 +205,44 @@ grep -Fq 'UPDATE public.watch_health_change_event_backlog' \
     "$REPOSITORY_ROOT/adapter-out-persistence/src/main/resources/db/migration/V3__bound_persistence_maintenance.sql"
 if grep -Fq "$OWNER_SECRET" "$migration_output"; then
     printf '[staging-database-operation-test] 마이그레이션이 비밀값을 출력했습니다\n' >&2
+    exit 1
+fi
+
+for forbidden_secret in "$RUNTIME_SECRET" "$OWNER_SECRET"; do
+    printf '%s\n' "$forbidden_secret" > "$TEMP_DIR/new-password"
+    if run_operation rotate-runtime-password "$TEMP_DIR/forbidden-new-secret" >"$TEMP_DIR/forbidden-new-secret-output" 2>&1; then
+        printf '[staging-database-operation-test] 기존 역할과 같은 새 비밀번호를 허용했습니다\n' >&2
+        exit 1
+    fi
+    if grep -Fq "$forbidden_secret" "$TEMP_DIR/forbidden-new-secret-output"; then
+        printf '[staging-database-operation-test] 거부된 새 비밀번호가 실패 출력에 포함됐습니다\n' >&2
+        exit 1
+    fi
+done
+unset forbidden_secret
+printf '%s\n' "$NEW_SECRET" > "$TEMP_DIR/new-password"
+
+runtime_rotation_output="$TEMP_DIR/runtime-rotation-output"
+run_operation rotate-runtime-password "$TEMP_DIR/runtime-rotation" > "$runtime_rotation_output" 2>&1
+grep -Fq '\password baton_watch_runtime' "$TEMP_DIR/runtime-rotation.password-command"
+if grep -Fq "$OWNER_SECRET" "$runtime_rotation_output" || grep -Fq "$RUNTIME_SECRET" "$runtime_rotation_output" || grep -Fq "$NEW_SECRET" "$runtime_rotation_output"; then
+    printf '[staging-database-operation-test] 런타임 비밀번호 교체가 비밀값을 출력했습니다\n' >&2
+    exit 1
+fi
+if grep -Fq "$NEW_SECRET" "$TEMP_DIR/runtime-rotation.commands"; then
+    printf '[staging-database-operation-test] 런타임 새 비밀번호가 명령 문자열에 포함됐습니다\n' >&2
+    exit 1
+fi
+
+owner_rotation_output="$TEMP_DIR/owner-rotation-output"
+run_operation rotate-owner-password "$TEMP_DIR/owner-rotation" > "$owner_rotation_output" 2>&1
+grep -Fq '\password baton_watch_owner' "$TEMP_DIR/owner-rotation.password-command"
+if grep -Fq "$OWNER_SECRET" "$owner_rotation_output" || grep -Fq "$RUNTIME_SECRET" "$owner_rotation_output" || grep -Fq "$NEW_SECRET" "$owner_rotation_output"; then
+    printf '[staging-database-operation-test] 소유자 비밀번호 교체가 비밀값을 출력했습니다\n' >&2
+    exit 1
+fi
+if grep -Fq "$NEW_SECRET" "$TEMP_DIR/owner-rotation.commands"; then
+    printf '[staging-database-operation-test] 소유자 새 비밀번호가 명령 문자열에 포함됐습니다\n' >&2
     exit 1
 fi
 

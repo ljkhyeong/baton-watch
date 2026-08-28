@@ -32,4 +32,11 @@ if [ -r "$runtime_secret_source" ]; then
     export WATCH_DB_RUNTIME_PASSWORD_FILE="$runtime_secret_target"
 fi
 
+new_secret_source="${WATCH_DB_NEW_PASSWORD_FILE:-/run/secrets/postgres-new-password}"
+if [ -r "$new_secret_source" ]; then
+    new_secret_target=/tmp/watch-postgres-new-password
+    copy_secret "$new_secret_source" "$new_secret_target"
+    export WATCH_DB_NEW_PASSWORD_FILE="$new_secret_target"
+fi
+
 exec su-exec "$target_uid:$target_gid" "$@"

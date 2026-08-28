@@ -15,6 +15,8 @@ TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"
+readonly NEW_OWNER_SECRET="new-owner-password-0123456789-abcdef"
+readonly NEW_RUNTIME_SECRET="new-runtime-password-0123456789-abcdef"
 readonly RUNTIME_ROLE="baton_watch_runtime"
 readonly DATABASE_NAME="baton_watch"
 readonly OWNER_ROLE="baton_watch_owner"
@@ -69,6 +71,37 @@ owner_psql() {
         --dbname "$DATABASE_NAME"
 }
 
+credential_psql() {
+    local role="$1"
+    local password_file="$2"
+    staging_compose run --rm --no-deps -T \
+        --entrypoint /bin/sh \
+        --volume "$password_file:/run/secrets/credential-password:ro" \
+        database-role-init \
+        -c 'PGPASSWORD="$(sed -n "1p" /run/secrets/credential-password)"; export PGPASSWORD; exec psql --no-psqlrc --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align --username="$1"' \
+        credential-psql "$role"
+}
+
+rotate_database_password() {
+    local operation="$1"
+    local new_password_file="$2"
+    staging_compose run --rm --no-deps -T \
+        --entrypoint /opt/watch/run-as-database-user.sh \
+        --volume "$new_password_file:/run/secrets/postgres-new-password:ro" \
+        --env WATCH_DB_NEW_PASSWORD_FILE=/run/secrets/postgres-new-password \
+        database-role-init \
+        70 70 /opt/watch/staging-database-operation.sh "$operation"
+}
+
+assert_credential_rejected() {
+    local case_name="$1"
+    local role="$2"
+    local password_file="$3"
+    if printf 'SELECT 1;\n' | credential_psql "$role" "$password_file" >"$TEMP_DIR/${case_name}-output" 2>&1; then
+        fail "폐기된 ${case_name} 비밀번호로 인증됐습니다"
+    fi
+}
+
 wait_for_watch() {
     if ! staging_compose up -d --wait --no-deps watch; then
         staging_compose logs --no-color watch >&2 || true
@@ -96,11 +129,15 @@ fi
 
 printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/postgres-owner-password"
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/postgres-runtime-password"
+printf '%s\n' "$NEW_OWNER_SECRET" > "$TEMP_DIR/new-owner-password"
+printf '%s\n' "$NEW_RUNTIME_SECRET" > "$TEMP_DIR/new-runtime-password"
 printf '%s\n' 'watch-api-token-0123456789-abcdef' > "$TEMP_DIR/watch-api-token"
 printf '%s\n' 'cloudflare-tunnel-token-permission-smoke' > "$TEMP_DIR/cloudflare-tunnel-token"
 chmod 0600 \
     "$TEMP_DIR/postgres-owner-password" \
     "$TEMP_DIR/postgres-runtime-password" \
+    "$TEMP_DIR/new-owner-password" \
+    "$TEMP_DIR/new-runtime-password" \
     "$TEMP_DIR/watch-api-token"
 chmod 0444 "$TEMP_DIR/cloudflare-tunnel-token"
 
@@ -163,6 +200,30 @@ privilege_evidence="$(
 if [[ "$privilege_evidence" != "f|t|f|t|f|t|f|t|f|t|f|f|f" ]]; then
     fail "런타임 역할의 최소 권한 증거가 올바르지 않습니다"
 fi
+
+rotate_database_password rotate-runtime-password "$TEMP_DIR/new-runtime-password"
+assert_credential_rejected "이전-런타임" "$RUNTIME_ROLE" "$TEMP_DIR/postgres-runtime-password"
+printf 'SELECT 1;\n' | credential_psql "$RUNTIME_ROLE" "$TEMP_DIR/new-runtime-password" >/dev/null
+cp "$TEMP_DIR/new-runtime-password" "$TEMP_DIR/postgres-runtime-password"
+
+rotate_database_password rotate-owner-password "$TEMP_DIR/new-owner-password"
+assert_credential_rejected "이전-소유자" "$OWNER_ROLE" "$TEMP_DIR/postgres-owner-password"
+printf 'SELECT 1;\n' | credential_psql "$OWNER_ROLE" "$TEMP_DIR/new-owner-password" >/dev/null
+cp "$TEMP_DIR/new-owner-password" "$TEMP_DIR/postgres-owner-password"
+
+printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/rollback-runtime-password"
+chmod 0600 "$TEMP_DIR/rollback-runtime-password"
+rotate_database_password rotate-runtime-password "$TEMP_DIR/rollback-runtime-password"
+assert_credential_rejected "교체된-런타임" "$RUNTIME_ROLE" "$TEMP_DIR/new-runtime-password"
+printf 'SELECT 1;\n' | credential_psql "$RUNTIME_ROLE" "$TEMP_DIR/rollback-runtime-password" >/dev/null
+cp "$TEMP_DIR/rollback-runtime-password" "$TEMP_DIR/postgres-runtime-password"
+
+printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/rollback-owner-password"
+chmod 0600 "$TEMP_DIR/rollback-owner-password"
+rotate_database_password rotate-owner-password "$TEMP_DIR/rollback-owner-password"
+assert_credential_rejected "교체된-소유자" "$OWNER_ROLE" "$TEMP_DIR/new-owner-password"
+printf 'SELECT 1;\n' | credential_psql "$OWNER_ROLE" "$TEMP_DIR/rollback-owner-password" >/dev/null
+cp "$TEMP_DIR/rollback-owner-password" "$TEMP_DIR/postgres-owner-password"
 
 printf '%s\n' \
     "INSERT INTO public.watch_monitor (" \
