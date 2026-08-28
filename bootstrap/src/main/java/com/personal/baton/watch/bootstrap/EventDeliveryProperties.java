@@ -38,23 +38,6 @@ public record EventDeliveryProperties(
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
 
     public EventDeliveryProperties {
-        if (http != null
-                && leaseDuration != null
-                && leaseDuration.isPositive()
-                && http.totalTimeout() != null
-                && http.totalTimeout().isPositive()
-                && batchSize >= 1
-                && batchSize <= MAX_DELIVERY_BATCH_SIZE) {
-            Duration maximumBatchRuntime;
-            try {
-                maximumBatchRuntime = http.totalTimeout().multipliedBy(batchSize);
-            } catch (ArithmeticException exception) {
-                throw new IllegalArgumentException("event delivery batch runtime is too large");
-            }
-            if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
-                throw new IllegalArgumentException("event delivery leaseDuration must exceed the maximum batch runtime");
-            }
-        }
         if (enabled) {
             Objects.requireNonNull(endpoint, "endpoint");
             Objects.requireNonNull(bearerToken, "bearerToken");

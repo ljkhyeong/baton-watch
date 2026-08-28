@@ -40,7 +40,11 @@ class EventDeliveryApplicationModelTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ClaimedHealthChangeEvent(
-                        payload(Health.UNKNOWN, Health.HEALTHY), UUID.randomUUID(), 0, Instant.now()));
+                        payload(Health.UNKNOWN, Health.HEALTHY),
+                        UUID.randomUUID(),
+                        0,
+                        Instant.now(),
+                        false));
     }
 
     private HealthChangeEventPayload payload(Health previous, Health current) {

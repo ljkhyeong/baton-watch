@@ -10,7 +10,8 @@ public record ClaimedCheck(
         UUID leaseToken,
         TargetUrl targetUrl,
         Instant scheduledAt,
-        Instant claimedAt) {
+        Instant claimedAt,
+        boolean recoveredLease) {
 
     public ClaimedCheck {
         Objects.requireNonNull(attemptId, "attemptId");

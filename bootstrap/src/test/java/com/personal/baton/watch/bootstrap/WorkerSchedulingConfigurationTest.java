@@ -102,6 +102,9 @@ class WorkerSchedulingConfigurationTest {
                 MonitoringScheduler.class.getDeclaredMethod("purgeAttemptHistory"),
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
         assertScheduler(
+                MonitoringScheduler.class.getDeclaredMethod("updateDatabaseClockOffset"),
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
+        assertScheduler(
                 EventDeliveryScheduler.class.getDeclaredMethod("deliverPendingEvents"),
                 WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER);
         assertScheduler(

@@ -47,12 +47,12 @@ class RunEventDeliveriesServiceTest {
 
         EventDeliveryBatchResult result = service.runEventDeliveries();
 
-        assertEquals(List.of("claim", "send", "finalize"), calls);
+        assertEquals(List.of("claim", "send", "finalize", "claim"), calls);
         assertEquals(
                 new EventDeliveryBatchResult(1, 1, 0, 0, 0),
                 result);
         assertEquals(LEASE, persistence.leaseDuration);
-        assertEquals(5, persistence.limit);
+        assertEquals(1, persistence.limit);
         assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
         assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
         assertNull(persistence.finalization.nextAttemptAt());
@@ -133,7 +133,8 @@ class RunEventDeliveriesServiceTest {
                         NOW.minusSeconds(1)),
                 UUID.fromString("00000000-0000-0000-0000-000000000003"),
                 deliveryAttempt,
-                claimedAt);
+                claimedAt,
+                false);
     }
 
     private static final class RecordingPersistence implements HealthChangeEventDeliveryPersistencePort {
@@ -144,6 +145,7 @@ class RunEventDeliveriesServiceTest {
         private int limit;
         private EventDeliveryFinalization finalization;
         private EventDeliveryFinalizationStatus status = EventDeliveryFinalizationStatus.APPLIED;
+        private boolean claimReturned;
 
         private RecordingPersistence(List<String> calls, ClaimedHealthChangeEvent claimed) {
             this.calls = calls;
@@ -155,6 +157,10 @@ class RunEventDeliveriesServiceTest {
             calls.add("claim");
             this.leaseDuration = leaseDuration;
             this.limit = limit;
+            if (claimReturned) {
+                return List.of();
+            }
+            claimReturned = true;
             return List.of(claimed);
         }
 

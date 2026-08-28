@@ -27,7 +27,8 @@ final class MonitoringJdbcRows {
             last_conclusive_at,
             next_check_at,
             lease_token,
-            lease_attempt_id
+            lease_attempt_id,
+            lease_expires_at
             """;
 
     private MonitoringJdbcRows() {
@@ -47,7 +48,8 @@ final class MonitoringJdbcRows {
                 instant(resultSet, "last_conclusive_at"),
                 instant(resultSet, "next_check_at"),
                 resultSet.getObject("lease_token", UUID.class),
-                resultSet.getObject("lease_attempt_id", UUID.class));
+                resultSet.getObject("lease_attempt_id", UUID.class),
+                instant(resultSet, "lease_expires_at"));
     }
 
     static Instant instant(ResultSet resultSet, String column) throws SQLException {
@@ -71,7 +73,8 @@ final class MonitoringJdbcRows {
             Instant lastConclusiveAt,
             Instant nextCheckAt,
             UUID leaseToken,
-            UUID leaseAttemptId) {
+            UUID leaseAttemptId,
+            Instant leaseExpiresAt) {
 
         HealthDerivation derivation() {
             return new HealthDerivation(health, consecutiveFailures);

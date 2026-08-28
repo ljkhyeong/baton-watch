@@ -55,6 +55,7 @@ class ConfigurationPropertiesValidationTest {
                         "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                         "watch.poll-interval=1s",
                         "watch.maintenance-interval=1m",
+                        "watch.worker-execution-budget=60s",
                         "watch.lease-duration=10m",
                         "watch.check-interval=1m",
                         "watch.internal-failure-retry-interval=30s",

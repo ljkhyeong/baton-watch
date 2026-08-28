@@ -1,14 +1,19 @@
 package com.personal.baton.watch.bootstrap;
 
+import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
+import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
+import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
@@ -20,10 +25,13 @@ final class MonitoringMetrics {
     private static final String CHECK_ATTEMPTS = "baton.watch.check.attempts";
     private static final String CHECK_DURATION = "baton.watch.check.duration";
     private static final String CHECK_FINALIZATIONS = "baton.watch.check.finalizations";
+    private static final String CHECK_LEASE_RECOVERIES = "baton.watch.check.lease.recoveries";
     private static final String DELIVERY_CLAIMED = "baton.watch.event.delivery.claimed";
     private static final String DELIVERY_ATTEMPTS = "baton.watch.event.delivery.attempts";
     private static final String DELIVERY_DURATION = "baton.watch.event.delivery.duration";
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
+    private static final String DELIVERY_LEASE_RECOVERIES =
+            "baton.watch.event.delivery.lease.recoveries";
     private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
 
     private final MeterRegistry registry;
@@ -32,6 +40,7 @@ final class MonitoringMetrics {
     private final AtomicLong maximumCheckScheduleDelaySeconds = new AtomicLong();
     private final AtomicLong eventDeliveryBacklog = new AtomicLong();
     private final AtomicLong oldestEventAgeSeconds = new AtomicLong();
+    private final AtomicLong databaseClockOffsetMillis = new AtomicLong();
 
     MonitoringMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -61,6 +70,13 @@ final class MonitoringMetrics {
                 .baseUnit("seconds")
                 .description("가장 오래된 미전달 상태 변경 이벤트의 경과 시간")
                 .register(registry);
+        Gauge.builder(
+                        "baton.watch.database.clock.offset",
+                        databaseClockOffsetMillis,
+                        value -> value.get() / 1_000.0)
+                .baseUnit("seconds")
+                .description("JVM 시각에서 PostgreSQL 시각을 뺀 값")
+                .register(registry);
     }
 
     void checkStarted() {
@@ -71,12 +87,23 @@ final class MonitoringMetrics {
         inFlightChecks.decrementAndGet();
     }
 
-    void recordCheckBatch(DueCheckBatchResult result) {
+    void updateCheckScheduleDelay(DueCheckBatchResult result) {
         maximumCheckScheduleDelaySeconds.set(result.maximumScheduleDelay().toSeconds());
-        increment(CHECK_CLAIMED, result.claimed());
-        increment(CHECK_FINALIZATIONS, "status", "applied", result.applied());
-        increment(CHECK_FINALIZATIONS, "status", "already_finalized", result.alreadyFinalized());
-        increment(CHECK_FINALIZATIONS, "status", "stale_claim", result.staleClaims());
+    }
+
+    void recordCheckClaims(List<ClaimedCheck> claimed) {
+        increment(CHECK_CLAIMED, claimed.size());
+        increment(
+                CHECK_LEASE_RECOVERIES,
+                claimed.stream().filter(ClaimedCheck::recoveredLease).count());
+    }
+
+    void recordCheckFinalization(CheckFinalizationStatus status) {
+        increment(CHECK_FINALIZATIONS, "status", status.name().toLowerCase(Locale.ROOT), 1);
+    }
+
+    void recordCheckFinalizationFailure() {
+        increment(CHECK_FINALIZATIONS, "status", "failure", 1);
     }
 
     void recordCheckAttempt(CheckObservation observation) {
@@ -85,12 +112,28 @@ final class MonitoringMetrics {
         registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
     }
 
-    void recordEventDeliveryBatch(EventDeliveryBatchResult result) {
-        increment(DELIVERY_CLAIMED, result.claimed());
-        increment(DELIVERY_FINALIZATIONS, "status", "delivered", result.delivered());
-        increment(DELIVERY_FINALIZATIONS, "status", "retry_scheduled", result.retryScheduled());
-        increment(DELIVERY_FINALIZATIONS, "status", "already_delivered", result.alreadyDelivered());
-        increment(DELIVERY_FINALIZATIONS, "status", "stale_claim", result.staleClaims());
+    void recordEventDeliveryClaims(List<ClaimedHealthChangeEvent> claimed) {
+        increment(DELIVERY_CLAIMED, claimed.size());
+        increment(
+                DELIVERY_LEASE_RECOVERIES,
+                claimed.stream().filter(ClaimedHealthChangeEvent::recoveredLease).count());
+    }
+
+    void recordEventDeliveryFinalization(
+            EventDeliveryFinalization finalization,
+            EventDeliveryFinalizationStatus status) {
+        String metricStatus = switch (status) {
+            case APPLIED -> finalization.observation().outcome().isDelivered()
+                    ? "delivered"
+                    : "retry_scheduled";
+            case ALREADY_DELIVERED -> "already_delivered";
+            case STALE_CLAIM -> "stale_claim";
+        };
+        increment(DELIVERY_FINALIZATIONS, "status", metricStatus, 1);
+    }
+
+    void recordEventDeliveryFinalizationFailure() {
+        increment(DELIVERY_FINALIZATIONS, "status", "failure", 1);
     }
 
     void recordEventDeliveryAttempt(EventDeliveryOutcome outcome) {
@@ -135,6 +178,10 @@ final class MonitoringMetrics {
         oldestEventAgeSeconds.set(backlog.oldestEventAge()
                 .map(Duration::toSeconds)
                 .orElse(0L));
+    }
+
+    void updateDatabaseClockOffset(Duration offset) {
+        databaseClockOffsetMillis.set(offset.toMillis());
     }
 
     private void increment(String name, double amount) {

@@ -48,17 +48,21 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
 
     @Override
     public DueCheckBatchResult runDueChecks() {
-        List<ClaimedCheck> claimedChecks = List.copyOf(
-                persistence.claimDueChecks(leaseDuration, batchSize));
-        if (claimedChecks.size() > batchSize) {
-            throw new IllegalStateException("persistence returned more work than requested");
-        }
-
+        int claimed = 0;
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
         Duration maximumScheduleDelay = Duration.ZERO;
-        for (ClaimedCheck claimedCheck : claimedChecks) {
+        while (claimed < batchSize) {
+            List<ClaimedCheck> claimedChecks = persistence.claimDueChecks(leaseDuration, 1);
+            if (claimedChecks.size() > 1) {
+                throw new IllegalStateException("persistence returned more work than requested");
+            }
+            if (claimedChecks.isEmpty()) {
+                break;
+            }
+            ClaimedCheck claimedCheck = claimedChecks.getFirst();
+            claimed++;
             Duration scheduleDelay = Duration.between(
                     claimedCheck.scheduledAt(), claimedCheck.claimedAt());
             if (scheduleDelay.compareTo(maximumScheduleDelay) > 0) {
@@ -86,7 +90,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             }
         }
         return new DueCheckBatchResult(
-                claimedChecks.size(), applied, alreadyFinalized, staleClaims, maximumScheduleDelay);
+                claimed, applied, alreadyFinalized, staleClaims, maximumScheduleDelay);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

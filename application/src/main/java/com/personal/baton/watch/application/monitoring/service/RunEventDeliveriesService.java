@@ -43,17 +43,22 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
 
     @Override
     public EventDeliveryBatchResult runEventDeliveries() {
-        List<ClaimedHealthChangeEvent> claimedEvents = List.copyOf(
-                persistence.claimPendingEvents(leaseDuration, batchSize));
-        if (claimedEvents.size() > batchSize) {
-            throw new IllegalStateException("persistence returned more events than requested");
-        }
-
+        int claimed = 0;
         int delivered = 0;
         int retryScheduled = 0;
         int alreadyDelivered = 0;
         int staleClaims = 0;
-        for (ClaimedHealthChangeEvent event : claimedEvents) {
+        while (claimed < batchSize) {
+            List<ClaimedHealthChangeEvent> claimedEvents =
+                    persistence.claimPendingEvents(leaseDuration, 1);
+            if (claimedEvents.size() > 1) {
+                throw new IllegalStateException("persistence returned more events than requested");
+            }
+            if (claimedEvents.isEmpty()) {
+                break;
+            }
+            ClaimedHealthChangeEvent event = claimedEvents.getFirst();
+            claimed++;
             EventDeliveryObservation observation = send(event);
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(event.claimedAt())
@@ -82,7 +87,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             }
         }
         return new EventDeliveryBatchResult(
-                claimedEvents.size(),
+                claimed,
                 delivered,
                 retryScheduled,
                 alreadyDelivered,

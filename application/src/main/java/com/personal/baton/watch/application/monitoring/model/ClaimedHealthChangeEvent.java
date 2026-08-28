@@ -8,7 +8,8 @@ public record ClaimedHealthChangeEvent(
         HealthChangeEventPayload payload,
         UUID leaseToken,
         int deliveryAttempt,
-        Instant claimedAt) {
+        Instant claimedAt,
+        boolean recoveredLease) {
 
     public ClaimedHealthChangeEvent {
         Objects.requireNonNull(payload, "payload");

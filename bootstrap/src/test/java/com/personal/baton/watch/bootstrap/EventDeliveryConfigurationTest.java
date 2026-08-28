@@ -69,6 +69,12 @@ class EventDeliveryConfigurationTest {
                 .withPropertyValues("watch.event-delivery.enabled=" + enabled)
                 .withBean(EventDeliveryProperties.class, () -> deliveryProperties)
                 .withBean(WatchProperties.class, () -> watchProperties)
+                .withBean(
+                        DatabaseRuntimeProperties.class,
+                        BootstrapTestFixtures::databaseRuntimeProperties)
+                .withBean(
+                        PersistenceProperties.class,
+                        BootstrapTestFixtures::persistenceProperties)
                 .withBean(JdbcClient.class, () -> mock(JdbcClient.class))
                 .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
                 .withBean(Clock.class, Clock::systemUTC)

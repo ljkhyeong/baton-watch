@@ -94,6 +94,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         synchronize("resource:lease", 1, "https://lease.example/path", BASE_TIME);
         ClaimedCheck first = claimOne();
 
+        assertThat(first.recoveredLease()).isFalse();
         assertThat(checkWorkPersistence.claimDueChecks(LEASE, 1))
                 .isEmpty();
         jdbc.update("""
@@ -106,6 +107,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
         assertThat(recovered.attemptId()).isNotEqualTo(first.attemptId());
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
+        assertThat(recovered.recoveredLease()).isTrue();
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),

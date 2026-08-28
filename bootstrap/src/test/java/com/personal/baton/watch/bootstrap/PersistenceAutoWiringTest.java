@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
+import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperations;
@@ -46,6 +47,9 @@ class PersistenceAutoWiringTest {
             .withBean(DataSource.class, () -> mock(DataSource.class))
             .withBean(Clock.class, Clock::systemUTC)
             .withBean(
+                    DatabaseRuntimeProperties.class,
+                    BootstrapTestFixtures::databaseRuntimeProperties)
+            .withBean(
                     MonitoringMetrics.class,
                     () -> new MonitoringMetrics(new SimpleMeterRegistry()))
             .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties)
@@ -64,12 +68,13 @@ class PersistenceAutoWiringTest {
             assertThat(context).hasSingleBean(MonitorPersistencePort.class);
             assertThat(context.getBean(MonitorPersistencePort.class))
                     .isInstanceOf(JdbcMonitorPersistenceAdapter.class);
-            assertThat(context).hasSingleBean(CheckWorkPersistencePort.class);
             assertThat(context.getBean(CheckWorkPersistencePort.class))
-                    .isInstanceOf(JdbcCheckWorkPersistenceAdapter.class);
-            assertThat(context).hasSingleBean(HealthChangeEventDeliveryPersistencePort.class);
+                    .isInstanceOf(MeteredCheckWorkPersistence.class);
             assertThat(context.getBean(HealthChangeEventDeliveryPersistencePort.class))
-                    .isInstanceOf(JdbcHealthChangeEventDeliveryAdapter.class);
+                    .isInstanceOf(MeteredHealthChangeEventDeliveryPersistence.class);
+            assertThat(context).hasSingleBean(JdbcCheckWorkPersistenceAdapter.class);
+            assertThat(context).hasSingleBean(JdbcHealthChangeEventDeliveryAdapter.class);
+            assertThat(context).hasSingleBean(JdbcDatabaseClockAdapter.class);
             assertThat(context).hasSingleBean(ApacheUrlChecker.class);
             assertThat(context.getBean(UrlChecker.class)).isInstanceOf(MeteredUrlChecker.class);
         });

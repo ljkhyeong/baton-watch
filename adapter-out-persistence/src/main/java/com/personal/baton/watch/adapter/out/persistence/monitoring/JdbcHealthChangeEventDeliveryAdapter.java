@@ -40,7 +40,8 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             changed_at,
             delivery_status,
             delivery_attempt,
-            delivery_lease_token
+            delivery_lease_token,
+            delivery_lease_expires_at
             """;
 
     private final JdbcClient jdbc;
@@ -149,7 +150,10 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                             event.changedAt()),
                     leaseToken,
                     deliveryAttempt,
-                    claimedAt));
+                    claimedAt,
+                    event.leaseToken() != null
+                            && event.leaseExpiresAt() != null
+                            && !event.leaseExpiresAt().isAfter(claimedAt)));
         }
         return claimed;
     }
@@ -225,7 +229,8 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 instant(resultSet, "changed_at"),
                 DeliveryStatus.valueOf(resultSet.getString("delivery_status")),
                 resultSet.getInt("delivery_attempt"),
-                resultSet.getObject("delivery_lease_token", UUID.class));
+                resultSet.getObject("delivery_lease_token", UUID.class),
+                instant(resultSet, "delivery_lease_expires_at"));
     }
 
     private enum DeliveryStatus {
@@ -243,6 +248,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             Instant changedAt,
             DeliveryStatus deliveryStatus,
             int deliveryAttempt,
-            UUID leaseToken) {
+            UUID leaseToken,
+            Instant leaseExpiresAt) {
     }
 }

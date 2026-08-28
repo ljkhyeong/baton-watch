@@ -17,6 +17,7 @@ final class BootstrapTestFixtures {
                 apiToken,
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
+                Duration.ofSeconds(60),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(30),
@@ -54,6 +55,30 @@ final class BootstrapTestFixtures {
         return eventDeliveryProperties(false, URI.create(""), "");
     }
 
+    static DatabaseRuntimeProperties databaseRuntimeProperties() {
+        return new DatabaseRuntimeProperties(
+                4,
+                1,
+                3_000,
+                1_000,
+                600_000,
+                1_800_000,
+                300_000,
+                1_000,
+                3,
+                3,
+                10,
+                3,
+                true);
+    }
+
+    static PersistenceProperties persistenceProperties() {
+        return new PersistenceProperties(
+                Duration.ofSeconds(3),
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(1));
+    }
+
     private static EventDeliveryProperties eventDeliveryProperties(
             boolean enabled, URI endpoint, String token) {
         return new EventDeliveryProperties(
@@ -66,7 +91,7 @@ final class BootstrapTestFixtures {
                 Duration.ofSeconds(5),
                 Duration.ofMinutes(15),
                 Duration.ofDays(30),
-                10,
+                2,
                 100,
                 new EventDeliveryProperties.Http(
                         Duration.ofSeconds(2),

@@ -11,8 +11,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WatchPropertiesTest {
 
     @Test
-    void enforcesTheLeaseBudgetAndLetsTheTotalTimeoutCapHttpPhases() {
-        assertThrows(IllegalArgumentException.class, () -> properties(Duration.ofSeconds(10), 2));
+    void letsTheTotalTimeoutCapHttpPhases() {
         new WatchProperties.Http(
                 Duration.ofSeconds(6),
                 Duration.ofSeconds(7),
@@ -66,27 +65,13 @@ class WatchPropertiesTest {
                 apiToken,
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
+                Duration.ofSeconds(60),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(10),
                 Duration.ofDays(30),
                 1,
-                100,
-                http());
-    }
-
-    private static WatchProperties properties(Duration leaseDuration, int batchSize) {
-        return new WatchProperties(
-                "a-test-token-that-is-longer-than-32-characters",
-                Duration.ofSeconds(1),
-                Duration.ofMinutes(1),
-                leaseDuration,
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(30),
-                Duration.ofMinutes(10),
-                Duration.ofDays(30),
-                batchSize,
                 100,
                 http());
     }

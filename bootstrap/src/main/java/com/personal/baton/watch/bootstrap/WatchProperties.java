@@ -20,6 +20,7 @@ public record WatchProperties(
         String apiToken,
         @NotNull @DurationMin(inclusive = false) Duration pollInterval,
         @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
+        @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration leaseDuration,
@@ -47,23 +48,6 @@ public record WatchProperties(
 
     public WatchProperties {
         requireToken(apiToken);
-        if (http != null
-                && leaseDuration != null
-                && leaseDuration.isPositive()
-                && http.totalTimeout() != null
-                && http.totalTimeout().isPositive()
-                && checkBatchSize >= 1
-                && checkBatchSize <= MAX_CHECK_BATCH_SIZE) {
-            Duration maximumBatchRuntime;
-            try {
-                maximumBatchRuntime = http.totalTimeout().multipliedBy(checkBatchSize);
-            } catch (ArithmeticException exception) {
-                throw new IllegalArgumentException("check batch runtime is too large");
-            }
-            if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
-                throw new IllegalArgumentException("leaseDuration must exceed the maximum check batch runtime");
-            }
-        }
         if (staleAfter != null
                 && staleAfter.isPositive()
                 && checkInterval != null

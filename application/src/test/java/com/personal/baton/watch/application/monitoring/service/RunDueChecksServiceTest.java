@@ -30,7 +30,8 @@ class RunDueChecksServiceTest {
             UUID.fromString("00000000-0000-0000-0000-000000000002"),
             new TargetUrl("https://example.com/health"),
             NOW.minusSeconds(12),
-            NOW);
+            NOW,
+            false);
 
     @Test
     void claimsThenChecksThenFinalizesOutsideTheClaimOperation() {
@@ -50,10 +51,10 @@ class RunDueChecksServiceTest {
 
         DueCheckBatchResult result = service.runDueChecks();
 
-        assertEquals(List.of("claim", "check", "finalize"), calls);
+        assertEquals(List.of("claim", "check", "finalize", "claim"), calls);
         assertEquals(new DueCheckBatchResult(1, 1, 0, 0, Duration.ofSeconds(12)), result);
         assertEquals(LEASE, persistence.leaseDuration);
-        assertEquals(5, persistence.limit);
+        assertEquals(1, persistence.limit);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
     }
@@ -87,7 +88,8 @@ class RunDueChecksServiceTest {
                 CLAIM.leaseToken(),
                 CLAIM.targetUrl(),
                 CLAIM.scheduledAt(),
-                databaseClaimedAt));
+                databaseClaimedAt,
+                false));
         RunDueChecksService service = new RunDueChecksService(
                 persistence,
                 target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
@@ -130,7 +132,8 @@ class RunDueChecksServiceTest {
                 new UUID(1, sequence),
                 CLAIM.targetUrl(),
                 NOW.minusSeconds(scheduleDelaySeconds),
-                NOW);
+                NOW,
+                false);
     }
 
     private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
@@ -150,7 +153,12 @@ class RunDueChecksServiceTest {
             calls.add("claim");
             this.leaseDuration = leaseDuration;
             this.limit = limit;
-            return claims;
+            if (claims.isEmpty()) {
+                return claims;
+            }
+            ClaimedCheck next = claims.getFirst();
+            claims = claims.subList(1, claims.size());
+            return List.of(next);
         }
 
         @Override

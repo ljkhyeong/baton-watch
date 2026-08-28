@@ -52,6 +52,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
 
         assertThat(first.payload().eventId()).isEqualTo(eventId);
         assertThat(first.deliveryAttempt()).isEqualTo(1);
+        assertThat(first.recoveredLease()).isFalse();
         assertThat(first.payload().attemptId()).isPresent();
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
         assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
@@ -74,6 +75,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(recovered.payload()).isEqualTo(first.payload());
         assertThat(recovered.deliveryAttempt()).isEqualTo(2);
         assertThat(recovered.leaseToken()).isNotEqualTo(first.leaseToken());
+        assertThat(recovered.recoveredLease()).isTrue();
 
         assertThat(deliveryAdapter.finalizeDelivery(deliveredFinalization(first, recoveredAt.plusSeconds(1))))
                 .isEqualTo(EventDeliveryFinalizationStatus.STALE_CLAIM);

@@ -31,6 +31,14 @@ class EventDeliveryConfiguration {
     }
 
     @Bean
+    @Primary
+    HealthChangeEventDeliveryPersistencePort meteredHealthChangeEventDeliveryPersistence(
+            JdbcHealthChangeEventDeliveryAdapter persistence,
+            MonitoringMetrics metrics) {
+        return new MeteredHealthChangeEventDeliveryPersistence(persistence, metrics);
+    }
+
+    @Bean
     @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
@@ -72,7 +80,18 @@ class EventDeliveryConfiguration {
             HealthChangeEventDeliveryPersistencePort persistence,
             HealthChangeEventSender sender,
             Clock clock,
-            EventDeliveryProperties properties) {
+            EventDeliveryProperties properties,
+            WatchProperties watchProperties,
+            DatabaseRuntimeProperties database,
+            PersistenceProperties persistenceProperties) {
+        WorkerExecutionBudget.requireSafe(
+                "event delivery",
+                watchProperties.workerExecutionBudget(),
+                properties.leaseDuration(),
+                properties.http().totalTimeout(),
+                properties.batchSize(),
+                database,
+                persistenceProperties);
         return new RunEventDeliveriesService(
                 persistence,
                 sender,
