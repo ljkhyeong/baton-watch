@@ -30,18 +30,14 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
         } catch (RuntimeException ignored) {
             observation = EventDeliveryObservation.internalFailure();
         }
+        EventDeliveryObservation recordedObservation = observation;
         if (sample != null) {
-            try {
-                metrics.eventDeliveryFinished(sample, observation.outcome());
-            } catch (RuntimeException ignored) {
-                // 텔레메트리 실패가 확인된 전달을 재시도로 바꾸어서는 안 된다.
-            }
+            Timer.Sample completedSample = sample;
+            BestEffortMetrics.record(() ->
+                    metrics.eventDeliveryFinished(completedSample, recordedObservation.outcome()));
         }
-        try {
-            metrics.recordEventDeliveryAttempt(observation.outcome());
-        } catch (RuntimeException ignored) {
-            // 텔레메트리 실패가 확인된 전달을 재시도로 바꾸어서는 안 된다.
-        }
+        BestEffortMetrics.record(() ->
+                metrics.recordEventDeliveryAttempt(recordedObservation.outcome()));
         return observation;
     }
 }
