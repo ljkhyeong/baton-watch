@@ -72,8 +72,10 @@ WATCH 상태 확인이 실패하면 BATON 수신기를 호출하지 않으며, �
 아래에서 사용하는 Prometheus 이름은 다음과 같습니다.
 
 - `baton_watch_event_delivery_backlog`
+- `baton_watch_event_delivery_claimed_total`
 - `baton_watch_event_delivery_attempts_total{outcome="..."}`
 - `baton_watch_event_delivery_finalizations_total{status="..."}`
+- `baton_watch_event_delivery_lease_recoveries_total`
 
 백로그 게이지는 1분 주기의 유지보수 일정에 따라 갱신되므로, 게이지가 수렴하기를
 기다리는 동안에는 PostgreSQL 행 상태를 기준으로 판단합니다. 카운터 시계열이

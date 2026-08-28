@@ -130,32 +130,35 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 지원 용량이나 요청 속도 제한이 아닙니다.
 
 현재 기본 점검 설정은 단일 스케줄러 레인, 배치 크기 1, 요청당 전체 제한 시간
-5초입니다. 모든 점검이 제한 시간을 소진하면 데이터베이스 처리 시간을 제외해도
-이론상 처리량은 분당 약 12건까지 내려갈 수 있습니다. 이 계산은 지원 용량이나
-SLO가 아니라 부하 시험을 시작하기 위한 보수적 하한입니다. 이벤트 전달도 단일
-레인에서 배치 10개를 직렬 처리하고 각 시도에 최대 5초를 사용하므로, 기본 60초
-리스의 여유를 운영 지연이 잠식할 수 있습니다.
+5초입니다. 이벤트 전달은 단일 레인에서 배치 2개를 직렬 처리합니다. 두 작업자는
+각 외부 호출 직전에 한 건씩 점유하며, 기본 데이터베이스·HTTP 제한을 포함한 계산
+예산은 점검 21초와 전달 42초로 60초 실행 예산 안에 들어갑니다. 이 계산은 지원
+용량이나 SLO가 아니라 부하 시험을 시작하기 위한 보수적 상한입니다.
 
 공개 배포 전에 다음 증거를 별도로 남기세요.
 
 - 예상 활성 모니터 수, 분당 동기화 요청 수, 상태 변경 이벤트 폭주량을 포함한
   부하 시나리오와 승인된 지원 규모
 - `baton_watch_check_inflight`, `baton_watch_check_schedule_delay_seconds`,
+  `baton_watch_check_claimed_total`,
+  `baton_watch_check_finalizations_total`, `baton_watch_check_lease_recoveries_total`,
   `baton_watch_event_delivery_inflight`, 제한된 결과별
   `baton_watch_event_delivery_duration_seconds`,
+  `baton_watch_event_delivery_claimed_total`,
+  `baton_watch_event_delivery_finalizations_total`,
+  `baton_watch_event_delivery_lease_recoveries_total`,
   `baton_watch_event_delivery_backlog`,
-  `baton_watch_event_delivery_oldest_age_seconds`의 정상 범위와 경보 임계치
+  `baton_watch_event_delivery_oldest_age_seconds`,
+  `baton_watch_database_clock_offset_seconds`의 정상 범위와 경보 임계치
 - 최대 HTTP 제한 시간과 데이터베이스 지연을 포함한 부하에서 일정 지연과
   전달 백로그가 계속 증가하지 않고 회복되는지에 대한 결과
 - 데이터베이스 연결 풀 포화, Spring `tasks.scheduled.execution` 오류와 기존
   저카디널리티 WATCH 메트릭을 연결한 외부 대시보드와 알림 전달 경로
-- 부분 배치의 완료 처리 실패와 만료 리스 회수를 별도로 구분해야 하는 지원 규모라면
-  전용 메트릭·대시보드·경보의 설계와 구현을 운영 승인 전에 완료했다는 증거
+- 완료 처리 실패, 만료 리스 회수와 데이터베이스 시계 편차에 대한 대시보드·경보를
+  운영 승인 전에 구성하고 장애 주입으로 검증한 증거
 
 현재 저장소에는 지원 규모, 외부 대시보드와 알림 임계치가 확정되어 있지 않으므로
-이 증거 없이 운영 용량을 주장해서는 안 됩니다. 부분 완료 처리 실패와 만료 리스
-회수를 구분하는 전용 메트릭도 아직 없으므로 기존 메트릭이 해당 구분을 제공한다고
-가정해서는 안 됩니다.
+이 증거 없이 운영 용량을 주장해서는 안 됩니다.
 
 Cloudflare에는 상태 경로와 인증된 모니터 경로를 구분한 요청 속도 제한을
 설정하세요. 모니터 경로의 허용량은 BATON의 정상 최대 동기화량보다 높고 검증된

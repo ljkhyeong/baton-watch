@@ -11,10 +11,10 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 요청·응답 헤더 8 KiB, 연결 128개, 수락 대기 32개, 워커 스레드 최대 32개·최소 유휴 4개, 워커 큐 64개로 고정한 내장 Tomcat 자원 상한
 - 리비전 안전성을 보장하는 `ACTIVE`/`INACTIVE` 모니터 동기화
 - PostgreSQL 기반 일정, 리스, 불변 시도·결과, 현재 상태, 전달 리스와 재시도 상태를 포함한 내구성 있는 상태 변경 이벤트
-- 대상 점검, 콜백 전달, 유지보수를 위한 격리된 단일 스레드 실행 레인과 제한된 JDBC 구문·트랜잭션 행 잠금 대기
+- 대상 점검과 콜백 전달을 항목 처리 직전에 한 건씩 점유하는 격리된 단일 스레드 실행 레인, 60초 직렬 배치 실행 예산, 제한된 JDBC 구문·트랜잭션·행 잠금 대기
 - DNS 고정, SSRF·리다이렉트 방어, 시간·헤더·바이트 제한, 강제 상한이 있는 런타임 리소스 설정, 오래된 프로젝션 처리, 제한된 보존 기간을 갖춘 백그라운드 점검기
 - 고정 페이로드, 이벤트 ID 멱등성, DNS 고정, 리다이렉트 금지, 지연 상한이 있는 지수 백오프 재시도, 전달 완료 이벤트 보존을 적용한 하나의 BATON HTTPS 콜백 최소 한 번 전달
-- 낮은 카디널리티의 점검·이벤트 전달 시도와 소요 시간 `outcome` 메트릭, 현재 실행 중인 점검·전달 수, 최근 점검 배치의 최대 일정 지연, Spring 예약 실행 타이머, 이벤트 전달 백로그·가장 오래된 미전달 이벤트의 경과 시간·완료 처리 메트릭
+- 낮은 카디널리티의 점검·이벤트 전달 시도와 소요 시간 `outcome` 메트릭, 점유·완료 처리·만료 리스 회수 카운터, 현재 실행 중인 점검·전달 수, 최근 점검 배치의 최대 일정 지연, JVM과 PostgreSQL의 시계 편차, Spring 예약 실행 타이머, 이벤트 전달 백로그와 가장 오래된 미전달 이벤트의 경과 시간
 - 공식 IANA 주소 레지스트리 체크섬을 매월 비교하고 변경 시 주소 정책과 경계 테스트의 수동 검토를 요구하는 드리프트 검사
 - 헥사고날 구조의 Gradle 6개 모듈 구성
 - 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
@@ -40,6 +40,8 @@ bootstrap -> adapters -> application -> domain
 저장소에는 공식 SHA-256 체크섬과 함께 9.2.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
 
 HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는 최대 풀 이하여야 합니다. 연결·검증 제한은 각각 250~30000ms이며 검증 제한이 연결 제한보다 작아야 합니다. 유휴 10000~1800000ms와 생존 확인 30000~1800000ms를 허용하며, 가변 풀의 유휴 제한은 최대 수명 30000~3600000ms보다 1000ms 이상 짧고 생존 확인은 최대 수명보다 짧아야 합니다. 초기화 실패 제한은 1~30000ms입니다. pgJDBC의 연결·로그인·취소 제한은 1~30초, 소켓 제한은 1~120초며, `WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다. `SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 하며, 검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다. 환경 변수 이름과 로컬 기본값은 [.env.example](.env.example)을 참고하세요.
+
+점검과 전달은 배치 전체를 미리 점유하지 않고 각 외부 호출 직전에 한 건씩 점유합니다. 시작 시 각 리스가 선점·외부 호출·확정의 최악 실행 시간을 넘고, 직렬 배치가 `WATCH_WORKER_EXECUTION_BUDGET` 안에 끝나는지 검증합니다. 실행 예산 기본값과 상한은 60초이며 기본 점검 배치는 1건, 전달 배치는 2건입니다. 기본 데이터베이스·HTTP 제한에서 점검 배치는 최대 21초, 전달 배치는 최대 42초의 계산 예산을 사용합니다.
 
 ~~~bash
 ./gradlew clean test :bootstrap:verifyBootJarLicense --no-build-cache
