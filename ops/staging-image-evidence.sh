@@ -7,7 +7,8 @@ export LC_ALL=C
 
 readonly REVISION="${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION is required}"
 readonly ARCHIVE_DIR="${WATCH_IMAGE_ARCHIVE_DIR:?WATCH_IMAGE_ARCHIVE_DIR is required}"
-readonly TAB="$(printf '\t')"
+TAB="$(printf '\t')"
+readonly TAB
 
 fail() {
     printf '[staging-image-evidence] %s\n' "$1" >&2

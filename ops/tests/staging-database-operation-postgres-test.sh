@@ -74,6 +74,7 @@ owner_psql() {
 credential_psql() {
     local role="$1"
     local password_file="$2"
+    # shellcheck disable=SC2016
     staging_compose run --rm --no-deps -T \
         --entrypoint /bin/sh \
         --volume "$password_file:/run/secrets/credential-password:ro" \
