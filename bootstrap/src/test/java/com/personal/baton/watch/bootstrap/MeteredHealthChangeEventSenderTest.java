@@ -27,6 +27,13 @@ class MeteredHealthChangeEventSenderTest {
                         .tag("outcome", "dns_failure")
                         .counter()
                         .count());
+        assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
+        assertEquals(
+                1L,
+                registry.get("baton.watch.event.delivery.duration")
+                        .tag("outcome", "dns_failure")
+                        .timer()
+                        .count());
     }
 
     @Test

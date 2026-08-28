@@ -141,6 +141,8 @@ SLO가 아니라 부하 시험을 시작하기 위한 보수적 하한입니다.
 - 예상 활성 모니터 수, 분당 동기화 요청 수, 상태 변경 이벤트 폭주량을 포함한
   부하 시나리오와 승인된 지원 규모
 - `baton_watch_check_inflight`, `baton_watch_check_schedule_delay_seconds`,
+  `baton_watch_event_delivery_inflight`, 제한된 결과별
+  `baton_watch_event_delivery_duration_seconds`,
   `baton_watch_event_delivery_backlog`,
   `baton_watch_event_delivery_oldest_age_seconds`의 정상 범위와 경보 임계치
 - 최대 HTTP 제한 시간과 데이터베이스 지연을 포함한 부하에서 일정 지연과

@@ -9,6 +9,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklo
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
+import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.Optional;
@@ -23,6 +24,7 @@ class MonitoringMetricsTest {
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
         assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
+        assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
 
         metrics.recordCheckBatch(new DueCheckBatchResult(
                 3,
@@ -42,6 +44,9 @@ class MonitoringMetricsTest {
                 1,
                 1));
         metrics.recordEventDeliveryAttempt(EventDeliveryOutcome.CONNECT_TIMEOUT);
+        Timer.Sample deliverySample = metrics.eventDeliveryStarted();
+        assertEquals(1.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
+        metrics.eventDeliveryFinished(deliverySample, EventDeliveryOutcome.CONNECT_TIMEOUT);
 
         assertEquals(3.0, registry.get("baton.watch.check.claimed").counter().count());
         assertEquals(17.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
@@ -74,6 +79,13 @@ class MonitoringMetricsTest {
                 registry.get("baton.watch.event.delivery.attempts")
                         .tag("outcome", "connect_timeout")
                         .counter()
+                        .count());
+        assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
+        assertEquals(
+                1L,
+                registry.get("baton.watch.event.delivery.duration")
+                        .tag("outcome", "connect_timeout")
+                        .timer()
                         .count());
         assertTrue(registry.find("baton.watch.event.delivery.finalizations").meters().stream()
                 .allMatch(meter -> meter.getId().getTag("resourceReference") == null));

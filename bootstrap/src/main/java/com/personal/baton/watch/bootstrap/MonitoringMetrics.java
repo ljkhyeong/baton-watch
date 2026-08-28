@@ -7,6 +7,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchR
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
@@ -21,11 +22,13 @@ final class MonitoringMetrics {
     private static final String CHECK_FINALIZATIONS = "baton.watch.check.finalizations";
     private static final String DELIVERY_CLAIMED = "baton.watch.event.delivery.claimed";
     private static final String DELIVERY_ATTEMPTS = "baton.watch.event.delivery.attempts";
+    private static final String DELIVERY_DURATION = "baton.watch.event.delivery.duration";
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
     private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
 
     private final MeterRegistry registry;
     private final AtomicLong inFlightChecks = new AtomicLong();
+    private final AtomicLong inFlightDeliveries = new AtomicLong();
     private final AtomicLong maximumCheckScheduleDelaySeconds = new AtomicLong();
     private final AtomicLong eventDeliveryBacklog = new AtomicLong();
     private final AtomicLong oldestEventAgeSeconds = new AtomicLong();
@@ -44,6 +47,12 @@ final class MonitoringMetrics {
                         AtomicLong::get)
                 .baseUnit("seconds")
                 .description("최근 점검 배치에서 선점한 작업의 최대 일정 지연")
+                .register(registry);
+        Gauge.builder(
+                        "baton.watch.event.delivery.inflight",
+                        inFlightDeliveries,
+                        AtomicLong::get)
+                .description("현재 실행 중인 상태 변경 이벤트 전달 수")
                 .register(registry);
         Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
                 .description("아직 전달되지 않은 상태 변경 이벤트 수")
@@ -86,6 +95,27 @@ final class MonitoringMetrics {
 
     void recordEventDeliveryAttempt(EventDeliveryOutcome outcome) {
         increment(DELIVERY_ATTEMPTS, "outcome", outcome.name().toLowerCase(Locale.ROOT), 1);
+    }
+
+    Timer.Sample eventDeliveryStarted() {
+        inFlightDeliveries.incrementAndGet();
+        try {
+            return Timer.start(registry);
+        } catch (RuntimeException exception) {
+            inFlightDeliveries.decrementAndGet();
+            throw exception;
+        }
+    }
+
+    void eventDeliveryFinished(Timer.Sample sample, EventDeliveryOutcome outcome) {
+        try {
+            sample.stop(registry.timer(
+                    DELIVERY_DURATION,
+                    "outcome",
+                    outcome.name().toLowerCase(Locale.ROOT)));
+        } finally {
+            inFlightDeliveries.decrementAndGet();
+        }
     }
 
     void recordStaleProjections(int staleProjections) {
