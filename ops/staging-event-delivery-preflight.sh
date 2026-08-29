@@ -62,6 +62,13 @@ delivery_endpoint="$WATCH_EVENT_DELIVERY_ENDPOINT"
 monitor_api_token="$WATCH_API_TOKEN"
 delivery_token="$WATCH_EVENT_DELIVERY_TOKEN"
 
+unset \
+    WATCH_PUBLIC_BASE_URL \
+    WATCH_EVENT_DELIVERY_ENABLED \
+    WATCH_EVENT_DELIVERY_ENDPOINT \
+    WATCH_API_TOKEN \
+    WATCH_EVENT_DELIVERY_TOKEN
+
 require_https_origin WATCH_PUBLIC_BASE_URL "$watch_public_base_url"
 require_delivery_endpoint "$delivery_endpoint"
 
@@ -76,16 +83,8 @@ if [[ "$monitor_api_token" == "$delivery_token" ]]; then
     fail "모니터 API 토큰과 이벤트 전달 토큰은 달라야 합니다"
 fi
 
-# 아래 공개 검사는 의도적으로 자격 증명을 사용하지 않습니다. 상속된 환경을 통해
-# 런타임 비밀값이 curl에 전달되지 않도록 합니다.
-unset \
-    WATCH_PUBLIC_BASE_URL \
-    WATCH_EVENT_DELIVERY_ENABLED \
-    WATCH_EVENT_DELIVERY_ENDPOINT \
-    WATCH_API_TOKEN \
-    WATCH_EVENT_DELIVERY_TOKEN \
-    monitor_api_token \
-    delivery_token
+# 아래 공개 검사는 의도적으로 자격 증명을 사용하지 않습니다.
+unset monitor_api_token delivery_token
 
 if ! command -v curl >/dev/null 2>&1; then
     fail "curl이 필요합니다"

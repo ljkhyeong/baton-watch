@@ -1,33 +1,32 @@
 #!/usr/bin/env python3
 
-import ipaddress
 import re
-import socket
 import sys
 from urllib.parse import urlsplit
 
 MAX_URL_LENGTH = 2048
 MAX_HOST_LENGTH = 253
 HOST_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+NUMERIC_ADDRESS_COMPONENT = re.compile(r"(?:0[xX][0-9A-Fa-f]+|[0-9]+)")
 EVENT_DELIVERY_PATH = "/api/v1/internal/resource-health-events"
 
 
 def is_dns_hostname(host: str) -> bool:
     if len(host) > MAX_HOST_LENGTH:
         return False
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
-        pass
-    else:
+    labels = host.split(".")
+    if ":" in host or all(NUMERIC_ADDRESS_COMPONENT.fullmatch(label) for label in labels):
         return False
-    try:
-        socket.inet_aton(host)
-    except OSError:
-        pass
-    else:
-        return False
-    return all(HOST_LABEL.fullmatch(label) for label in host.split("."))
+    return all(HOST_LABEL.fullmatch(label) for label in labels)
+
+
+def has_unsafe_raw_character(value: str) -> bool:
+    return any(
+        character == "\\"
+        or ord(character) <= 0x20
+        or 0x7F <= ord(character) <= 0x9F
+        for character in value
+    )
 
 
 def is_allowed_url(mode: str, value: str) -> bool:
@@ -40,15 +39,18 @@ def is_allowed_url(mode: str, value: str) -> bool:
     if (
         not value
         or len(value) > MAX_URL_LENGTH
+        or has_unsafe_raw_character(value)
+        or "?" in value
+        or "#" in value
         or parsed.scheme != "https"
         or parsed.hostname is None
-        or parsed.username is not None
-        or parsed.password is not None
         or port not in (None, 443)
-        or parsed.query
-        or parsed.fragment
         or not is_dns_hostname(parsed.hostname)
     ):
+        return False
+
+    expected_authority = parsed.hostname if port is None else f"{parsed.hostname}:{port}"
+    if parsed.netloc.lower() != expected_authority.lower():
         return False
 
     if mode == "origin":

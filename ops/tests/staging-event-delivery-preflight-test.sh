@@ -25,6 +25,22 @@ fail() {
 }
 
 mkdir -p "$FAKE_BIN"
+cat >"$FAKE_BIN/python3" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${WATCH_PUBLIC_BASE_URL-}" \
+        || -n "${WATCH_EVENT_DELIVERY_ENABLED-}" \
+        || -n "${WATCH_EVENT_DELIVERY_ENDPOINT-}" \
+        || -n "${WATCH_API_TOKEN-}" \
+        || -n "${WATCH_EVENT_DELIVERY_TOKEN-}" ]]; then
+    printf 'python3가 WATCH 스테이징 변수를 상속했습니다\n' >&2
+    exit 70
+fi
+exec /usr/bin/python3 "$@"
+EOF
+chmod +x "$FAKE_BIN/python3"
+
 cat >"$FAKE_BIN/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

@@ -22,7 +22,9 @@ class ApacheHttpLoggingConfigurationTest {
                     "logging.level.org.apache.hc.client5.http.headers=DEBUG",
                     "logging.level.org.apache.hc.client5.http.wire=DEBUG",
                     "logging.level.org.apache.hc.client5.http.impl=DEBUG",
-                    "logging.level.org.apache.hc.client5.http.ssl=DEBUG");
+                    "logging.level.org.apache.hc.client5.http.ssl=DEBUG",
+                    "logging.level.org.springframework.jdbc.core=TRACE",
+                    "logging.level.org.springframework.jdbc.core.StatementCreatorUtils=TRACE");
 
     @Test
     void keepsSensitiveApacheHttpDebugDiagnosticsDisabledWhenParentLoggingIsDebug() {
@@ -41,6 +43,11 @@ class ApacheHttpLoggingConfigurationTest {
             assertThat(loggingSystem.level("org.apache.hc.client5.http.impl"))
                     .isEqualTo(LogLevel.OFF);
             assertThat(loggingSystem.level("org.apache.hc.client5.http.ssl"))
+                    .isEqualTo(LogLevel.OFF);
+            assertThat(loggingSystem.level("org.springframework.jdbc.core"))
+                    .isEqualTo(LogLevel.TRACE);
+            assertThat(loggingSystem.level(
+                            "org.springframework.jdbc.core.StatementCreatorUtils"))
                     .isEqualTo(LogLevel.OFF);
         });
     }
