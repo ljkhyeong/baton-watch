@@ -21,7 +21,7 @@ final class DeliveryEndpointPolicy {
             throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
         URI validated = target.uri();
-        if (!target.protocol().equals("https") || validated.getRawQuery() != null) {
+        if (!validated.getScheme().equalsIgnoreCase("https") || validated.getRawQuery() != null) {
             throw new IllegalArgumentException(REJECTION_MESSAGE);
         }
         return new ValidatedDeliveryEndpoint(endpoint, validated.getHost().toLowerCase(Locale.ROOT));

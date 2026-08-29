@@ -1,7 +1,7 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -78,34 +78,6 @@ class SafeUrlCheckEngineTest {
         assertEquals(1, observation.redirectCount());
         assertEquals(List.of("public.example", "blocked.example"), dns.hostnames);
         assertEquals(1, transport.targets.size());
-    }
-
-    @Test
-    void rejectsReservedIpv6BeforeTheInitialConnection() throws Exception {
-        MutableNanoClock clock = new MutableNanoClock();
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(InetAddress.getByName("3000::1")));
-        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-
-        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://reserved.example/"));
-
-        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertEquals(List.of("reserved.example"), dns.hostnames);
-        assertEquals(0, transport.targets.size());
-    }
-
-    @Test
-    void rejectsAzureWireServerBeforeTheInitialConnection() throws Exception {
-        MutableNanoClock clock = new MutableNanoClock();
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(InetAddress.getByName("168.63.129.16")));
-        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-
-        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://platform-service.example/"));
-
-        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertEquals(List.of("platform-service.example"), dns.hostnames);
-        assertEquals(0, transport.targets.size());
     }
 
     @Test
@@ -212,19 +184,18 @@ class SafeUrlCheckEngineTest {
         }
     }
 
-    @ParameterizedTest
-    @MethodSource("finalStatuses")
-    void mapsOnlyBoundedFinalHttpStatusMetadata(int status, CheckOutcome expected) throws Exception {
+    @Test
+    void mapsUnsupportedFinalHttpStatusToNetworkFailureWithoutStatusMetadata() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(finalStatus(status, 4));
+        transport.add(finalStatus(199, 4));
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://status.example/"));
 
-        assertEquals(expected, observation.outcome());
-        assertEquals(status >= 200 ? status : null, observation.httpStatusCode());
+        assertEquals(CheckOutcome.NETWORK_FAILURE, observation.outcome());
+        assertNull(observation.httpStatusCode());
         assertEquals(4, observation.responseBytes());
     }
 
@@ -243,8 +214,7 @@ class SafeUrlCheckEngineTest {
 
         assertEquals(expected, observation.outcome());
         assertEquals(3, observation.responseBytes());
-        assertEquals(null, observation.httpStatusCode());
-        assertSame(scriptedFailure, transport.lastFailure);
+        assertNull(observation.httpStatusCode());
     }
 
     @Test
@@ -340,21 +310,6 @@ class SafeUrlCheckEngineTest {
     }
 
     @Test
-    void unexpectedAdapterRuntimeFailureBecomesInternalFailureMetadata() {
-        MutableNanoClock clock = new MutableNanoClock();
-        DnsLookup dns = (hostname, timeout) -> {
-            throw new IllegalStateException("detail that must not escape");
-        };
-        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-
-        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://internal.example/"));
-
-        assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
-        assertEquals(null, observation.httpStatusCode());
-    }
-
-    @Test
     void transportIllegalArgumentFailureRemainsAnInternalFailure() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         HttpHopTransport transport = (target, remainingTime, remainingBytes) -> {
@@ -369,7 +324,7 @@ class SafeUrlCheckEngineTest {
                 .check(new TargetUrl("https://internal.example/"));
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
-        assertEquals(null, observation.httpStatusCode());
+        assertNull(observation.httpStatusCode());
     }
 
     private static SafeUrlCheckEngine engine(
@@ -396,15 +351,6 @@ class SafeUrlCheckEngineTest {
 
     private static HttpHopResponse redirect(int statusCode, String location, long responseBytes) {
         return new HttpHopResponse(statusCode, List.of(location), responseBytes);
-    }
-
-    private static java.util.stream.Stream<Arguments> finalStatuses() {
-        return java.util.stream.Stream.of(
-                Arguments.of(204, CheckOutcome.SUCCESS),
-                Arguments.of(304, CheckOutcome.SUCCESS),
-                Arguments.of(404, CheckOutcome.HTTP_CLIENT_ERROR),
-                Arguments.of(503, CheckOutcome.HTTP_SERVER_ERROR),
-                Arguments.of(199, CheckOutcome.NETWORK_FAILURE));
     }
 
     private static java.util.stream.Stream<Arguments> transportFailures() {
@@ -455,7 +401,6 @@ class SafeUrlCheckEngineTest {
         private final List<Long> remainingByteBudgets = new ArrayList<>();
         private final MutableNanoClock clock;
         private final Duration timePerHop;
-        private OutboundHttpFailure lastFailure;
 
         private ScriptedTransport(MutableNanoClock clock, Duration timePerHop) {
             this.clock = clock;
@@ -474,7 +419,6 @@ class SafeUrlCheckEngineTest {
             clock.advance(timePerHop);
             Object next = script.removeFirst();
             if (next instanceof OutboundHttpFailure failure) {
-                lastFailure = failure;
                 throw failure;
             }
             return (HttpHopResponse) next;

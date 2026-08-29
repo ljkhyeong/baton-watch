@@ -1,7 +1,14 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.postgresql.PGProperty.CANCEL_SIGNAL_TIMEOUT;
+import static org.postgresql.PGProperty.CONNECT_TIMEOUT;
+import static org.postgresql.PGProperty.LOGIN_TIMEOUT;
+import static org.postgresql.PGProperty.SOCKET_TIMEOUT;
+import static org.postgresql.PGProperty.TCP_KEEP_ALIVE;
+
 import com.zaxxer.hikari.HikariDataSource;
 import java.net.URI;
+import java.util.Properties;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceProperties;
@@ -19,27 +26,18 @@ class DatabaseRuntimeConfiguration {
             DataSourceProperties dataSourceProperties,
             ObjectProvider<JdbcConnectionDetails> connectionDetailsProvider,
             DatabaseRuntimeProperties runtime) {
-        JdbcConnectionDetails connectionDetails = connectionDetailsProvider.getIfAvailable();
-        String jdbcUrl = connectionDetails != null
-                ? connectionDetails.getJdbcUrl()
-                : dataSourceProperties.determineUrl();
-        requireSafeJdbcUrl(jdbcUrl);
         HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder()
                 .type(HikariDataSource.class)
                 .build();
-        dataSource.setJdbcUrl(jdbcUrl);
-        dataSource.setUsername(connectionDetails != null
-                ? connectionDetails.getUsername()
-                : dataSourceProperties.determineUsername());
-        dataSource.setPassword(connectionDetails != null
-                ? connectionDetails.getPassword()
-                : dataSourceProperties.determinePassword());
-        String driverClassName = connectionDetails != null
-                ? connectionDetails.getDriverClassName()
-                : dataSourceProperties.determineDriverClassName();
-        if (driverClassName != null) {
-            dataSource.setDriverClassName(driverClassName);
-        }
+        connectionDetailsProvider.ifAvailable(connectionDetails -> {
+            dataSource.setJdbcUrl(connectionDetails.getJdbcUrl());
+            dataSource.setUsername(connectionDetails.getUsername());
+            dataSource.setPassword(connectionDetails.getPassword());
+            if (connectionDetails.getDriverClassName() != null) {
+                dataSource.setDriverClassName(connectionDetails.getDriverClassName());
+            }
+        });
+        requireSafeJdbcUrl(dataSource.getJdbcUrl());
         dataSource.setMaximumPoolSize(runtime.maximumPoolSize());
         dataSource.setMinimumIdle(runtime.minimumIdle());
         dataSource.setConnectionTimeout(runtime.connectionTimeoutMillis());
@@ -48,12 +46,12 @@ class DatabaseRuntimeConfiguration {
         dataSource.setMaxLifetime(runtime.maxLifetimeMillis());
         dataSource.setKeepaliveTime(runtime.keepaliveTimeMillis());
         dataSource.setInitializationFailTimeout(runtime.initializationFailTimeoutMillis());
-        dataSource.addDataSourceProperty("connectTimeout", Integer.toString(runtime.connectTimeoutSeconds()));
-        dataSource.addDataSourceProperty("loginTimeout", Integer.toString(runtime.loginTimeoutSeconds()));
-        dataSource.addDataSourceProperty("socketTimeout", Integer.toString(runtime.socketTimeoutSeconds()));
-        dataSource.addDataSourceProperty(
-                "cancelSignalTimeout", Integer.toString(runtime.cancelSignalTimeoutSeconds()));
-        dataSource.addDataSourceProperty("tcpKeepAlive", Boolean.toString(runtime.tcpKeepAlive()));
+        Properties driverProperties = dataSource.getDataSourceProperties();
+        CONNECT_TIMEOUT.set(driverProperties, runtime.connectTimeoutSeconds());
+        LOGIN_TIMEOUT.set(driverProperties, runtime.loginTimeoutSeconds());
+        SOCKET_TIMEOUT.set(driverProperties, runtime.socketTimeoutSeconds());
+        CANCEL_SIGNAL_TIMEOUT.set(driverProperties, runtime.cancelSignalTimeoutSeconds());
+        TCP_KEEP_ALIVE.set(driverProperties, runtime.tcpKeepAlive());
         return dataSource;
     }
 
@@ -67,14 +65,13 @@ class DatabaseRuntimeConfiguration {
         } catch (RuntimeException exception) {
             throw new IllegalArgumentException("데이터베이스 JDBC URL 형식이 올바르지 않습니다");
         }
-        if (!"postgresql".equals(uri.getScheme())
-                || uri.getHost() == null
+        if (uri.getHost() == null
                 || uri.getRawUserInfo() != null
                 || uri.getRawFragment() != null) {
             throw new IllegalArgumentException("데이터베이스 JDBC URL 형식이 올바르지 않습니다");
         }
-        int queryIndex = jdbcUrl.indexOf('?');
-        if (queryIndex >= 0 && !jdbcUrl.substring(queryIndex + 1).equals("loggerLevel=OFF")) {
+        String rawQuery = uri.getRawQuery();
+        if (rawQuery != null && !rawQuery.equals("loggerLevel=OFF")) {
             throw new IllegalArgumentException("데이터베이스 JDBC URL에 허용되지 않는 쿼리 매개변수가 있습니다");
         }
     }

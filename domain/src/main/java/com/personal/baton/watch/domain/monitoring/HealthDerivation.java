@@ -19,8 +19,4 @@ public record HealthDerivation(Health health, int consecutiveFailures) {
             throw new IllegalArgumentException("broken state requires at least three consecutive failures");
         }
     }
-
-    public static HealthDerivation unknown() {
-        return new HealthDerivation(Health.UNKNOWN, 0);
-    }
 }

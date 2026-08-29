@@ -5,19 +5,6 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
     password: ${SPRING_DATASOURCE_PASSWORD}
-  task:
-    scheduling:
-      shutdown:
-        await-termination: true
-        await-termination-period: 65s
-
-logging:
-  level:
-    org.apache.hc.client5.http.headers: OFF
-    org.apache.hc.client5.http.wire: OFF
-    org.apache.hc.client5.http.impl: OFF
-    org.apache.hc.client5.http.ssl: OFF
-
 watch:
   api-token: ${WATCH_API_TOKEN}
   database:
@@ -40,6 +27,7 @@ watch:
     lock-timeout: ${WATCH_PERSISTENCE_LOCK_TIMEOUT:1s}
   poll-interval: 1s
   maintenance-interval: 1m
+  worker-execution-budget: ${WATCH_WORKER_EXECUTION_BUDGET:60s}
   lease-duration: 30s
   check-interval: 60s
   internal-failure-retry-interval: 30s
@@ -69,7 +57,7 @@ watch:
     initial-retry-delay: 5s
     max-retry-delay: 15m
     retention: 30d
-    batch-size: 10
+    batch-size: 2
     maintenance-batch-size: 100
     http:
       connect-timeout: 2s
@@ -86,10 +74,3 @@ watch:
 management:
   server:
     port: 8081
-  endpoint:
-    health:
-      show-details: never
-  endpoints:
-    web:
-      exposure:
-        include: health,prometheus

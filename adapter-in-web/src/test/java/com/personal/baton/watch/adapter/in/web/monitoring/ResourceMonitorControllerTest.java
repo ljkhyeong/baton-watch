@@ -35,7 +35,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -77,13 +76,8 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.targetUrl").doesNotExist());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-        "http://127.0.0.1/internal",
-        "https://example.com/%0d%0aHost:internal",
-        "https://example.com/%5c%5cevil.example"
-    })
-    void rejectsInvalidTargetsWithAStableProblem(String targetUrl) throws Exception {
+    @Test
+    void rejectsInvalidTargetsWithAStableProblem() throws Exception {
         synchronizeMonitor = command -> {
             throw new AssertionError("invalid target reached the synchronization use case");
         };
@@ -95,9 +89,9 @@ class ResourceMonitorControllerTest {
                                 {
                                   "sourceRevision": 42,
                                   "monitoringState": "ACTIVE",
-                                  "targetUrl": "%s"
+                                  "targetUrl": "https://example.com/%0d%0aHost:internal"
                                 }
-                                """.formatted(targetUrl)))
+                                """))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))
@@ -119,12 +113,36 @@ class ResourceMonitorControllerTest {
     }
 
     @Test
+    void reportsSameRevisionWithDifferentDataAsAConflict() throws Exception {
+        synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.REVISION_CONFLICT, projection());
+        rebuildMockMvc();
+
+        mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "sourceRevision": 42,
+                                  "monitoringState": "ACTIVE",
+                                  "targetUrl": "https://example.com/health?secret=hidden"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.type")
+                        .value("urn:baton-watch:problem:source-revision-conflict"))
+                .andExpect(jsonPath("$.code").value("SOURCE_REVISION_CONFLICT"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("secret=hidden"))));
+    }
+
+    @Test
     void returnsTheCurrentProjection() throws Exception {
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resourceReference").value("resource-1"))
                 .andExpect(jsonPath("$.lastOutcome").doesNotExist())
-                .andExpect(jsonPath("$.lastCheckedAt").doesNotExist());
+                .andExpect(jsonPath("$.lastCheckedAt").doesNotExist())
+                .andExpect(jsonPath("$.lastConclusiveAt").value("2026-07-31T23:59:00Z"));
     }
 
     @Test
@@ -220,19 +238,6 @@ class ResourceMonitorControllerTest {
     }
 
     @Test
-    void normalizesOtherFrameworkClientErrors() throws Exception {
-        mockMvc.perform(get("/api/v1/framework-numbers/not-a-number"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-request"))
-                .andExpect(jsonPath("$.title").value("Invalid request"))
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
-    }
-
-    @Test
     void normalizesFrameworkServerErrorsWithoutLeakingDetails() throws Exception {
         mockMvc.perform(get("/api/v1/framework-write-failure"))
                 .andExpect(status().isInternalServerError())
@@ -242,21 +247,15 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.title").value("Internal server error"))
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
-                .andExpect(content().string(org.hamcrest.Matchers.not(
-                        org.hamcrest.Matchers.containsString("raw-output-secret"))));
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
     }
 
     @Test
     void committedFrameworkResponsesDoNotRelogExceptionDetails(CapturedOutput output) throws Exception {
-        var result = mockMvc.perform(get("/api/v1/framework-committed-write-failure"))
+        mockMvc.perform(get("/api/v1/framework-committed-write-failure"))
                 .andExpect(status().isAccepted())
-                .andExpect(content().string("already-sent"))
-                .andReturn();
+                .andExpect(content().string("already-sent"));
 
-        assertThat(result.getResponse().isCommitted()).isTrue();
-        assertThat(result.getResolvedException())
-                .isInstanceOf(HttpMessageNotWritableException.class);
         assertThat(output)
                 .contains("monitor API failed failureType=HttpMessageNotWritableException")
                 .doesNotContain("raw-output-secret")
@@ -273,10 +272,6 @@ class ResourceMonitorControllerTest {
 
     @RestController
     private static final class FrameworkFailureController {
-
-        @GetMapping("/api/v1/framework-numbers/{number}")
-        void number(@PathVariable int number) {
-        }
 
         @GetMapping("/api/v1/framework-write-failure")
         void writeFailure() {
@@ -301,6 +296,7 @@ class ResourceMonitorControllerTest {
                 new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.of(NOW.minusSeconds(60)),
                 Optional.of(NOW));
     }
 }

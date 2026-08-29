@@ -16,10 +16,9 @@ final class SharedPostgresExtension implements BeforeAllCallback {
 
     private static final ExtensionContext.Namespace NAMESPACE =
             ExtensionContext.Namespace.create(SharedPostgresExtension.class);
-    private static final String RESOURCE_KEY = "shared-postgres";
 
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
-                    "postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15")
+                    "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
             .asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("baton_watch")
             .withUsername("baton_watch")
@@ -27,12 +26,7 @@ final class SharedPostgresExtension implements BeforeAllCallback {
 
     @Override
     public void beforeAll(ExtensionContext context) {
-        context.getRoot()
-                .getStore(NAMESPACE)
-                .computeIfAbsent(
-                        RESOURCE_KEY,
-                        ignored -> new SharedPostgresResource(),
-                        SharedPostgresResource.class);
+        context.getRoot().getStore(NAMESPACE).computeIfAbsent(SharedPostgresResource.class);
     }
 
     private static final class SharedPostgresResource implements AutoCloseable {

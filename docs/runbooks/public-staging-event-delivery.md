@@ -2,7 +2,7 @@
 
 상태: 운영자용 실행 절차서이며, 실제 실행 완료를 의미하지 않음
 
-최종 수정일: 2026-08-08
+최종 수정일: 2026-08-27
 
 ## 목적
 
@@ -55,9 +55,11 @@ read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATC
 점검은 실패합니다. 스크립트는 두 토큰을 어느 것도 전송하지 않으며 응답 본문을
 버립니다. 실행 가능한 테스트는 콜백 메서드, 콘텐츠 유형, 잘못된 본문, 사용자
 curl 설정 격리, HTTPS 전용 프로토콜, 프록시 미사용 동작, TLS 최저 버전, 제한
-시간, 출력 폐기를 고정합니다. 사전 점검 통과는 도달 가능성과 외부에서 관찰한
-수신기 인증 경계만 입증합니다. 유효한 인증 정보의 수락, 배포된 WATCH 설정,
-전달 동작을 입증하지는 않습니다.
+시간, 출력 폐기를 고정합니다. 입력 검증이 실패하면 curl을 호출하지 않고,
+WATCH 상태 확인이 실패하면 BATON 수신기를 호출하지 않으며, 수신기 검증까지
+진행한 경우에만 두 번째 curl 호출을 허용합니다. 사전 점검 통과는 도달 가능성과
+외부에서 관찰한 수신기 인증 경계만 입증합니다. 유효한 인증 정보의 수락,
+배포된 WATCH 설정, 전달 동작을 입증하지는 않습니다.
 
 ## 증거 수집 규칙
 
@@ -70,8 +72,10 @@ curl 설정 격리, HTTPS 전용 프로토콜, 프록시 미사용 동작, TLS �
 아래에서 사용하는 Prometheus 이름은 다음과 같습니다.
 
 - `baton_watch_event_delivery_backlog`
+- `baton_watch_event_delivery_claimed_total`
 - `baton_watch_event_delivery_attempts_total{outcome="..."}`
 - `baton_watch_event_delivery_finalizations_total{status="..."}`
+- `baton_watch_event_delivery_lease_recoveries_total`
 
 백로그 게이지는 1분 주기의 유지보수 일정에 따라 갱신되므로, 게이지가 수렴하기를
 기다리는 동안에는 PostgreSQL 행 상태를 기준으로 판단합니다. 카운터 시계열이

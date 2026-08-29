@@ -15,11 +15,9 @@ final class EventDeliveryScheduler {
     private static final Logger log = LoggerFactory.getLogger(EventDeliveryScheduler.class);
 
     private final RunEventDeliveriesUseCase runEventDeliveries;
-    private final MonitoringMetrics metrics;
 
-    EventDeliveryScheduler(RunEventDeliveriesUseCase runEventDeliveries, MonitoringMetrics metrics) {
+    EventDeliveryScheduler(RunEventDeliveriesUseCase runEventDeliveries) {
         this.runEventDeliveries = runEventDeliveries;
-        this.metrics = metrics;
     }
 
     @Scheduled(
@@ -27,7 +25,6 @@ final class EventDeliveryScheduler {
             scheduler = WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER)
     void deliverPendingEvents() {
         EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();
-        metrics.recordEventDeliveryBatch(result);
         if (result.claimed() > 0) {
             log.info(
                     "health-change delivery batch completed claimed={} delivered={} retry={} replayed={} stale={}",

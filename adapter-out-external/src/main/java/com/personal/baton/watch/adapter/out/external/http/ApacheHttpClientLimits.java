@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.http;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.time.Duration;
-import java.util.Objects;
 
 /** 요청 범위 Apache 클라이언트 하나에 적용하는 연결 및 응답 제한. */
 public record ApacheHttpClientLimits(
@@ -12,8 +11,8 @@ public record ApacheHttpClientLimits(
         int maxHeaderLineLength) {
 
     public ApacheHttpClientLimits {
-        connectTimeout = requirePositive(connectTimeout, "connectTimeout");
-        responseTimeout = requirePositive(responseTimeout, "responseTimeout");
+        OutboundResourceBounds.requirePositiveDuration(connectTimeout, "connectTimeout");
+        OutboundResourceBounds.requirePositiveDuration(responseTimeout, "responseTimeout");
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
@@ -28,14 +27,6 @@ public record ApacheHttpClientLimits(
                 min(responseTimeout, remainingTime),
                 maxHeaderCount,
                 maxHeaderLineLength);
-    }
-
-    private static Duration requirePositive(Duration value, String name) {
-        Objects.requireNonNull(value, name);
-        if (!value.isPositive()) {
-            throw new IllegalArgumentException(name + " must be positive");
-        }
-        return value;
     }
 
     private static Duration min(Duration first, Duration second) {

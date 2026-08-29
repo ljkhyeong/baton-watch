@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.in.web.security;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.Objects;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
@@ -18,10 +17,6 @@ public final class MonitorBearerTokenAuthenticationManager implements Authentica
     private final byte[] expectedToken;
 
     public MonitorBearerTokenAuthenticationManager(String expectedToken) {
-        Objects.requireNonNull(expectedToken, "expectedToken");
-        if (expectedToken.isBlank()) {
-            throw new IllegalArgumentException("expectedToken must not be blank");
-        }
         this.expectedToken = expectedToken.getBytes(StandardCharsets.UTF_8);
     }
 

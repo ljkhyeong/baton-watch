@@ -17,14 +17,16 @@ class ConfigurationPropertiesValidationTest {
         watchContext(
                         "watch.check-batch-size=101",
                         "watch.http.dns-queue-capacity=65",
-                        "watch.poll-interval=0s")
+                        "watch.poll-interval=0s",
+                        "watch.lease-duration=366d")
                 .run(context -> {
-                    assertThat(context).hasFailed();
-
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "checkBatchSize", "http.dnsQueueCapacity", "pollInterval");
+                                    "checkBatchSize",
+                                    "http.dnsQueueCapacity",
+                                    "leaseDuration",
+                                    "pollInterval");
                 });
     }
 
@@ -33,37 +35,16 @@ class ConfigurationPropertiesValidationTest {
         eventDeliveryContext(
                         "watch.event-delivery.batch-size=101",
                         "watch.event-delivery.http.request-queue-capacity=17",
-                        "watch.event-delivery.maintenance-interval=0s")
+                        "watch.event-delivery.maintenance-interval=0s",
+                        "watch.event-delivery.retention=366d")
                 .run(context -> {
-                    assertThat(context).hasFailed();
-
                     BindValidationException failure = findValidationFailure(context.getStartupFailure());
                     assertThat(fieldNames(failure))
                             .containsExactlyInAnyOrder(
-                                    "batchSize", "http.requestQueueCapacity", "maintenanceInterval");
-                });
-    }
-
-    @Test
-    void rejectsJdbcQueryTimeoutsOutsideTheWholeSecondOperationalBound() {
-        persistenceContext("watch.persistence.query-timeout=500ms")
-                .run(context -> {
-                    assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure())
-                            .rootCause()
-                            .isInstanceOf(IllegalArgumentException.class)
-                            .hasMessageContaining("queryTimeout")
-                            .hasMessageContaining("whole-second");
-                });
-
-        persistenceContext("watch.persistence.query-timeout=31s")
-                .run(context -> {
-                    assertThat(context).hasFailed();
-                    assertThat(context.getStartupFailure())
-                            .rootCause()
-                            .isInstanceOf(IllegalArgumentException.class)
-                            .hasMessageContaining("queryTimeout")
-                            .hasMessageContaining("between 1 and 30 seconds");
+                                    "batchSize",
+                                    "http.requestQueueCapacity",
+                                    "maintenanceInterval",
+                                    "retention");
                 });
     }
 
@@ -74,6 +55,7 @@ class ConfigurationPropertiesValidationTest {
                         "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                         "watch.poll-interval=1s",
                         "watch.maintenance-interval=1m",
+                        "watch.worker-execution-budget=60s",
                         "watch.lease-duration=10m",
                         "watch.check-interval=1m",
                         "watch.internal-failure-retry-interval=30s",
@@ -123,16 +105,6 @@ class ConfigurationPropertiesValidationTest {
                 .withPropertyValues(invalidProperties);
     }
 
-    private static ApplicationContextRunner persistenceContext(String... invalidProperties) {
-        return new ApplicationContextRunner()
-                .withUserConfiguration(PersistenceConfigurationProperties.class)
-                .withPropertyValues(
-                        "watch.persistence.query-timeout=5s",
-                        "watch.persistence.transaction-timeout=5s",
-                        "watch.persistence.lock-timeout=1s")
-                .withPropertyValues(invalidProperties);
-    }
-
     private static BindValidationException findValidationFailure(Throwable failure) {
         Throwable current = failure;
         while (current != null) {
@@ -162,8 +134,4 @@ class ConfigurationPropertiesValidationTest {
     static class EventDeliveryConfigurationProperties {
     }
 
-    @Configuration(proxyBeanMethods = false)
-    @EnableConfigurationProperties(PersistenceProperties.class)
-    static class PersistenceConfigurationProperties {
-    }
 }

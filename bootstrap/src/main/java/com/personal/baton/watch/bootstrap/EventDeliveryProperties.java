@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
+import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -21,10 +22,14 @@ public record EventDeliveryProperties(
         String bearerToken,
         @NotNull @DurationMin(inclusive = false) Duration pollInterval,
         @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
-        @NotNull @DurationMin(inclusive = false) Duration leaseDuration,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration leaseDuration,
         Duration initialRetryDelay,
         Duration maxRetryDelay,
-        @NotNull @DurationMin(inclusive = false) Duration retention,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration retention,
         @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
@@ -33,25 +38,6 @@ public record EventDeliveryProperties(
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
 
     public EventDeliveryProperties {
-        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "event delivery leaseDuration");
-        retention = requireSupportedOffsetIfPositive(retention, "event delivery retention");
-        if (http != null
-                && leaseDuration != null
-                && leaseDuration.isPositive()
-                && http.totalTimeout() != null
-                && http.totalTimeout().isPositive()
-                && batchSize >= 1
-                && batchSize <= MAX_DELIVERY_BATCH_SIZE) {
-            Duration maximumBatchRuntime;
-            try {
-                maximumBatchRuntime = http.totalTimeout().multipliedBy(batchSize);
-            } catch (ArithmeticException exception) {
-                throw new IllegalArgumentException("event delivery batch runtime is too large");
-            }
-            if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
-                throw new IllegalArgumentException("event delivery leaseDuration must exceed the maximum batch runtime");
-            }
-        }
         if (enabled) {
             Objects.requireNonNull(endpoint, "endpoint");
             Objects.requireNonNull(bearerToken, "bearerToken");
@@ -69,24 +55,6 @@ public record EventDeliveryProperties(
             @Min(1) @Max(OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY) int dnsQueueCapacity,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_THREADS) int requestThreads,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
-
-        public Http {
-            if (connectTimeout != null
-                    && connectTimeout.isPositive()
-                    && responseTimeout != null
-                    && responseTimeout.isPositive()
-                    && totalTimeout != null
-                    && totalTimeout.isPositive()
-                    && (connectTimeout.compareTo(totalTimeout) > 0
-                            || responseTimeout.compareTo(totalTimeout) > 0)) {
-                throw new IllegalArgumentException("event delivery HTTP phase timeout cannot exceed totalTimeout");
-            }
-        }
     }
 
-    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
-        return duration != null && duration.isPositive()
-                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
-                : duration;
-    }
 }

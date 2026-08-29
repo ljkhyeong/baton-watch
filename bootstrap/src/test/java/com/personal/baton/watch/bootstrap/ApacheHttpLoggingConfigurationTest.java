@@ -2,7 +2,6 @@ package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -19,29 +18,29 @@ class ApacheHttpLoggingConfigurationTest {
             .withInitializer(new ConfigDataApplicationContextInitializer())
             .withPropertyValues(
                     "logging.level.root=DEBUG",
-                    "logging.level.org.apache.hc.client5.http=DEBUG");
+                    "logging.level.org.apache.hc.client5.http=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.headers=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.wire=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.impl=DEBUG",
+                    "logging.level.org.apache.hc.client5.http.ssl=DEBUG");
 
     @Test
     void keepsSensitiveApacheHttpDebugDiagnosticsDisabledWhenParentLoggingIsDebug() {
         contextRunner.run(context -> {
-            assertThat(context).hasNotFailed();
+            new RuntimeSafetyEnvironmentPostProcessor()
+                    .postProcessEnvironment(context.getEnvironment(), null);
             RecordingLoggingSystem loggingSystem = new RecordingLoggingSystem();
             new TestLoggingApplicationListener().apply(loggingSystem, context.getEnvironment());
 
-            assertThat(loggingSystem.effectiveLevel("org.apache.hc.client5.http"))
+            assertThat(loggingSystem.level("org.apache.hc.client5.http"))
                     .isEqualTo(LogLevel.DEBUG);
-            assertThat(loggingSystem.effectiveLevel("org.apache.hc.client5.http.headers"))
+            assertThat(loggingSystem.level("org.apache.hc.client5.http.headers"))
                     .isEqualTo(LogLevel.OFF);
-            assertThat(loggingSystem.effectiveLevel("org.apache.hc.client5.http.wire"))
+            assertThat(loggingSystem.level("org.apache.hc.client5.http.wire"))
                     .isEqualTo(LogLevel.OFF);
-            assertThat(loggingSystem.effectiveLevel(
-                            "org.apache.hc.client5.http.impl.classic.MainClientExec"))
+            assertThat(loggingSystem.level("org.apache.hc.client5.http.impl"))
                     .isEqualTo(LogLevel.OFF);
-            assertThat(loggingSystem.effectiveLevel(
-                            "org.apache.hc.client5.http.impl.io.DefaultHttpClientConnectionOperator"))
-                    .isEqualTo(LogLevel.OFF);
-            assertThat(loggingSystem.effectiveLevel(
-                            "org.apache.hc.client5.http.ssl.AbstractClientTlsStrategy"))
+            assertThat(loggingSystem.level("org.apache.hc.client5.http.ssl"))
                     .isEqualTo(LogLevel.OFF);
         });
     }
@@ -65,15 +64,8 @@ class ApacheHttpLoggingConfigurationTest {
             levels.put(loggerName == null ? ROOT_LOGGER_NAME : loggerName, level);
         }
 
-        LogLevel effectiveLevel(String loggerName) {
-            return levels.entrySet().stream()
-                    .filter(entry -> ROOT_LOGGER_NAME.equals(entry.getKey())
-                            || loggerName.equals(entry.getKey())
-                            || loggerName.startsWith(entry.getKey() + "."))
-                    .max(Comparator.comparingInt(entry ->
-                            ROOT_LOGGER_NAME.equals(entry.getKey()) ? -1 : entry.getKey().length()))
-                    .orElseThrow()
-                    .getValue();
+        LogLevel level(String loggerName) {
+            return levels.get(loggerName);
         }
     }
 }

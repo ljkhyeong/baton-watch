@@ -1,5 +1,7 @@
 package com.personal.baton.watch.adapter.out.external;
 
+import java.time.Duration;
+import java.util.Objects;
 import org.apache.hc.core5.util.Args;
 
 /** 운영자가 구성할 수 있는 아웃바운드 HTTP 리소스의 강제 상한. */
@@ -15,6 +17,21 @@ public final class OutboundResourceBounds {
     public static final int MAX_REQUEST_QUEUE_CAPACITY = 16;
 
     private OutboundResourceBounds() {}
+
+    public static void requirePositiveDuration(Duration value, String name) {
+        Objects.requireNonNull(value, name);
+        if (!value.isPositive()) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+    }
+
+    public static void requireNanosRepresentable(Duration value, String name) {
+        try {
+            value.toNanos();
+        } catch (ArithmeticException exception) {
+            throw new IllegalArgumentException(name + " is too large");
+        }
+    }
 
     public static void requireResponseBytes(long value, long maximum) {
         Args.checkRange(value, 1, maximum, "maxResponseBytes");

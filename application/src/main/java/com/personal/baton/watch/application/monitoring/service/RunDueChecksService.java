@@ -48,16 +48,26 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
 
     @Override
     public DueCheckBatchResult runDueChecks() {
-        List<ClaimedCheck> claimedChecks = List.copyOf(
-                persistence.claimDueChecks(leaseDuration, batchSize));
-        if (claimedChecks.size() > batchSize) {
-            throw new IllegalStateException("persistence returned more work than requested");
-        }
-
+        int claimed = 0;
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
-        for (ClaimedCheck claimedCheck : claimedChecks) {
+        Duration maximumScheduleDelay = Duration.ZERO;
+        while (claimed < batchSize) {
+            List<ClaimedCheck> claimedChecks = persistence.claimDueChecks(leaseDuration, 1);
+            if (claimedChecks.size() > 1) {
+                throw new IllegalStateException("persistence returned more work than requested");
+            }
+            if (claimedChecks.isEmpty()) {
+                break;
+            }
+            ClaimedCheck claimedCheck = claimedChecks.getFirst();
+            claimed++;
+            Duration scheduleDelay = Duration.between(
+                    claimedCheck.scheduledAt(), claimedCheck.claimedAt());
+            if (scheduleDelay.compareTo(maximumScheduleDelay) > 0) {
+                maximumScheduleDelay = scheduleDelay;
+            }
             CheckObservation observation = check(claimedCheck);
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
@@ -71,7 +81,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     claimedCheck.leaseToken(),
                     observation,
                     completedAt,
-                    TimeBoundaryPolicy.add(completedAt, interval, "check interval"));
+                    completedAt.plus(interval));
             CheckFinalizationStatus status = persistence.finalizeCheck(finalization);
             switch (status) {
                 case APPLIED -> applied++;
@@ -79,7 +89,8 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                 case STALE_CLAIM -> staleClaims++;
             }
         }
-        return new DueCheckBatchResult(claimedChecks.size(), applied, alreadyFinalized, staleClaims);
+        return new DueCheckBatchResult(
+                claimed, applied, alreadyFinalized, staleClaims, maximumScheduleDelay);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

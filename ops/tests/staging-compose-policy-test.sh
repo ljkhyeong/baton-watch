@@ -4,9 +4,12 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
-readonly TEMP_DIR="$(mktemp -d)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly BASE_CONFIG="$TEMP_DIR/base.json"
 readonly TUNNEL_CONFIG="$TEMP_DIR/tunnel.json"
 
@@ -50,6 +53,7 @@ render_config() {
         -u WATCH_PERSISTENCE_TRANSACTION_TIMEOUT \
         -u WATCH_PERSISTENCE_LOCK_TIMEOUT \
         -u WATCH_PERSISTENCE_QUERY_TIMEOUT \
+        -u WATCH_WORKER_EXECUTION_BUDGET \
         WATCH_IMAGE_REVISION=0000000000000000000000000000000000000001 \
         WATCH_POSTGRES_VOLUME_NAME=baton-watch-compose-policy-test \
         docker compose \
@@ -90,6 +94,14 @@ def assert_no_host_ports(configuration: dict, label: str) -> None:
             not service.get("ports"),
             f"{label} service {service_name} must not publish a host port",
         )
+
+
+def assert_digest_pinned(image: str, repository: str, label: str) -> None:
+    pattern = rf"{re.escape(repository)}:[0-9][A-Za-z0-9_.-]*@sha256:[0-9a-f]{{64}}"
+    require(
+        re.fullmatch(pattern, image) is not None,
+        f"{label} image must use a versioned digest pin",
+    )
 
 
 base = load(sys.argv[1])
@@ -140,6 +152,15 @@ require(
     "WATCH image revision interpolation changed",
 )
 require(watch.get("pull_policy") == "never", "WATCH image must be the locally selected immutable tag")
+require(watch.get("user") == "0:0", "staging WATCH must start its secret copy as root")
+require(
+    watch.get("entrypoint") == ["/opt/watch/run-as-watch-user.sh"],
+    "staging WATCH must use the secret-copy entrypoint",
+)
+require(
+    watch.get("command") == ["java", "-jar", "/app/baton-watch.jar"],
+    "staging WATCH command changed",
+)
 require(
     migrate.get("image")
     == "baton-watch-migrations:0000000000000000000000000000000000000001",
@@ -153,12 +174,16 @@ require(
     migrate["environment"].get("WATCH_DB_RUNTIME_USER") == "baton_watch_runtime",
     "migration callback must target the runtime database role",
 )
-require(
-    cloudflared.get("image")
-    == "cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf",
-    "cloudflared image digest changed",
+assert_digest_pinned(
+    cloudflared.get("image", ""),
+    "cloudflare/cloudflared",
+    "cloudflared",
 )
-require("@sha256:" in postgres.get("image", ""), "PostgreSQL image must be digest-pinned")
+require(
+    cloudflared.get("user") == "65532:65532",
+    "cloudflared must retain its fixed non-root user",
+)
+assert_digest_pinned(postgres.get("image", ""), "postgres", "PostgreSQL")
 require(
     database_role_init.get("image")
     == "baton-watch-database-operations:0000000000000000000000000000000000000001",
@@ -175,8 +200,8 @@ require(
 
 watch_environment = watch["environment"]
 require(
-    watch_environment.get("SPRING_CONFIG_IMPORT") == "configtree:/run/secrets/",
-    "WATCH must import file secrets through Spring configtree",
+    watch_environment.get("SPRING_CONFIG_IMPORT") == "configtree:/run/watch-secrets/",
+    "WATCH must import copied file secrets through Spring configtree",
 )
 require(
     watch_environment.get("MANAGEMENT_SERVER_ADDRESS") == "127.0.0.1",
@@ -326,6 +351,8 @@ require(
     watch["healthcheck"].get("test")
     == [
         "CMD",
+        "su-exec",
+        "10001:10001",
         "wget",
         "-q",
         "-O",
@@ -339,12 +366,29 @@ require(
     postgres.get("cap_add") == ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
     "PostgreSQL capability allowlist changed",
 )
-require(not watch.get("cap_add"), "WATCH must not add Linux capabilities")
+require(
+    set(database_role_init.get("cap_add", []))
+    == {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"},
+    "database role initialization must only retain secret-read and identity-drop capabilities",
+)
+require(
+    set(migrate.get("cap_add", []))
+    == {"CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"},
+    "migration must only retain secret-read and identity-drop capabilities",
+)
+require(
+    watch.get("cap_add") == ["CHOWN", "DAC_READ_SEARCH", "SETGID", "SETUID"],
+    "WATCH must only retain secret-copy and identity-drop capabilities",
+)
 require(not cloudflared.get("cap_add"), "cloudflared must not add Linux capabilities")
-require(watch.get("init") is True, "WATCH must retain an init process")
+require(not watch.get("init", False), "WATCH must run Java directly as container PID 1")
 require(cloudflared.get("init") is True, "cloudflared must retain an init process")
 require(
-    watch.get("tmpfs") == ["/tmp:rw,noexec,nosuid,nodev,size=64m"],
+    set(watch.get("tmpfs", []))
+    == {
+        "/tmp:rw,noexec,nosuid,nodev,size=64m",
+        "/run/watch-secrets:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700",
+    },
     "WATCH tmpfs boundary changed",
 )
 require(
@@ -361,12 +405,12 @@ require(
 )
 require(
     database_role_init.get("tmpfs")
-    == ["/tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=70,mode=0700"],
+    == ["/tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=0,mode=0730"],
     "database role initialization tmpfs boundary changed",
 )
 require(
     migrate.get("tmpfs")
-    == ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700"],
+    == ["/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=0,mode=0730"],
     "migration tmpfs boundary changed",
 )
 require(

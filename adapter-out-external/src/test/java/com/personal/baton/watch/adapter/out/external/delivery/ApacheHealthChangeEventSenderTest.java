@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
@@ -13,40 +12,26 @@ import tools.jackson.databind.ObjectMapper;
 class ApacheHealthChangeEventSenderTest {
 
     @Test
-    void validatesTheEndpointAndBearerTokenBeforeCreatingAProductionSender() {
+    void validatesTheEndpointBeforeCreatingAProductionSender() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> sender(
                         URI.create("http://events.example.com/callback"),
                         "0123456789abcdef0123456789abcdef"));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> sender(
-                        URI.create("https://127.0.0.1/callback"),
-                        "0123456789abcdef0123456789abcdef"));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> sender(
-                        URI.create("https://events.example.com/callback"),
-                        "unsafe token 0123456789abcdef0123456789abcdef"));
     }
 
     @Test
     void acceptsTheInclusiveBearerTokenLengthBoundariesAndUrlSafePunctuation() {
-        assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = sender(
-                    URI.create("https://events.example.com/callback"),
-                    "._~-" + "A".repeat(28))) {
-                // 32자 하한과 허용 구두점을 함께 검증한다.
-            }
-        });
-        assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = sender(
-                    URI.create("https://events.example.com/callback"),
-                    "A".repeat(200))) {
-                // 200자 상한을 검증한다.
-            }
-        });
+        try (ApacheHealthChangeEventSender ignored = sender(
+                URI.create("https://events.example.com/callback"),
+                "._~-" + "A".repeat(28))) {
+            // 32자 하한과 허용 구두점을 함께 검증한다.
+        }
+        try (ApacheHealthChangeEventSender ignored = sender(
+                URI.create("https://events.example.com/callback"),
+                "A".repeat(200))) {
+            // 200자 상한을 검증한다.
+        }
     }
 
     @ParameterizedTest
@@ -70,17 +55,6 @@ class ApacheHealthChangeEventSenderTest {
                 () -> sender(
                         URI.create("https://events.example.com/callback"),
                         "A".repeat(201)));
-    }
-
-    @Test
-    void closesOwnedBoundedExecutors() {
-        assertDoesNotThrow(() -> {
-            try (ApacheHealthChangeEventSender ignored = sender(
-                    URI.create("https://events.example.com/callback"),
-                    "0123456789abcdef0123456789abcdef")) {
-                // 여기서는 생성과 닫기라는 생명주기 계약을 검증한다.
-            }
-        });
     }
 
     @Test

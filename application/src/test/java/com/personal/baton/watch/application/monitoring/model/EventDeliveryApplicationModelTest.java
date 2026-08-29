@@ -2,7 +2,6 @@ package com.personal.baton.watch.application.monitoring.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -41,17 +40,11 @@ class EventDeliveryApplicationModelTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ClaimedHealthChangeEvent(
-                        payload(Health.UNKNOWN, Health.HEALTHY), UUID.randomUUID(), 0, Instant.now()));
-
-        assertTrue(claimed(Health.UNKNOWN, Health.HEALTHY, 1).payload().attemptId().isEmpty());
-    }
-
-    private ClaimedHealthChangeEvent claimed(Health previous, Health current, int deliveryAttempt) {
-        return new ClaimedHealthChangeEvent(
-                payload(previous, current),
-                UUID.randomUUID(),
-                deliveryAttempt,
-                Instant.parse("2026-08-01T00:00:01Z"));
+                        payload(Health.UNKNOWN, Health.HEALTHY),
+                        UUID.randomUUID(),
+                        0,
+                        Instant.now(),
+                        false));
     }
 
     private HealthChangeEventPayload payload(Health previous, Health current) {

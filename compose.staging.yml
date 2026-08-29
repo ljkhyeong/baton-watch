@@ -2,7 +2,7 @@ name: "${WATCH_COMPOSE_PROJECT_NAME:-baton-watch-staging}"
 
 services:
   postgres:
-    image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
     environment:
       POSTGRES_DB: "${WATCH_DB_NAME:-baton_watch}"
       POSTGRES_USER: "${WATCH_DB_OWNER_USER:-baton_watch_owner}"
@@ -52,7 +52,6 @@ services:
   database-role-init:
     image: "baton-watch-database-operations:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
     pull_policy: never
-    user: "70:70"
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -72,9 +71,14 @@ services:
     restart: "no"
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=70,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=0,mode=0730
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 64
@@ -111,9 +115,14 @@ services:
     restart: "no"
     read_only: true
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=65532,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=0,mode=0730
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 128
@@ -132,9 +141,12 @@ services:
   watch:
     image: "baton-watch:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
     pull_policy: never
+    user: "0:0"
+    entrypoint: ["/opt/watch/run-as-watch-user.sh"]
+    command: ["java", "-jar", "/app/baton-watch.jar"]
     environment:
       JAVA_TOOL_OPTIONS: "${WATCH_JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}"
-      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      SPRING_CONFIG_IMPORT: configtree:/run/watch-secrets/
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${WATCH_DB_NAME:-baton_watch}"
       SPRING_DATASOURCE_USERNAME: "${WATCH_DB_RUNTIME_USER:-baton_watch_runtime}"
       SPRING_FLYWAY_ENABLED: "false"
@@ -156,6 +168,7 @@ services:
       WATCH_PERSISTENCE_QUERY_TIMEOUT: "${WATCH_PERSISTENCE_QUERY_TIMEOUT:-5s}"
       WATCH_PERSISTENCE_TRANSACTION_TIMEOUT: "${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:-5s}"
       WATCH_PERSISTENCE_LOCK_TIMEOUT: "${WATCH_PERSISTENCE_LOCK_TIMEOUT:-1s}"
+      WATCH_WORKER_EXECUTION_BUDGET: "${WATCH_WORKER_EXECUTION_BUDGET:-60s}"
       WATCH_EVENT_DELIVERY_ENABLED: "false"
     secrets:
       - source: watch-db-runtime-password
@@ -172,19 +185,24 @@ services:
       - watch-db
       - watch-edge
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      test: ["CMD", "su-exec", "10001:10001", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
       interval: 10s
       timeout: 3s
       retries: 12
       start_period: 30s
     restart: unless-stopped
     stop_grace_period: 110s
-    init: true
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
+      - /run/watch-secrets:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+      - SETGID
+      - SETUID
     security_opt:
       - no-new-privileges:true
     pids_limit: 256

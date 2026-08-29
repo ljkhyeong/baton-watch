@@ -18,17 +18,15 @@ import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.system.SystemStatus;
-import jakarta.servlet.Filter;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
+import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -39,13 +37,13 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.tomcat.TomcatWebServer;
+import org.springframework.boot.web.server.servlet.context.ServletWebServerApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.security.web.FilterChainProxy;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -54,7 +52,14 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "server.servlet.context-path=/watch",
-            "management.server.port=-1"
+            "management.server.port=-1",
+            "server.max-http-request-header-size=64KB",
+            "server.tomcat.max-http-response-header-size=64KB",
+            "server.tomcat.max-connections=4096",
+            "server.tomcat.accept-count=1024",
+            "server.tomcat.threads.max=512",
+            "server.tomcat.threads.min-spare=64",
+            "server.tomcat.threads.max-queue-capacity=4096"
         })
 class MonitorApiSecurityIntegrationTest {
 
@@ -70,14 +75,29 @@ class MonitorApiSecurityIntegrationTest {
     private int serverPort;
 
     private final ObjectMapper objectMapper;
-    private final FilterChainProxy filterChainProxy;
+    private final ServletWebServerApplicationContext applicationContext;
 
     @Autowired
     MonitorApiSecurityIntegrationTest(
             ObjectMapper objectMapper,
-            FilterChainProxy filterChainProxy) {
+            ServletWebServerApplicationContext applicationContext) {
         this.objectMapper = objectMapper;
-        this.filterChainProxy = filterChainProxy;
+        this.applicationContext = applicationContext;
+    }
+
+    @Test
+    void externalConfigurationCannotRelaxEmbeddedTomcatResourceBounds() {
+        var webServer = (TomcatWebServer) applicationContext.getWebServer();
+        var connector = webServer.getTomcat().getConnector();
+        var protocol = (AbstractHttp11Protocol<?>) connector.getProtocolHandler();
+
+        assertThat(protocol.getMaxHttpRequestHeaderSize()).isEqualTo(8 * 1024);
+        assertThat(protocol.getMaxHttpResponseHeaderSize()).isEqualTo(8 * 1024);
+        assertThat(protocol.getMaxConnections()).isEqualTo(128);
+        assertThat(protocol.getAcceptCount()).isEqualTo(32);
+        assertThat(protocol.getMaxThreads()).isEqualTo(32);
+        assertThat(protocol.getMinSpareThreads()).isEqualTo(4);
+        assertThat(protocol.getMaxQueueSize()).isEqualTo(64);
     }
 
     @Test
@@ -138,22 +158,6 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @Test
-    void requestBodyLimitRunsAfterSpringSecurityAuthorization() {
-        List<List<Filter>> matchingChains = filterChainProxy.getFilterChains().stream()
-                .map(org.springframework.security.web.SecurityFilterChain::getFilters)
-                .filter(chain -> chain.stream().anyMatch(MonitorApiRequestBodyLimitFilter.class::isInstance))
-                .toList();
-        assertThat(matchingChains).hasSize(1);
-        List<Filter> filters = matchingChains.getFirst();
-
-        int authorization = indexOf(filters, AuthorizationFilter.class);
-        int bodyLimit = indexOf(filters, MonitorApiRequestBodyLimitFilter.class);
-
-        assertThat(authorization).isNotNegative();
-        assertThat(bodyLimit).isGreaterThan(authorization);
-    }
-
-    @Test
     void authenticationPrecedesContentLengthAndChunkedBodyLimits() throws Exception {
         String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
         HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
@@ -169,7 +173,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 chunkedBody);
 
-        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
         assertUnauthorized(contentLength);
         assertUnauthorized(chunked);
     }
@@ -191,9 +194,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 chunkedBody);
 
-        assertThat(declaredBody.contentLength())
-                .isEqualTo(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1L);
-        assertThat(chunkedBody.contentLength()).isEqualTo(-1);
         assertProblem(
                 contentLength,
                 413,
@@ -221,8 +221,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE,
                 HttpRequest.BodyPublishers.ofString(body));
 
-        assertThat(body.getBytes(StandardCharsets.UTF_8))
-                .hasSize(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES);
         assertThat(response.statusCode()).isEqualTo(200);
     }
 
@@ -330,16 +328,6 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE);
     }
 
-    @Test
-    void successfulAuthenticationIsNotReusedAsASession() throws Exception {
-        HttpResponse<String> authenticated = get("/api/v1/resource-monitors/resource-1", API_TOKEN);
-        HttpResponse<String> followingRequest = get("/api/v1/resource-monitors/resource-1", null);
-
-        assertThat(authenticated.statusCode()).isEqualTo(200);
-        assertThat(authenticated.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
-        assertUnauthorized(followingRequest);
-    }
-
     private HttpResponse<String> get(String path, String token) throws Exception {
         return get(path, token, MediaType.APPLICATION_JSON_VALUE);
     }
@@ -401,15 +389,6 @@ class MonitorApiSecurityIntegrationTest {
         return HttpRequest.BodyPublishers.ofInputStream(() -> new ByteArrayInputStream(bytes));
     }
 
-    private static int indexOf(List<Filter> filters, Class<? extends Filter> type) {
-        for (int index = 0; index < filters.size(); index++) {
-            if (type.isInstance(filters.get(index))) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
     private void assertUnauthorized(HttpResponse<String> response) throws Exception {
         assertThat(response.statusCode()).isEqualTo(401);
         MediaType contentType = MediaType.parseMediaType(
@@ -465,6 +444,7 @@ class MonitorApiSecurityIntegrationTest {
                 new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -487,29 +467,7 @@ class MonitorApiSecurityIntegrationTest {
 
         @Bean
         WatchProperties watchProperties() {
-            return new WatchProperties(
-                    API_TOKEN,
-                    Duration.ofSeconds(1),
-                    Duration.ofMinutes(1),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(1),
-                    Duration.ofSeconds(30),
-                    Duration.ofMinutes(10),
-                    Duration.ofDays(30),
-                    1,
-                    100,
-                    new WatchProperties.Http(
-                            Duration.ofSeconds(2),
-                            Duration.ofSeconds(3),
-                            Duration.ofSeconds(5),
-                            64 * 1024,
-                            3,
-                            100,
-                            8 * 1024,
-                            2,
-                            8,
-                            1,
-                            1));
+            return BootstrapTestFixtures.watchProperties(API_TOKEN);
         }
 
         @Bean

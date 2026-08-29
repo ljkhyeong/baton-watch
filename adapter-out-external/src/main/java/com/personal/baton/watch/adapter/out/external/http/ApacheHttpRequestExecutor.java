@@ -15,14 +15,15 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLException;
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.MessageConstraintException;
 import org.apache.hc.core5.io.IOFunction;
+import org.apache.hc.core5.util.Args;
 
 /** 제한된 HTTP 실행기를 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
@@ -32,11 +33,6 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         void responseStarted();
 
         void responseBytes(long responseBytes);
-    }
-
-    private enum Phase {
-        CONNECTING,
-        READING
     }
 
     private final ExecutorService executor;
@@ -77,9 +73,9 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
             return future.get(timeoutNanos, TimeUnit.NANOSECONDS);
         } catch (TimeoutException exception) {
             future.cancel(true);
-            OutboundHttpFailure.Kind kind = progress.phase() == Phase.CONNECTING
-                    ? OutboundHttpFailure.Kind.CONNECT_TIMEOUT
-                    : OutboundHttpFailure.Kind.READ_TIMEOUT;
+            OutboundHttpFailure.Kind kind = progress.hasResponseStarted()
+                    ? OutboundHttpFailure.Kind.READ_TIMEOUT
+                    : OutboundHttpFailure.Kind.CONNECT_TIMEOUT;
             throw failure(kind, progress.responseBytes());
         } catch (InterruptedException exception) {
             future.cancel(true);
@@ -130,9 +126,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
     private static ExecutorService createExecutor(
             int threadCount, int queueCapacity, String threadNamePrefix) {
         OutboundResourceBounds.requireRequestExecutorBounds(threadCount, queueCapacity);
-        if (threadNamePrefix == null || threadNamePrefix.isBlank()) {
-            throw new IllegalArgumentException("HTTP thread name prefix must not be blank");
-        }
+        Args.notBlank(threadNamePrefix, "HTTP thread name prefix");
         return new ThreadPoolExecutor(
                 threadCount,
                 threadCount,
@@ -142,18 +136,17 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
                 Thread.ofPlatform()
                         .daemon()
                         .name(threadNamePrefix, 1)
-                        .factory(),
-                new ThreadPoolExecutor.AbortPolicy());
+                        .factory());
     }
 
     private static final class RequestProgress implements Progress {
 
-        private final AtomicReference<Phase> phase = new AtomicReference<>(Phase.CONNECTING);
+        private final AtomicBoolean responseStarted = new AtomicBoolean();
         private final AtomicLong responseBytes = new AtomicLong();
 
         @Override
         public void responseStarted() {
-            phase.set(Phase.READING);
+            responseStarted.set(true);
         }
 
         @Override
@@ -161,8 +154,8 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
             responseBytes.accumulateAndGet(currentResponseBytes, Math::max);
         }
 
-        private Phase phase() {
-            return phase.get();
+        private boolean hasResponseStarted() {
+            return responseStarted.get();
         }
 
         private long responseBytes() {

@@ -9,6 +9,7 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -77,16 +78,17 @@ class HealthChangeEventJsonSerializerTest {
                         42,
                         Instant.parse("2026-08-02T01:02:03Z"))));
 
-        assertEquals(8, json.size());
-        assertEquals("00000000-0000-0000-0000-000000000001", json.required("eventId").stringValue());
-        assertEquals("RESOURCE_HEALTH_CHANGED", json.required("eventType").stringValue());
-        assertEquals("role-resource-123", json.required("resourceReference").stringValue());
-        assertEquals(42, json.required("sourceRevision").longValue());
-        assertEquals("00000000-0000-0000-0000-000000000003", json.required("attemptId").stringValue());
-        assertEquals("DEGRADED", json.required("previousHealth").stringValue());
-        assertEquals("BROKEN", json.required("currentHealth").stringValue());
-        assertEquals("2026-08-02T01:02:03Z", json.required("changedAt").stringValue());
-        assertFalse(json.has("event_id"));
+        assertEquals(
+                Set.of(
+                        "eventId",
+                        "eventType",
+                        "resourceReference",
+                        "sourceRevision",
+                        "attemptId",
+                        "previousHealth",
+                        "currentHealth",
+                        "changedAt"),
+                Set.copyOf(json.propertyNames()));
     }
 
     private static HealthChangeEventPayload payload(

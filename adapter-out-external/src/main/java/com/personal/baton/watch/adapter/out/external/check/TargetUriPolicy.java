@@ -7,47 +7,17 @@ import java.util.Locale;
 /** 기준 {@code TargetUrl} 정책을 홉별 리다이렉트 및 순환 처리에 맞게 연결한다. */
 final class TargetUriPolicy {
 
-    private static final String REJECTION_MESSAGE = "target rejected";
-
     ValidatedUri prepare(TargetUrl targetUrl) {
-        if (targetUrl == null) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
-        try {
-            return validated(targetUrl.requireSafeEncodedCharacters());
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
-    }
-
-    ValidatedUri validate(URI uri) {
-        if (uri == null) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
-        try {
-            return prepare(new TargetUrl(uri.toString()));
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
+        targetUrl.requireSafeEncodedCharacters();
+        URI uri = targetUrl.uri();
+        String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+        String hostname = uri.getHost();
+        return new ValidatedUri(uri, scheme, hostname, loopKey(uri, scheme, hostname));
     }
 
     URI resolveRedirect(ValidatedUri current, String location) {
-        if (location == null) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
-        try {
-            TargetUrl.requireSafeReferenceCharacters(location);
-            return current.uri().resolve(location);
-        } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
-    }
-
-    private static ValidatedUri validated(TargetUrl targetUrl) {
-        URI uri = targetUrl.uri();
-        String scheme = targetUrl.protocol();
-        String hostname = uri.getHost();
-        return new ValidatedUri(uri, scheme, hostname, loopKey(uri, scheme, hostname));
+        TargetUrl.requireSafeReferenceCharacters(location);
+        return current.uri().resolve(location);
     }
 
     private static String loopKey(URI uri, String scheme, String hostname) {

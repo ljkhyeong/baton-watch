@@ -21,8 +21,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegrationTestSupport {
 
-    private static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
-
     @Test
     void migrationsCreateMetadataOnlyTablesWithDomainBounds() {
         List<String> tables = jdbc.queryForList("""
@@ -54,6 +52,37 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                 .noneMatch(name -> name.contains("exception"))
                 .noneMatch(name -> name.contains("header"))
                 .noneMatch(name -> name.contains("cookie"));
+    }
+
+    @Test
+    void maintenanceIndexesMatchTheClaimAndRetentionAccessPaths() {
+        String deliveryDueIndex = jdbc.queryForObject(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = ?
+                """,
+                String.class,
+                "ix_watch_health_event_delivery_due");
+        String monitorLeaseIndex = jdbc.queryForObject(
+                """
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = ?
+                """,
+                String.class,
+                "ix_watch_monitor_lease_attempt");
+
+        assertThat(deliveryDueIndex)
+                .contains("(next_attempt_at, changed_at, event_id)")
+                .contains("INCLUDE (delivery_lease_expires_at)")
+                .contains("delivery_status")
+                .contains("'PENDING'");
+        assertThat(monitorLeaseIndex)
+                .contains("(lease_attempt_id)")
+                .contains("lease_attempt_id IS NOT NULL");
     }
 
     @Test
@@ -170,12 +199,8 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
             holder.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } finally {
             releaseSummary.countDown();
-            if (holder != null && !holder.isDone()) {
-                holder.cancel(true);
-            }
-            executor.shutdownNow();
-            assertThat(executor.awaitTermination(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            cancelIfRunning(holder);
+            shutdownAndAwait(executor);
         }
     }
 
@@ -247,15 +272,9 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                     .isEqualTo(insertedChangedAt);
         } finally {
             allowInsertCommit.countDown();
-            if (insert != null && !insert.isDone()) {
-                insert.cancel(true);
-            }
-            if (completion != null && !completion.isDone()) {
-                completion.cancel(true);
-            }
-            executor.shutdownNow();
-            assertThat(executor.awaitTermination(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            cancelIfRunning(insert);
+            cancelIfRunning(completion);
+            shutdownAndAwait(executor);
         }
     }
 

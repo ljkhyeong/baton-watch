@@ -47,6 +47,19 @@ class EventDeliveryMaintenanceServicesTest {
         assertEquals(new EventDeliveryBacklog(0, Optional.empty()), service.getEventDeliveryBacklog());
     }
 
+    @Test
+    void backlogClampsAClockSkewedFutureEventAgeToZero() {
+        RecordingPersistence persistence = new RecordingPersistence();
+        persistence.snapshot = new EventDeliveryBacklogSnapshot(
+                1, Optional.of(NOW.plusSeconds(30)));
+        GetEventDeliveryBacklogService service = new GetEventDeliveryBacklogService(
+                persistence, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertEquals(
+                new EventDeliveryBacklog(1, Optional.of(Duration.ZERO)),
+                service.getEventDeliveryBacklog());
+    }
+
     private static final class RecordingPersistence implements HealthChangeEventDeliveryPersistencePort {
 
         private Instant deliveredBefore;

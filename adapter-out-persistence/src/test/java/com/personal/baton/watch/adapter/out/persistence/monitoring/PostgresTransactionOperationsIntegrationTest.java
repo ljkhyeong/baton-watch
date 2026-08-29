@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assertions.assertTimeout;
 
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -43,17 +44,15 @@ class PostgresTransactionOperationsIntegrationTest
             lockHolder = executor.submit(() -> holdMonitorLock(reference, lockAcquired, releaseLock));
             assertThat(lockAcquired.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
 
-            long startedAt = System.nanoTime();
-            Throwable failure = catchThrowable(() -> boundedPersistence.synchronize(
-                    SynchronizeMonitorCommand.active(
-                            new ResourceReference(reference),
-                            new SourceRevision(2),
-                            new TargetUrl("https://updated.example/path")),
-                    BASE_TIME.plusSeconds(1)));
+            Throwable failure = assertTimeout(Duration.ofSeconds(2), () -> catchThrowable(
+                    () -> boundedPersistence.synchronize(
+                            SynchronizeMonitorCommand.active(
+                                    new ResourceReference(reference),
+                                    new SourceRevision(2),
+                                    new TargetUrl("https://updated.example/path")),
+                            BASE_TIME.plusSeconds(1))));
 
             assertSqlState(failure, "55P03");
-            assertThat(Duration.ofNanos(System.nanoTime() - startedAt))
-                    .isLessThan(Duration.ofSeconds(2));
             assertThat(projection(reference).sourceRevision().value()).isEqualTo(1);
         } finally {
             releaseLock.countDown();
@@ -108,24 +107,21 @@ class PostgresTransactionOperationsIntegrationTest
 
     @Test
     void keepsLockTimeoutLocalToTheOwnedPhysicalConnection() throws SQLException {
-        SingleConnectionDataSource reusedConnection = new SingleConnectionDataSource(
-                testDataSource.getConnection(), true);
-        JdbcTemplate reusedJdbc = new JdbcTemplate(reusedConnection);
-        TransactionTemplate delegate = new TransactionTemplate(
-                new DataSourceTransactionManager(reusedConnection));
-        delegate.setTimeout(5);
-        TransactionOperations transactions = new PostgresTransactionOperations(
-                reusedJdbc, delegate, TEST_LOCK_TIMEOUT);
+        try (SingleConnectionDataSource reusedConnection = new SingleConnectionDataSource(
+                testDataSource.getConnection(), true)) {
+            JdbcTemplate reusedJdbc = new JdbcTemplate(reusedConnection);
+            TransactionTemplate delegate = new TransactionTemplate(
+                    new DataSourceTransactionManager(reusedConnection));
+            delegate.setTimeout(5);
+            TransactionOperations transactions = new PostgresTransactionOperations(
+                    reusedJdbc, delegate, TEST_LOCK_TIMEOUT);
 
-        try {
             String inside = transactions.execute(status ->
                     reusedJdbc.queryForObject("SHOW lock_timeout", String.class));
 
             assertThat(inside).isEqualTo("250ms");
             assertThat(reusedJdbc.queryForObject("SHOW lock_timeout", String.class))
                     .isEqualTo("0");
-        } finally {
-            reusedConnection.destroy();
         }
     }
 
@@ -177,10 +173,4 @@ class PostgresTransactionOperationsIntegrationTest
         }
     }
 
-    private static void assertSqlState(Throwable failure, String expectedState) {
-        assertThat(failure).isNotNull();
-        assertThat(failure).rootCause()
-                .isInstanceOfSatisfying(SQLException.class, sqlFailure ->
-                        assertThat(sqlFailure.getSQLState()).isEqualTo(expectedState));
-    }
 }

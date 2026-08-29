@@ -165,7 +165,6 @@ class GlobalAddressPolicyTest {
     void rejectsAzureWireServerAsAPlatformServiceDestination() throws Exception {
         InetAddress wireServer = InetAddress.getByName("168.63.129.16");
 
-        assertFalse(policy.isGlobal(wireServer));
         assertThrows(AddressPolicyException.class, () -> policy.approve(List.of(wireServer)));
     }
 

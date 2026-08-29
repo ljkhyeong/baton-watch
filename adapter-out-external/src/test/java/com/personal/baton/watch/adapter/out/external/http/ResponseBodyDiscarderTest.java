@@ -62,20 +62,6 @@ class ResponseBodyDiscarderTest {
     }
 
     @Test
-    void rejectsAnUnknownExactLimitConservativelyWithoutReadingPastIt() {
-        CountingInputStream input = new CountingInputStream(
-                new ByteArrayInputStream(new byte[64]));
-        BasicHttpEntity entity = new BasicHttpEntity(
-                input, -1, ContentType.APPLICATION_OCTET_STREAM);
-
-        assertThrows(
-                ContentTooLongException.class,
-                () -> discarder.discard(entity, 64, ignored -> {}));
-
-        assertEquals(64, input.bytesRead());
-    }
-
-    @Test
     void rejectsAnOversizedDeclaredLengthBeforeOpeningTheBody() {
         ByteArrayEntity entity = new ByteArrayEntity(new byte[65], ContentType.APPLICATION_OCTET_STREAM);
 

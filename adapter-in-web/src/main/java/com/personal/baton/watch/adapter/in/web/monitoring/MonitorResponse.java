@@ -14,6 +14,7 @@ public record MonitorResponse(
         int consecutiveFailures,
         CheckOutcome lastOutcome,
         Instant lastCheckedAt,
+        Instant lastConclusiveAt,
         Instant nextCheckAt) {
 
     public static MonitorResponse from(MonitorProjection projection) {
@@ -25,6 +26,7 @@ public record MonitorResponse(
                 projection.consecutiveFailures(),
                 projection.lastOutcome().orElse(null),
                 projection.lastCheckedAt().orElse(null),
+                projection.lastConclusiveAt().orElse(null),
                 projection.nextCheckAt().orElse(null));
     }
 }

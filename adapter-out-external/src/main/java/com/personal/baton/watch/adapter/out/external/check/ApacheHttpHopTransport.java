@@ -8,7 +8,7 @@ import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFact
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -27,19 +27,10 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
     private final ResponseBodyDiscarder bodyDiscarder = new ResponseBodyDiscarder();
 
     public ApacheHttpHopTransport(CheckerLimits limits, int threadCount, int queueCapacity) {
-        this(
-                limits,
-                new ApacheHttpRequestExecutor(threadCount, queueCapacity, "watch-http-"),
-                new PinnedApacheClientFactory());
-    }
-
-    ApacheHttpHopTransport(
-            CheckerLimits limits,
-            ApacheHttpRequestExecutor requestExecutor,
-            PinnedApacheClientFactory clientFactory) {
         this.limits = Objects.requireNonNull(limits, "limits");
-        this.requestExecutor = Objects.requireNonNull(requestExecutor, "requestExecutor");
-        this.clientFactory = Objects.requireNonNull(clientFactory, "clientFactory");
+        this.clientFactory = new PinnedApacheClientFactory();
+        this.requestExecutor = new ApacheHttpRequestExecutor(
+                threadCount, queueCapacity, "watch-http-");
     }
 
     @Override
@@ -75,10 +66,10 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(target.target().uri()), request, response -> {
                         progress.responseStarted();
-                        List<String> locations = new ArrayList<>();
-                        for (Header header : response.getHeaders(HttpHeaders.LOCATION)) {
-                            locations.add(header.getValue() == null ? "" : header.getValue());
-                        }
+                        List<String> locations = Arrays.stream(response.getHeaders(HttpHeaders.LOCATION))
+                                .map(Header::getValue)
+                                .map(value -> Objects.requireNonNullElse(value, ""))
+                                .toList();
                         long responseBytes = 0;
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {

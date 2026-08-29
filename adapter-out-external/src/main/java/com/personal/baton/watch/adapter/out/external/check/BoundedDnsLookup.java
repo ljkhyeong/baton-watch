@@ -57,9 +57,6 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
         try {
             InetAddress[] resolved = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
-            if (resolved == null || resolved.length == 0) {
-                throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
-            }
             return List.of(resolved);
         } catch (TimeoutException exception) {
             future.cancel(true);
@@ -92,7 +89,6 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
                 Thread.ofPlatform()
                         .daemon()
                         .name("watch-dns-", 1)
-                        .factory(),
-                new ThreadPoolExecutor.AbortPolicy());
+                        .factory());
     }
 }

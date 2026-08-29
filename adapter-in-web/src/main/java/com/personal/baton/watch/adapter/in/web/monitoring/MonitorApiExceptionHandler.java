@@ -41,7 +41,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
         return problem(
                 exception.status(),
-                new ProblemSpec(exception.type(), exception.title(), exception.code()),
+                new ProblemSpec(exception.type(), exception.getMessage(), exception.code()),
                 HttpHeaders.EMPTY);
     }
 
@@ -58,7 +58,9 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
-        if (responseCommitted(request)) {
+        if (request instanceof ServletWebRequest servletRequest
+                && servletRequest.getResponse() != null
+                && servletRequest.getResponse().isCommitted()) {
             if (!status.is4xxClientError()) {
                 logFailure(exception);
             }
@@ -66,12 +68,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
         }
         if (!status.is4xxClientError()) {
             logFailure(exception);
-            return frameworkProblem(
-                    exception,
-                    request,
-                    HttpStatus.INTERNAL_SERVER_ERROR,
-                    INTERNAL_ERROR,
-                    headers);
+            return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, headers);
         }
         ProblemSpec problem = switch (status.value()) {
             case 400 -> INVALID_REQUEST;
@@ -81,52 +78,21 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             case 415 -> UNSUPPORTED_MEDIA_TYPE;
             default -> REQUEST_REJECTED;
         };
-        return frameworkProblem(exception, request, status, problem, headers);
-    }
-
-    private boolean responseCommitted(WebRequest request) {
-        return request instanceof ServletWebRequest servletRequest
-                && servletRequest.getResponse() != null
-                && servletRequest.getResponse().isCommitted();
-    }
-
-    private ResponseEntity<Object> frameworkProblem(
-            Exception exception,
-            WebRequest request,
-            HttpStatusCode status,
-            ProblemSpec problem,
-            HttpHeaders headers) {
-        return super.handleExceptionInternal(
-                exception,
-                problemDetail(status, problem),
-                problemHeaders(headers),
-                status,
-                request);
+        return problem(status, problem, headers);
     }
 
     private ResponseEntity<Object> problem(
             HttpStatusCode status,
-            ProblemSpec problem,
+            ProblemSpec spec,
             HttpHeaders headers) {
-        return new ResponseEntity<>(
-                problemDetail(status, problem),
-                problemHeaders(headers),
-                status);
-    }
-
-    private ProblemDetail problemDetail(HttpStatusCode status, ProblemSpec spec) {
         ProblemDetail problem = ProblemDetail.forStatus(status);
         problem.setType(spec.type());
         problem.setTitle(spec.title());
         problem.setInstance(REDACTED_REQUEST);
         problem.setProperty("code", spec.code());
-        return problem;
-    }
-
-    private HttpHeaders problemHeaders(HttpHeaders headers) {
         HttpHeaders responseHeaders = HttpHeaders.copyOf(headers);
         responseHeaders.setContentType(MediaType.APPLICATION_PROBLEM_JSON);
-        return responseHeaders;
+        return new ResponseEntity<>(problem, responseHeaders, status);
     }
 
     private void logFailure(Exception exception) {

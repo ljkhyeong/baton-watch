@@ -32,7 +32,7 @@ final class PinnedDnsResolver implements DnsResolver {
     }
 
     private void requireExpectedHost(String hostname) throws UnknownHostException {
-        if (hostname == null || !expectedHostname.equalsIgnoreCase(hostname)) {
+        if (!expectedHostname.equalsIgnoreCase(hostname)) {
             throw new UnknownHostException("request host is outside the approved DNS scope");
         }
     }

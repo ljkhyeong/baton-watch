@@ -9,6 +9,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -19,11 +20,22 @@ public record WatchProperties(
         String apiToken,
         @NotNull @DurationMin(inclusive = false) Duration pollInterval,
         @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
-        @NotNull @DurationMin(inclusive = false) Duration leaseDuration,
-        @NotNull @DurationMin(inclusive = false) Duration checkInterval,
-        @NotNull @DurationMin(inclusive = false) Duration internalFailureRetryInterval,
-        @NotNull @DurationMin(inclusive = false) Duration staleAfter,
-        @NotNull @DurationMin(inclusive = false) Duration retention,
+        @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration leaseDuration,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration checkInterval,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration internalFailureRetryInterval,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration staleAfter,
+        @NotNull @DurationMin(inclusive = false)
+        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        Duration retention,
         @Min(1) @Max(MAX_CHECK_BATCH_SIZE) int checkBatchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
@@ -35,30 +47,7 @@ public record WatchProperties(
             Pattern.compile("[A-Za-z0-9\\-._~+/]{32,}=*");
 
     public WatchProperties {
-        apiToken = requireToken(apiToken);
-        leaseDuration = requireSupportedOffsetIfPositive(leaseDuration, "leaseDuration");
-        checkInterval = requireSupportedOffsetIfPositive(checkInterval, "checkInterval");
-        internalFailureRetryInterval = requireSupportedOffsetIfPositive(
-                internalFailureRetryInterval, "internalFailureRetryInterval");
-        staleAfter = requireSupportedOffsetIfPositive(staleAfter, "staleAfter");
-        retention = requireSupportedOffsetIfPositive(retention, "retention");
-        if (http != null
-                && leaseDuration != null
-                && leaseDuration.isPositive()
-                && http.totalTimeout() != null
-                && http.totalTimeout().isPositive()
-                && checkBatchSize >= 1
-                && checkBatchSize <= MAX_CHECK_BATCH_SIZE) {
-            Duration maximumBatchRuntime;
-            try {
-                maximumBatchRuntime = http.totalTimeout().multipliedBy(checkBatchSize);
-            } catch (ArithmeticException exception) {
-                throw new IllegalArgumentException("check batch runtime is too large");
-            }
-            if (leaseDuration.compareTo(maximumBatchRuntime) <= 0) {
-                throw new IllegalArgumentException("leaseDuration must exceed the maximum check batch runtime");
-            }
-        }
+        requireToken(apiToken);
         if (staleAfter != null
                 && staleAfter.isPositive()
                 && checkInterval != null
@@ -87,35 +76,15 @@ public record WatchProperties(
             @Min(1) @Max(OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY) int dnsQueueCapacity,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_THREADS) int requestThreads,
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
-
-        public Http {
-            if (connectTimeout != null
-                    && connectTimeout.isPositive()
-                    && responseTimeout != null
-                    && responseTimeout.isPositive()
-                    && totalTimeout != null
-                    && totalTimeout.isPositive()
-                    && (connectTimeout.compareTo(totalTimeout) > 0
-                            || responseTimeout.compareTo(totalTimeout) > 0)) {
-                throw new IllegalArgumentException("HTTP phase timeout cannot exceed totalTimeout");
-            }
-        }
     }
 
-    private static String requireToken(String token) {
+    private static void requireToken(String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
         Objects.requireNonNull(token, "apiToken");
         if (token.length() > MAX_API_TOKEN_LENGTH || !BEARER_TOKEN.matcher(token).matches()) {
             throw new IllegalArgumentException(
                     "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
-        return token;
-    }
-
-    private static Duration requireSupportedOffsetIfPositive(Duration duration, String name) {
-        return duration != null && duration.isPositive()
-                ? TimeBoundaryPolicy.requireSupportedOffset(duration, name)
-                : duration;
     }
 
 }

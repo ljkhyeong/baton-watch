@@ -1,6 +1,5 @@
 package com.personal.baton.watch.adapter.out.external;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
@@ -9,21 +8,21 @@ class OutboundResourceBoundsTest {
 
     @Test
     void acceptsEveryHardCeiling() {
-        assertDoesNotThrow(() -> OutboundResourceBounds.requireResponseBytes(
+        OutboundResourceBounds.requireResponseBytes(
                 OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES,
-                OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES));
-        assertDoesNotThrow(() -> OutboundResourceBounds.requireResponseBytes(
+                OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
+        OutboundResourceBounds.requireResponseBytes(
                 OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES,
-                OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES));
-        assertDoesNotThrow(() -> OutboundResourceBounds.requireHeaderBounds(
+                OutboundResourceBounds.MAX_EVENT_DELIVERY_RESPONSE_BYTES);
+        OutboundResourceBounds.requireHeaderBounds(
                 OutboundResourceBounds.MAX_HEADER_COUNT,
-                OutboundResourceBounds.MAX_HEADER_LINE_LENGTH));
-        assertDoesNotThrow(() -> OutboundResourceBounds.requireDnsExecutorBounds(
+                OutboundResourceBounds.MAX_HEADER_LINE_LENGTH);
+        OutboundResourceBounds.requireDnsExecutorBounds(
                 OutboundResourceBounds.MAX_DNS_THREADS,
-                OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY));
-        assertDoesNotThrow(() -> OutboundResourceBounds.requireRequestExecutorBounds(
+                OutboundResourceBounds.MAX_DNS_QUEUE_CAPACITY);
+        OutboundResourceBounds.requireRequestExecutorBounds(
                 OutboundResourceBounds.MAX_REQUEST_THREADS,
-                OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY));
+                OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY);
     }
 
     @Test

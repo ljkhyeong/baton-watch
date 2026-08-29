@@ -41,9 +41,6 @@ final class SafeUrlCheckEngine {
         long startedAt = clock.getAsLong();
         CheckState state = new CheckState();
         try {
-            if (targetUrl == null) {
-                return internalFailure(startedAt, state);
-            }
             ValidatedUri current;
             try {
                 current = targetPolicy.prepare(targetUrl);
@@ -108,7 +105,7 @@ final class SafeUrlCheckEngine {
                 ValidatedUri next;
                 try {
                     URI redirectUri = targetPolicy.resolveRedirect(current, response.locations().getFirst());
-                    next = targetPolicy.validate(redirectUri);
+                    next = targetPolicy.prepare(new TargetUrl(redirectUri.toString()));
                 } catch (IllegalArgumentException exception) {
                     return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
                 }
@@ -166,7 +163,7 @@ final class SafeUrlCheckEngine {
 
     private Duration remaining(long startedAt) {
         long elapsed = nonNegativeElapsed(startedAt);
-        long remaining = limits.totalTimeoutNanos() - elapsed;
+        long remaining = limits.totalTimeout().toNanos() - elapsed;
         return remaining <= 0 ? Duration.ZERO : Duration.ofNanos(remaining);
     }
 

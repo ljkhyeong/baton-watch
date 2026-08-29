@@ -27,13 +27,15 @@ final class MonitoringJdbcRows {
             last_conclusive_at,
             next_check_at,
             lease_token,
-            lease_attempt_id
+            lease_attempt_id,
+            lease_expires_at
             """;
 
     private MonitoringJdbcRows() {
     }
 
     static MonitorRow mapMonitor(ResultSet resultSet, int ignoredRow) throws SQLException {
+        String lastOutcome = resultSet.getString("last_outcome");
         return new MonitorRow(
                 resultSet.getString("resource_reference"),
                 new SourceRevision(resultSet.getLong("source_revision")),
@@ -41,12 +43,13 @@ final class MonitoringJdbcRows {
                 resultSet.getString("target_url"),
                 Health.valueOf(resultSet.getString("current_health")),
                 resultSet.getInt("consecutive_failures"),
-                enumValue(CheckOutcome.class, resultSet.getString("last_outcome")),
+                lastOutcome == null ? null : CheckOutcome.valueOf(lastOutcome),
                 instant(resultSet, "last_checked_at"),
                 instant(resultSet, "last_conclusive_at"),
                 instant(resultSet, "next_check_at"),
                 resultSet.getObject("lease_token", UUID.class),
-                resultSet.getObject("lease_attempt_id", UUID.class));
+                resultSet.getObject("lease_attempt_id", UUID.class),
+                instant(resultSet, "lease_expires_at"));
     }
 
     static Instant instant(ResultSet resultSet, String column) throws SQLException {
@@ -56,10 +59,6 @@ final class MonitoringJdbcRows {
 
     static OffsetDateTime databaseTime(Instant instant) {
         return instant == null ? null : OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
-    }
-
-    private static <E extends Enum<E>> E enumValue(Class<E> type, String value) {
-        return value == null ? null : Enum.valueOf(type, value);
     }
 
     record MonitorRow(
@@ -74,7 +73,8 @@ final class MonitoringJdbcRows {
             Instant lastConclusiveAt,
             Instant nextCheckAt,
             UUID leaseToken,
-            UUID leaseAttemptId) {
+            UUID leaseAttemptId,
+            Instant leaseExpiresAt) {
 
         HealthDerivation derivation() {
             return new HealthDerivation(health, consecutiveFailures);

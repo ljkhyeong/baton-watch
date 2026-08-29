@@ -9,10 +9,15 @@ final class BootstrapTestFixtures {
     }
 
     static WatchProperties watchProperties() {
+        return watchProperties("a-test-token-that-is-longer-than-32-characters");
+    }
+
+    static WatchProperties watchProperties(String apiToken) {
         return new WatchProperties(
-                "a-test-token-that-is-longer-than-32-characters",
+                apiToken,
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
+                Duration.ofSeconds(60),
                 Duration.ofSeconds(30),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(30),
@@ -35,14 +40,43 @@ final class BootstrapTestFixtures {
     }
 
     static EventDeliveryProperties enabledEventDeliveryProperties() {
+        return enabledEventDeliveryProperties(
+                "a-separate-delivery-token-longer-than-32-characters");
+    }
+
+    static EventDeliveryProperties enabledEventDeliveryProperties(String token) {
         return eventDeliveryProperties(
                 true,
                 URI.create("https://baton.example.com/api/v1/internal/resource-health-events"),
-                "a-separate-delivery-token-longer-than-32-characters");
+                token);
     }
 
     static EventDeliveryProperties disabledEventDeliveryProperties() {
         return eventDeliveryProperties(false, URI.create(""), "");
+    }
+
+    static DatabaseRuntimeProperties databaseRuntimeProperties() {
+        return new DatabaseRuntimeProperties(
+                4,
+                1,
+                3_000,
+                1_000,
+                600_000,
+                1_800_000,
+                300_000,
+                1_000,
+                3,
+                3,
+                10,
+                3,
+                true);
+    }
+
+    static PersistenceProperties persistenceProperties() {
+        return new PersistenceProperties(
+                Duration.ofSeconds(3),
+                Duration.ofSeconds(5),
+                Duration.ofSeconds(1));
     }
 
     private static EventDeliveryProperties eventDeliveryProperties(
@@ -57,7 +91,7 @@ final class BootstrapTestFixtures {
                 Duration.ofSeconds(5),
                 Duration.ofMinutes(15),
                 Duration.ofDays(30),
-                10,
+                2,
                 100,
                 new EventDeliveryProperties.Http(
                         Duration.ofSeconds(2),

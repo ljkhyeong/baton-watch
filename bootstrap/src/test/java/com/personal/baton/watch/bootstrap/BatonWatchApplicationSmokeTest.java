@@ -32,6 +32,8 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "management.server.port=-1",
+            "management.endpoint.health.show-details=always",
+            "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
             "spring.task.scheduling.shutdown.await-termination=false",
             "watch.api-token=full-context-monitor-token-0123456789abcdef",
@@ -43,8 +45,8 @@ import tools.jackson.databind.ObjectMapper;
             "watch.event-delivery.poll-interval=1d",
             "watch.event-delivery.maintenance-interval=1d"
         })
-@Testcontainers(disabledWithoutDocker = false)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@Testcontainers
+@DirtiesContext
 class BatonWatchApplicationSmokeTest {
 
     private static final String API_TOKEN = "full-context-monitor-token-0123456789abcdef";
@@ -54,7 +56,7 @@ class BatonWatchApplicationSmokeTest {
     @Container
     @ServiceConnection(name = "postgres")
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
-                    "postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15")
+                    "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
             .asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("baton_watch")
             .withUsername("baton_watch")
@@ -129,9 +131,15 @@ class BatonWatchApplicationSmokeTest {
                 ORDER BY installed_rank
                 """,
                 String.class);
-        assertThat(appliedVersions).containsExactly("1", "2", "3");
+        assertThat(appliedVersions).containsSubsequence("1", "2", "3", "4");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
+        assertThat(environment.getProperty("management.endpoint.health.show-details"))
+                .isEqualTo("never");
+        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination"))
+                .isEqualTo("true");
+        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination-period"))
+                .isEqualTo("65s");
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {

@@ -5,12 +5,11 @@ import java.util.regex.Pattern;
 
 public record ResourceReference(String value) {
 
-    private static final int MAX_LENGTH = 128;
-    private static final Pattern ALLOWED = Pattern.compile("[A-Za-z0-9._:-]+");
+    private static final Pattern ALLOWED = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
 
     public ResourceReference {
         Objects.requireNonNull(value, "value");
-        if (value.length() > MAX_LENGTH || !ALLOWED.matcher(value).matches()) {
+        if (!ALLOWED.matcher(value).matches()) {
             throw new IllegalArgumentException("resource reference must contain 1-128 allowed characters");
         }
     }

@@ -10,7 +10,7 @@ public record EventDeliveryBacklogSnapshot(long pendingCount, Optional<Instant> 
         if (pendingCount < 0) {
             throw new IllegalArgumentException("pending count must be non-negative");
         }
-        oldestChangedAt = Objects.requireNonNull(oldestChangedAt, "oldestChangedAt");
+        Objects.requireNonNull(oldestChangedAt, "oldestChangedAt");
         if ((pendingCount == 0) != oldestChangedAt.isEmpty()) {
             throw new IllegalArgumentException("oldest changed time must match pending count");
         }

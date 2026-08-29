@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -14,43 +15,24 @@ public record PersistenceProperties(
     private static final long MAX_TIMEOUT_SECONDS = 30;
 
     public PersistenceProperties {
-        queryTimeout = requireWholeSeconds(queryTimeout, "queryTimeout");
-        transactionTimeout = requireWholeSeconds(transactionTimeout, "transactionTimeout");
-        lockTimeout = requireWholeMilliseconds(lockTimeout);
+        requireWholeSeconds(queryTimeout, "queryTimeout");
+        requireWholeSeconds(transactionTimeout, "transactionTimeout");
+        Objects.requireNonNull(lockTimeout, "lockTimeout");
+        if (!lockTimeout.isPositive()
+                || !lockTimeout.truncatedTo(ChronoUnit.MILLIS).equals(lockTimeout)) {
+            throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
+        }
         if (lockTimeout.compareTo(transactionTimeout) >= 0) {
             throw new IllegalArgumentException("lockTimeout must be shorter than transactionTimeout");
         }
     }
 
-    int queryTimeoutSeconds() {
-        return Math.toIntExact(queryTimeout.getSeconds());
-    }
-
-    int transactionTimeoutSeconds() {
-        return Math.toIntExact(transactionTimeout.getSeconds());
-    }
-
-    private static Duration requireWholeSeconds(Duration value, String name) {
+    private static void requireWholeSeconds(Duration value, String name) {
         Objects.requireNonNull(value, name);
         long seconds = value.getSeconds();
         if (seconds < 1 || value.getNano() != 0 || seconds > MAX_TIMEOUT_SECONDS) {
             throw new IllegalArgumentException(
                     name + " must be a whole-second duration between 1 and 30 seconds");
         }
-        return value;
-    }
-
-    private static Duration requireWholeMilliseconds(Duration value) {
-        Objects.requireNonNull(value, "lockTimeout");
-        long milliseconds;
-        try {
-            milliseconds = value.toMillis();
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException("lockTimeout is too large");
-        }
-        if (milliseconds < 1 || !Duration.ofMillis(milliseconds).equals(value)) {
-            throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
-        }
-        return value;
     }
 }

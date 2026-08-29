@@ -3,24 +3,29 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
 import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
+import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
+import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
+import com.personal.baton.watch.application.monitoring.port.out.DatabaseClockPort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
-import com.personal.baton.watch.application.monitoring.service.SynchronizeMonitorService;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
 @Configuration(proxyBeanMethods = false)
@@ -39,8 +44,34 @@ public class MonitoringConfiguration {
     }
 
     @Bean
+    @Primary
+    CheckWorkPersistencePort meteredCheckWorkPersistence(
+            JdbcCheckWorkPersistenceAdapter persistence,
+            MonitoringMetrics metrics) {
+        return new MeteredCheckWorkPersistence(persistence, metrics);
+    }
+
+    @Bean
+    JdbcDatabaseClockAdapter databaseClockAdapter(JdbcClient jdbcClient) {
+        return new JdbcDatabaseClockAdapter(jdbcClient);
+    }
+
+    @Bean
+    GetDatabaseClockOffsetUseCase getDatabaseClockOffsetUseCase(
+            DatabaseClockPort databaseClock,
+            Clock clock) {
+        return () -> {
+            Instant before = clock.instant();
+            Instant databaseTime = databaseClock.currentTime();
+            Instant after = clock.instant();
+            Instant midpoint = before.plus(Duration.between(before, after).dividedBy(2));
+            return Duration.between(databaseTime, midpoint);
+        };
+    }
+
+    @Bean
     SynchronizeMonitorUseCase synchronizeMonitorUseCase(MonitorPersistencePort persistence, Clock clock) {
-        return new SynchronizeMonitorService(persistence, clock);
+        return command -> persistence.synchronize(command, clock.instant());
     }
 
     @Bean
@@ -53,7 +84,17 @@ public class MonitoringConfiguration {
             CheckWorkPersistencePort persistence,
             UrlChecker checker,
             Clock clock,
-            WatchProperties properties) {
+            WatchProperties properties,
+            DatabaseRuntimeProperties database,
+            PersistenceProperties persistenceProperties) {
+        WorkerExecutionBudget.requireSafe(
+                "check",
+                properties.workerExecutionBudget(),
+                properties.leaseDuration(),
+                properties.http().totalTimeout(),
+                properties.checkBatchSize(),
+                database,
+                persistenceProperties);
         return new RunDueChecksService(
                 persistence,
                 checker,

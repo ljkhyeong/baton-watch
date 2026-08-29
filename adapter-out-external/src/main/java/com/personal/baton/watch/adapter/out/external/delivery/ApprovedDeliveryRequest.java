@@ -5,44 +5,28 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.hc.core5.util.Args;
 
-final class ApprovedDeliveryRequest {
+record ApprovedDeliveryRequest(
+        ValidatedDeliveryEndpoint endpoint,
+        List<InetAddress> addresses,
+        byte[] payload,
+        String bearerToken,
+        String idempotencyKey) {
 
-    private final ValidatedDeliveryEndpoint endpoint;
-    private final List<InetAddress> addresses;
-    private final byte[] payload;
-    private final String bearerToken;
-    private final String idempotencyKey;
-
-    ApprovedDeliveryRequest(
-            ValidatedDeliveryEndpoint endpoint,
-            List<InetAddress> addresses,
-            byte[] payload,
-            String bearerToken,
-            String idempotencyKey) {
-        this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
-        this.addresses = List.copyOf(Args.notEmpty(addresses, "approvedAddresses"));
-        this.payload = Objects.requireNonNull(payload, "payload").clone();
-        this.bearerToken = Objects.requireNonNull(bearerToken, "bearerToken");
-        this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey");
+    ApprovedDeliveryRequest {
+        Objects.requireNonNull(endpoint, "endpoint");
+        addresses = List.copyOf(Args.notEmpty(addresses, "approvedAddresses"));
+        payload = Objects.requireNonNull(payload, "payload").clone();
+        Objects.requireNonNull(bearerToken, "bearerToken");
+        Objects.requireNonNull(idempotencyKey, "idempotencyKey");
     }
 
-    ValidatedDeliveryEndpoint endpoint() {
-        return endpoint;
-    }
-
-    List<InetAddress> addresses() {
-        return addresses;
-    }
-
-    byte[] payload() {
+    @Override
+    public byte[] payload() {
         return payload.clone();
     }
 
-    String bearerToken() {
-        return bearerToken;
-    }
-
-    String idempotencyKey() {
-        return idempotencyKey;
+    @Override
+    public String toString() {
+        return "[approved-delivery-request]";
     }
 }

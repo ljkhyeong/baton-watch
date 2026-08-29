@@ -1,11 +1,14 @@
 package com.personal.baton.watch.bootstrap;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.annotation.SchedulingConfigurer;
 import org.springframework.util.ErrorHandler;
 
 /** 점검, 콜백 전달, 데이터베이스 유지보수를 제한된 스케줄러에서 격리한다. */
@@ -23,6 +26,13 @@ final class WorkerSchedulingConfiguration {
         return failure -> log.error(
                 "scheduled task failed failureType={}",
                 failure.getClass().getSimpleName());
+    }
+
+    @Bean
+    SchedulingConfigurer scheduledTaskObservationConfigurer(
+            ObjectProvider<ObservationRegistry> observationRegistries) {
+        return registrar -> registrar.setObservationRegistry(
+                observationRegistries.getIfAvailable(() -> ObservationRegistry.NOOP));
     }
 
     @Bean(name = MONITORING_TASK_SCHEDULER)

@@ -73,7 +73,23 @@ class BoundedDnsLookupTest {
     }
 
     @Test
-    void createsNamedDaemonPlatformThreads() throws Exception {
+    void mapsRejectedExecutorWorkToAnInternalFailure() {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        executor.shutdown();
+
+        try (BoundedDnsLookup lookup = new BoundedDnsLookup(
+                executor,
+                hostname -> new InetAddress[] {InetAddress.getLoopbackAddress()})) {
+            DnsLookupException failure = assertThrows(
+                    DnsLookupException.class,
+                    () -> lookup.resolve("public.example", Duration.ofSeconds(1)));
+
+            assertEquals(DnsLookupException.Reason.INTERNAL_FAILURE, failure.reason());
+        }
+    }
+
+    @Test
+    void createsNamedDaemonThreads() throws Exception {
         AtomicReference<Thread> worker = new AtomicReference<>();
         try (BoundedDnsLookup lookup = new BoundedDnsLookup(1, 1, hostname -> {
             worker.set(Thread.currentThread());
@@ -84,6 +100,5 @@ class BoundedDnsLookupTest {
 
         assertEquals("watch-dns-1", worker.get().getName());
         assertTrue(worker.get().isDaemon());
-        assertFalse(worker.get().isVirtual());
     }
 }

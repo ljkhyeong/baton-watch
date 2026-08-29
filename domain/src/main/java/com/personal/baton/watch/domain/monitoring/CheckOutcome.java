@@ -15,15 +15,7 @@ public enum CheckOutcome {
     NETWORK_FAILURE,
     INTERNAL_FAILURE;
 
-    public boolean isSuccess() {
-        return this == SUCCESS;
-    }
-
     public boolean isConclusive() {
         return this != INTERNAL_FAILURE;
-    }
-
-    public boolean isTargetFailure() {
-        return isConclusive() && !isSuccess();
     }
 }

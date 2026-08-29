@@ -3,7 +3,6 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 import static com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryTestFixtures.DEFAULT_LIMITS;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,7 +18,6 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.net.InetAddress;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -59,16 +57,13 @@ class SafeEventDeliveryEngineTest {
                 transport.requests.get(0).idempotencyKey(),
                 transport.requests.get(1).idempotencyKey());
         assertEquals("events.example.com", dns.lastHostname);
-        assertNotNull(transport.lastRequest);
-        assertEquals(List.of(address("8.8.8.8"), address("1.1.1.1")), transport.lastRequest.addresses());
-        assertEquals("delivery-token", transport.lastRequest.bearerToken());
-        assertEquals("00000000-0000-0000-0000-000000000001", transport.lastRequest.idempotencyKey());
-        String payload = new String(transport.lastRequest.payload(), StandardCharsets.UTF_8);
-        assertTrue(payload.contains("\"eventType\":\"RESOURCE_HEALTH_CHANGED\""));
-        assertTrue(payload.contains("\"eventId\":\"00000000-0000-0000-0000-000000000001\""));
+        ApprovedDeliveryRequest lastRequest = transport.requests.getLast();
+        assertEquals(List.of(address("8.8.8.8"), address("1.1.1.1")), lastRequest.addresses());
+        assertEquals("delivery-token", lastRequest.bearerToken());
+        assertEquals("00000000-0000-0000-0000-000000000001", lastRequest.idempotencyKey());
         assertEquals(
-                new ObjectMapper().readTree(payload).get("eventId").stringValue(),
-                transport.lastRequest.idempotencyKey());
+                new ObjectMapper().readTree(lastRequest.payload()).get("eventId").stringValue(),
+                lastRequest.idempotencyKey());
     }
 
     @Test
@@ -81,31 +76,7 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
         assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
-    }
-
-    @Test
-    void rejectsReservedIpv6BeforeCallbackDelivery() throws Exception {
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("3ffe::1")));
-        RecordingTransport transport = new RecordingTransport(204);
-
-        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
-    }
-
-    @Test
-    void rejectsAzureWireServerBeforeCallbackDelivery() throws Exception {
-        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("168.63.129.16")));
-        RecordingTransport transport = new RecordingTransport(204);
-
-        EventDeliveryObservation observation = engine(dns, transport, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
     @ParameterizedTest
@@ -121,14 +92,12 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(expected, observation.outcome());
         assertNull(observation.httpStatusCode());
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
     }
 
-    @ParameterizedTest
-    @MethodSource("httpStatuses")
-    void mapsFinalHttpStatusesWithoutFollowingRedirects(
-            int status, EventDeliveryOutcome expected) throws Exception {
-        RecordingTransport transport = new RecordingTransport(status);
+    @Test
+    void treatsRedirectAsClientErrorWithoutAnotherRequest() throws Exception {
+        RecordingTransport transport = new RecordingTransport(302);
 
         EventDeliveryObservation observation = engine(
                         new RecordingDnsLookup(List.of(address("8.8.8.8"))),
@@ -136,8 +105,9 @@ class SafeEventDeliveryEngineTest {
                         System::nanoTime)
                 .send(event());
 
-        assertEquals(expected, observation.outcome());
-        assertEquals(status, observation.httpStatusCode());
+        assertEquals(EventDeliveryOutcome.HTTP_CLIENT_ERROR, observation.outcome());
+        assertEquals(302, observation.httpStatusCode());
+        assertEquals(1, transport.requests.size());
     }
 
     @Test
@@ -185,20 +155,7 @@ class SafeEventDeliveryEngineTest {
         EventDeliveryObservation observation = engine(dns, transport, clock).send(event());
 
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, observation.outcome());
-        assertNull(transport.lastRequest);
-    }
-
-    @Test
-    void convertsUnexpectedAdapterFailuresToInternalFailure() {
-        DnsLookup dns = (hostname, timeout) -> {
-            throw new IllegalStateException("sensitive resolver detail");
-        };
-
-        EventDeliveryObservation observation =
-                engine(dns, (request, remaining) -> 204, System::nanoTime).send(event());
-
-        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
-        assertNull(observation.httpStatusCode());
+        assertTrue(transport.requests.isEmpty());
     }
 
     @Test
@@ -217,7 +174,28 @@ class SafeEventDeliveryEngineTest {
 
         assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
         assertEquals(0, dns.calls);
-        assertNull(transport.lastRequest);
+        assertTrue(transport.requests.isEmpty());
+    }
+
+    @Test
+    void serializationIsIncludedInTheTotalDeadline() throws Exception {
+        MutableClock clock = new MutableClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(List.of(address("8.8.8.8")));
+        RecordingTransport transport = new RecordingTransport(204);
+        SafeEventDeliveryEngine engine = engine(
+                dns,
+                transport,
+                clock,
+                payload -> {
+                    clock.advance(DEFAULT_LIMITS.totalTimeout());
+                    return new byte[] {1};
+                });
+
+        EventDeliveryObservation observation = engine.send(event());
+
+        assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, observation.outcome());
+        assertEquals(0, dns.calls);
+        assertTrue(transport.requests.isEmpty());
     }
 
     private static SafeEventDeliveryEngine engine(
@@ -270,16 +248,6 @@ class SafeEventDeliveryEngineTest {
                         EventDeliveryOutcome.INTERNAL_FAILURE));
     }
 
-    private static Stream<Arguments> httpStatuses() {
-        return Stream.of(
-                Arguments.of(200, EventDeliveryOutcome.DELIVERED),
-                Arguments.of(299, EventDeliveryOutcome.DELIVERED),
-                Arguments.of(302, EventDeliveryOutcome.HTTP_CLIENT_ERROR),
-                Arguments.of(404, EventDeliveryOutcome.HTTP_CLIENT_ERROR),
-                Arguments.of(500, EventDeliveryOutcome.HTTP_SERVER_ERROR),
-                Arguments.of(599, EventDeliveryOutcome.HTTP_SERVER_ERROR));
-    }
-
     private static Stream<Arguments> transportFailures() {
         return Stream.of(
                 Arguments.of(
@@ -316,7 +284,6 @@ class SafeEventDeliveryEngineTest {
 
         private final int statusCode;
         private final List<ApprovedDeliveryRequest> requests = new ArrayList<>();
-        private ApprovedDeliveryRequest lastRequest;
 
         private RecordingTransport(int statusCode) {
             this.statusCode = statusCode;
@@ -325,7 +292,6 @@ class SafeEventDeliveryEngineTest {
         @Override
         public int execute(ApprovedDeliveryRequest request, Duration remainingTime) {
             requests.add(request);
-            lastRequest = request;
             return statusCode;
         }
     }

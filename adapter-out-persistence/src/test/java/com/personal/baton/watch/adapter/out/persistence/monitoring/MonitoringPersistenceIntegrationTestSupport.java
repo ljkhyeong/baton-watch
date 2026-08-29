@@ -11,12 +11,9 @@ import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -28,7 +25,6 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     protected static final Duration LEASE = Duration.ofSeconds(30);
     protected static final Duration INTERVAL = Duration.ofSeconds(60);
-    protected static final long CONCURRENCY_TIMEOUT_SECONDS = 10;
 
     protected JdbcMonitorPersistenceAdapter monitorPersistence;
     protected JdbcCheckWorkPersistenceAdapter checkWorkPersistence;
@@ -60,16 +56,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected ClaimedCheck claimOne() {
-        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(LEASE, 1);
-        assertThat(claims).hasSize(1);
-        return claims.getFirst();
-    }
-
-    protected Instant claimedAt(ClaimedCheck claimed) {
-        return jdbc.queryForObject(
-                "SELECT claimed_at FROM watch_attempt WHERE attempt_id = ?",
-                java.time.OffsetDateTime.class,
-                claimed.attemptId()).toInstant();
+        return checkWorkPersistence.claimDueChecks(LEASE, 1).getFirst();
     }
 
     protected CheckFinalization finalization(
@@ -89,15 +76,9 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
     }
 
-    protected static void cancelIfRunning(Future<?> future) {
-        if (future != null && !future.isDone()) {
-            future.cancel(true);
-        }
-    }
-
-    protected static void shutdownAndAwait(ExecutorService executor) throws InterruptedException {
-        executor.shutdownNow();
-        assertThat(executor.awaitTermination(
-                CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+    protected static void assertSqlState(Throwable failure, String expectedState) {
+        assertThat(failure).rootCause()
+                .isInstanceOfSatisfying(SQLException.class, sqlFailure ->
+                        assertThat(sqlFailure.getSQLState()).isEqualTo(expectedState));
     }
 }

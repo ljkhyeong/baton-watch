@@ -18,16 +18,16 @@ final class MeteredUrlChecker implements UrlChecker {
     @Override
     public CheckObservation check(TargetUrl targetUrl) {
         CheckObservation observation;
+        metrics.checkStarted();
         try {
             observation = Objects.requireNonNull(delegate.check(targetUrl), "check observation");
         } catch (RuntimeException ignored) {
             observation = CheckObservation.internalFailure();
+        } finally {
+            metrics.checkFinished();
         }
-        try {
-            metrics.recordCheckAttempt(observation);
-        } catch (RuntimeException ignored) {
-            // 텔레메트리 실패가 점검 결과나 다음 점검 일정을 바꾸어서는 안 된다.
-        }
+        CheckObservation recordedObservation = observation;
+        BestEffortMetrics.record(() -> metrics.recordCheckAttempt(recordedObservation));
         return observation;
     }
 }

@@ -4,6 +4,7 @@ import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -15,6 +16,7 @@ public final class GlobalAddressPolicy {
      * 2025-10-10 일자의 IANA 레지스트리 스냅샷에 등재된, 할당된 공개 IPv6 글로벌 유니캐스트
      * 접두사다. 미등재 범위와 향후 할당은 검토되기 전까지 실패 폐쇄 방식으로 거부한다.
      * IANA 프로토콜 할당과 6to4는 의도적으로 제외했다.
+     * 월간 드리프트 작업이 원본 레지스트리 변경을 감지하면 정책과 경계 테스트를 수동 검토한다.
      * 출처: https://www.iana.org/assignments/ipv6-unicast-address-assignments/
      */
     private static final List<Cidr> ALLOCATED_PUBLIC_IPV6 = List.of(
@@ -42,23 +44,17 @@ public final class GlobalAddressPolicy {
 
     private static final List<Cidr> REJECTED_IPV4 = List.of(
             cidr("0.0.0.0", 8),
-            cidr("10.0.0.0", 8),
             cidr("100.64.0.0", 10),
-            cidr("127.0.0.0", 8),
             cidr("168.63.129.16", 32),
-            cidr("169.254.0.0", 16),
-            cidr("172.16.0.0", 12),
             cidr("192.0.0.0", 24),
             cidr("192.0.2.0", 24),
             cidr("192.31.196.0", 24),
             cidr("192.52.193.0", 24),
             cidr("192.88.99.0", 24),
-            cidr("192.168.0.0", 16),
             cidr("192.175.48.0", 24),
             cidr("198.18.0.0", 15),
             cidr("198.51.100.0", 24),
             cidr("203.0.113.0", 24),
-            cidr("224.0.0.0", 4),
             cidr("240.0.0.0", 4));
 
     private static final List<Cidr> REJECTED_IPV6 = List.of(
@@ -110,13 +106,6 @@ public final class GlobalAddressPolicy {
 
     private record Cidr(byte[] network, int prefixLength) {
 
-        private Cidr {
-            network = network.clone();
-            if (prefixLength < 0 || prefixLength > network.length * Byte.SIZE) {
-                throw new IllegalArgumentException("invalid CIDR prefix");
-            }
-        }
-
         boolean contains(InetAddress address) {
             byte[] candidate = address.getAddress();
             if (candidate.length != network.length) {
@@ -124,10 +113,8 @@ public final class GlobalAddressPolicy {
             }
             int completeBytes = prefixLength / Byte.SIZE;
             int remainingBits = prefixLength % Byte.SIZE;
-            for (int index = 0; index < completeBytes; index++) {
-                if (candidate[index] != network[index]) {
-                    return false;
-                }
+            if (!Arrays.equals(candidate, 0, completeBytes, network, 0, completeBytes)) {
+                return false;
             }
             if (remainingBits == 0) {
                 return true;

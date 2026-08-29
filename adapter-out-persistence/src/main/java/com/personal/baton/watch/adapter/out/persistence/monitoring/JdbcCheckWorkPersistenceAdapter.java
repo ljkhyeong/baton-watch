@@ -52,9 +52,10 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 leaseDuration, "leaseDuration");
         Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> {
-            Instant claimedAt = transactionTime();
-            Instant leaseUntil = TimeBoundaryPolicy.add(
-                    claimedAt, supportedLease, "leaseDuration");
+            Instant claimedAt = jdbc.queryForObject(
+                            "SELECT transaction_timestamp()", OffsetDateTime.class)
+                    .toInstant();
+            Instant leaseUntil = claimedAt.plus(supportedLease);
             return claimInTransaction(claimedAt, leaseUntil, limit);
         });
     }
@@ -168,15 +169,13 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                     attemptId,
                     leaseToken,
                     new TargetUrl(monitor.targetUrl()),
-                    claimedAt));
+                    monitor.nextCheckAt(),
+                    claimedAt,
+                    monitor.leaseAttemptId() != null
+                            && monitor.leaseExpiresAt() != null
+                            && !monitor.leaseExpiresAt().isAfter(claimedAt)));
         }
         return claimed;
-    }
-
-    private Instant transactionTime() {
-        OffsetDateTime value = jdbc.queryForObject(
-                "SELECT transaction_timestamp()", OffsetDateTime.class);
-        return Objects.requireNonNull(value, "database transaction time").toInstant();
     }
 
     private CheckFinalizationStatus finalizeInTransaction(

@@ -28,6 +28,10 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.DefaultTransactionDefinition;
 
 class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
@@ -100,13 +104,14 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     void targetChangeResetsProjectionDueNowInvalidatesLeaseAndRecordsHealthChange() {
         synchronize("resource:target-change", 1, "https://one.example/path", BASE_TIME);
         ClaimedCheck first = claimOne();
-        Instant completedAt = claimedAt(first).plusSeconds(1);
+        Instant completedAt = first.claimedAt().plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
                         CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
                         completedAt,
                         completedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.APPLIED);
+        assertThat(projection("resource:target-change").lastConclusiveAt()).contains(completedAt);
 
         jdbc.update("""
                 UPDATE watch_monitor
@@ -121,6 +126,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(changed.projection().health()).isEqualTo(Health.UNKNOWN);
         assertThat(changed.projection().lastOutcome()).isEmpty();
         assertThat(changed.projection().lastCheckedAt()).isEmpty();
+        assertThat(changed.projection().lastConclusiveAt()).isEmpty();
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,
@@ -144,7 +150,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         String originalTarget = "https://original.example/path";
         synchronize(reference, 1, originalTarget, BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
                         CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
@@ -206,7 +212,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     void staleSweepTransitionsAtTheCutoffOnceAndPreservesFailureDerivation() {
         synchronize("resource:stale", 1, "https://stale.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         checkWorkPersistence.finalizeCheck(finalization(
                 claimed,
                 CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),
@@ -230,11 +236,80 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
     }
 
     @Test
+    void staleSweepSkipsLockedLeadingProjectionAndMarksAnotherCandidate() throws Exception {
+        String lockedReference = "resource:stale-locked-leading";
+        String availableReference = "resource:stale-after-locked";
+        synchronize(
+                lockedReference,
+                1,
+                "https://stale-locked.example/path",
+                BASE_TIME.minusSeconds(1));
+        synchronize(availableReference, 1, "https://stale-available.example/path", BASE_TIME);
+
+        ClaimedCheck locked = claimOne();
+        Instant lockedCompletedAt = locked.claimedAt();
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        locked,
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        lockedCompletedAt,
+                        lockedCompletedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
+        ClaimedCheck available = claimOne();
+        Instant availableCompletedAt = available.claimedAt().isAfter(lockedCompletedAt)
+                ? available.claimedAt()
+                : lockedCompletedAt.plusNanos(1_000);
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        available,
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        availableCompletedAt,
+                        availableCompletedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
+
+        DataSourceTransactionManager lockTransactionManager =
+                new DataSourceTransactionManager(testDataSource);
+        JdbcTemplate lockJdbc = new JdbcTemplate(testDataSource);
+        TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
+                new DefaultTransactionDefinition());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Integer> sweepFuture = null;
+        try {
+            assertThat(lockJdbc.queryForObject("""
+                    SELECT resource_reference
+                    FROM watch_monitor
+                    WHERE resource_reference = ?
+                    FOR UPDATE
+                    """, String.class, lockedReference)).isEqualTo(lockedReference);
+
+            JdbcMonitorPersistenceAdapter competingPersistence = new JdbcMonitorPersistenceAdapter(
+                    new JdbcTemplate(testDataSource), newTransactionOperations());
+            Instant markedAt = availableCompletedAt.plusSeconds(600);
+            sweepFuture = executor.submit(() -> competingPersistence.markStaleUnknown(
+                    availableCompletedAt, markedAt, 1));
+
+            assertThat(sweepFuture.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS))
+                    .isEqualTo(1);
+            assertThat(projection(lockedReference).health()).isEqualTo(Health.HEALTHY);
+            assertThat(projection(availableReference).health()).isEqualTo(Health.UNKNOWN);
+            assertThat(jdbc.queryForList("""
+                    SELECT previous_health || '->' || current_health
+                    FROM watch_health_change_event
+                    WHERE resource_reference = ?
+                    ORDER BY changed_at
+                    """, String.class, availableReference))
+                    .containsExactly("UNKNOWN->HEALTHY", "HEALTHY->UNKNOWN");
+        } finally {
+            cancelIfRunning(sweepFuture);
+            lockTransactionManager.rollback(lockTransaction);
+            shutdownAndAwait(executor);
+        }
+    }
+
+    @Test
     void staleProjectionAndHealthEventRollBackTogetherWhenEventInsertFails() {
         String reference = "resource:stale-event-rollback";
         synchronize(reference, 1, "https://stale-rollback.example/path", BASE_TIME);
         ClaimedCheck claimed = claimOne();
-        Instant completedAt = claimedAt(claimed).plusSeconds(1);
+        Instant completedAt = claimed.claimedAt().plusSeconds(1);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         claimed,
                         CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0),

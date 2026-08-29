@@ -1,6 +1,5 @@
 package com.personal.baton.watch.domain.monitoring;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -24,12 +23,11 @@ class MonitoringValueTypesTest {
 
     @Test
     void acceptsAbsoluteHttpTargetsWithDefaultPortsAndQueries() {
-        assertDoesNotThrow(() -> new TargetUrl("http://example.com:80/health?detail=short"));
-        assertDoesNotThrow(() -> new TargetUrl("https://status.example.com:443"));
-        assertDoesNotThrow(() -> new TargetUrl("https://example.com/a%20path?literal=%25")
-                .requireSafeEncodedCharacters());
+        new TargetUrl("http://example.com:80/health?detail=short");
+        new TargetUrl("https://status.example.com:443");
+        new TargetUrl("https://example.com/a%20path?literal=%25").requireSafeEncodedCharacters();
         String prefix = "https://example.com/";
-        assertDoesNotThrow(() -> new TargetUrl(prefix + "a".repeat(TargetUrl.MAX_LENGTH - prefix.length())));
+        new TargetUrl(prefix + "a".repeat(TargetUrl.MAX_LENGTH - prefix.length()));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new TargetUrl(prefix + "a".repeat(TargetUrl.MAX_LENGTH - prefix.length() + 1)));
@@ -40,6 +38,7 @@ class MonitoringValueTypesTest {
         String[] invalidTargets = {
             "/relative",
             "ftp://example.com/file",
+            "https:opaque",
             "https://user@example.com/health",
             "https://example.com/health#fragment",
             "https://example.com:8443/health",
@@ -53,6 +52,7 @@ class MonitoringValueTypesTest {
             "http://127.1/health",
             "http://0x7f.1/health",
             "https://1.2.3.4.5/health",
+            "https://.example.com/health",
             "https://example.com./health",
             "https://bad_host.example/health",
             "https://example.com\\health",
@@ -79,8 +79,17 @@ class MonitoringValueTypesTest {
         };
 
         for (String value : unsafeTargets) {
-            TargetUrl historicalTarget = assertDoesNotThrow(() -> new TargetUrl(value));
+            TargetUrl historicalTarget = new TargetUrl(value);
             assertThrows(IllegalArgumentException.class, historicalTarget::requireSafeEncodedCharacters);
         }
+    }
+
+    @Test
+    void hidesSensitiveValuesFromStringRepresentations() {
+        TargetUrl target = new TargetUrl("https://example.com/health?secret=hidden");
+        ResourceReference reference = new ResourceReference("sensitive-resource-reference");
+
+        assertEquals("[target-url]", target.toString());
+        assertEquals("[resource-reference]", reference.toString());
     }
 }

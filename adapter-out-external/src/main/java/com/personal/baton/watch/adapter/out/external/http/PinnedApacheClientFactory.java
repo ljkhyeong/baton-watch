@@ -33,8 +33,6 @@ public final class PinnedApacheClientFactory {
             String hostname,
             List<InetAddress> approvedAddresses,
             ApacheHttpClientLimits limits) {
-        Objects.requireNonNull(limits, "limits");
-
         Timeout connectTimeout = Timeout.of(limits.connectTimeout());
         Timeout responseTimeout = Timeout.of(limits.responseTimeout());
         Http1Config http1Config = Http1Config.custom()

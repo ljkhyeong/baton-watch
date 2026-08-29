@@ -27,7 +27,7 @@ public final class PurgeAttemptHistoryService implements PurgeAttemptHistoryUseC
 
     @Override
     public int purgeAttemptHistory() {
-        Instant completedBefore = TimeBoundaryPolicy.subtract(clock.instant(), retention, "retention");
+        Instant completedBefore = clock.instant().minus(retention);
         return persistence.purgeAttempts(completedBefore, batchSize);
     }
 }

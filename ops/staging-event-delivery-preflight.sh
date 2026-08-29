@@ -87,6 +87,7 @@ if [[ "$WATCH_EVENT_DELIVERY_ENABLED" != "true" ]]; then
     fail "WATCH_EVENT_DELIVERY_ENABLED must be true for the staging exercise"
 fi
 
+# shellcheck disable=SC2153
 watch_public_base_url="${WATCH_PUBLIC_BASE_URL%/}"
 delivery_endpoint="$WATCH_EVENT_DELIVERY_ENDPOINT"
 monitor_api_token="$WATCH_API_TOKEN"

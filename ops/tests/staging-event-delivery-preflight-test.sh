@@ -4,10 +4,13 @@ set -euo pipefail
 set +x
 umask 077
 
-readonly TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR
+REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly SCRIPT="$REPOSITORY_ROOT/ops/staging-event-delivery-preflight.sh"
-readonly TEMP_DIR="$(mktemp -d)"
+TEMP_DIR="$(mktemp -d)"
+readonly TEMP_DIR
 readonly FAKE_BIN="$TEMP_DIR/bin"
 readonly CURL_CALLS="$TEMP_DIR/curl-calls"
 
@@ -121,58 +124,63 @@ run_preflight() {
         "$SCRIPT"
 }
 
-assert_failure_contains() {
+assert_curl_calls() {
     local expected="$1"
-    shift
-    local output
-    if output="$(run_preflight "$@" 2>&1)"; then
-        fail "expected failure containing: $expected"
-    fi
-    if [[ "$output" != *"$expected"* ]]; then
-        fail "failure did not contain: $expected"
-    fi
-    if [[ "$output" == *"monitor-api-token-0123456789-abcdef"* \
-            || "$output" == *"delivery-token-0123456789-abcdefg"* ]]; then
-        fail "failure output exposed a service token"
+    local actual
+
+    actual="$(cat "$CURL_CALLS")"
+    if [[ "$actual" != "$expected" ]]; then
+        fail "curl 호출 순서가 예상과 다릅니다"
     fi
 }
 
-success_output="$(run_preflight)"
-if [[ "$success_output" != *"checks passed"* ]]; then
-    fail "successful preflight did not report completion"
-fi
-if [[ "$(cat "$CURL_CALLS")" != $'watch\nreceiver' ]]; then
-    fail "successful preflight did not call WATCH then receiver exactly once"
-fi
+assert_safe_output() {
+    local output="$1"
 
-assert_failure_contains \
-    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters" \
+    if [[ "$output" == *"monitor-api-token-0123456789-abcdef"* \
+            || "$output" == *"delivery-token-0123456789-abcdefg"* ]]; then
+        fail "실행 출력이 서비스 토큰을 노출했습니다"
+    fi
+}
+
+assert_failure() {
+    local expected_calls="$1"
+    shift
+    local output
+
+    if output="$(run_preflight "$@" 2>&1)"; then
+        fail "실패해야 하는 사전 검사가 성공했습니다"
+    fi
+    if [[ -z "$output" ]]; then
+        fail "실패한 사전 검사가 진단을 남기지 않았습니다"
+    fi
+    assert_safe_output "$output"
+    assert_curl_calls "$expected_calls"
+}
+
+success_output="$(run_preflight)"
+assert_safe_output "$success_output"
+assert_curl_calls $'watch\nreceiver'
+
+assert_failure "" \
     WATCH_API_TOKEN="monitor:api:token:0123456789:abcdef"
 printf -v long_monitor_token '%*s' 201 ''
 long_monitor_token="${long_monitor_token// /a}"
-assert_failure_contains \
-    "WATCH_API_TOKEN must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters" \
+assert_failure "" \
     WATCH_API_TOKEN="$long_monitor_token"
-assert_failure_contains \
-    "must be distinct" \
+assert_failure "" \
     WATCH_EVENT_DELIVERY_TOKEN="monitor-api-token-0123456789-abcdef"
-assert_failure_contains \
-    "public BATON receiver HTTPS URL" \
+assert_failure "" \
     WATCH_EVENT_DELIVERY_ENDPOINT="http://baton.staging.example.com/api/v1/internal/resource-health-events"
-assert_failure_contains \
-    "unambiguous DNS hostname" \
+assert_failure "" \
     WATCH_EVENT_DELIVERY_ENDPOINT="https://bad..example.com/api/v1/internal/resource-health-events"
-assert_failure_contains \
-    "unambiguous DNS hostname" \
+assert_failure "" \
     WATCH_EVENT_DELIVERY_ENDPOINT="https://-bad.example.com/api/v1/internal/resource-health-events"
-assert_failure_contains \
-    "must be true" \
+assert_failure "" \
     WATCH_EVENT_DELIVERY_ENABLED="false"
-assert_failure_contains \
-    "unexpected HTTP status 503" \
+assert_failure "watch" \
     FAKE_WATCH_STATUS="503"
-assert_failure_contains \
-    "must reject the unauthenticated preflight with HTTP 401, got 400" \
+assert_failure $'watch\nreceiver' \
     FAKE_RECEIVER_STATUS="400"
 
 printf '[staging-event-delivery-preflight-test] 10개 사례와 curl 요청 계약이 통과했습니다\n'

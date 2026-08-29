@@ -1,51 +1,98 @@
 package com.personal.baton.watch.bootstrap;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
-import java.lang.reflect.Method;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import org.springframework.scheduling.support.ScheduledMethodRunnable;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.annotation.Scheduled;
 
+@ExtendWith(OutputCaptureExtension.class)
 class ScheduledTaskObservationTest {
 
+    private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withUserConfiguration(
+                    WorkerSchedulingConfiguration.class,
+                    ScheduledTaskTestConfiguration.class);
+
     @Test
-    void recordsPropagatedWorkerFailuresWithSpringScheduledTaskMetrics() throws Exception {
-        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
-        ObservationRegistry observationRegistry = ObservationRegistry.create();
-        observationRegistry.observationConfig()
-                .observationHandler(new DefaultMeterObservationHandler(meterRegistry));
-        IllegalStateException failure = new IllegalStateException("sensitive callback detail");
-        EventDeliveryScheduler scheduler = new EventDeliveryScheduler(
-                () -> {
-                    throw failure;
-                },
-                new MonitoringMetrics(meterRegistry));
-        Method method = EventDeliveryScheduler.class.getDeclaredMethod("deliverPendingEvents");
-        ScheduledMethodRunnable runnable = new ScheduledMethodRunnable(
-                scheduler,
-                method,
-                WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER,
-                () -> observationRegistry);
+    void observesAndRedactsARealRepeatedScheduledFailure(CapturedOutput output) {
+        contextRunner.run(context -> {
+            FailingScheduledWorker worker = context.getBean(FailingScheduledWorker.class);
+            assertThat(worker.twoRuns.await(2, TimeUnit.SECONDS)).isTrue();
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class, runnable::run);
+            var failureTimer = context.getBean(SimpleMeterRegistry.class)
+                    .get("tasks.scheduled.execution")
+                    .tag("code.function", "run")
+                    .tag("code.namespace", FailingScheduledWorker.class.getCanonicalName())
+                    .tag("error", IllegalStateException.class.getSimpleName())
+                    .tag("exception", IllegalStateException.class.getSimpleName())
+                    .tag("outcome", "ERROR")
+                    .timer();
+            assertThat(failureTimer.count()).isOne();
+            assertThat(failureTimer.getId().getTags())
+                    .noneMatch(tag -> tag.getValue().contains("sensitive scheduler detail"));
+        });
 
-        assertSame(failure, thrown);
-        var failureTimer = meterRegistry.get("tasks.scheduled.execution")
-                .tag("code.function", "deliverPendingEvents")
-                .tag("code.namespace", EventDeliveryScheduler.class.getName())
-                .tag("error", IllegalStateException.class.getSimpleName())
-                .tag("exception", IllegalStateException.class.getSimpleName())
-                .tag("outcome", "ERROR")
-                .timer();
-        assertEquals(1L, failureTimer.count());
-        assertTrue(failureTimer.getId().getTags().stream()
-                .noneMatch(tag -> tag.getValue().contains("sensitive callback detail")));
-        assertTrue(meterRegistry.find("baton.watch.scheduler.failures").meters().isEmpty());
+        assertThat(output)
+                .contains("scheduled task failed failureType=IllegalStateException")
+                .doesNotContain("sensitive scheduler detail");
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableScheduling
+    static class ScheduledTaskTestConfiguration {
+
+        @Bean
+        ThreadPoolTaskSchedulerBuilder taskSchedulerBuilder() {
+            return new ThreadPoolTaskSchedulerBuilder();
+        }
+
+        @Bean
+        SimpleMeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
+        }
+
+        @Bean
+        ObservationRegistry observationRegistry(SimpleMeterRegistry meterRegistry) {
+            ObservationRegistry registry = ObservationRegistry.create();
+            registry.observationConfig()
+                    .observationHandler(new DefaultMeterObservationHandler(meterRegistry));
+            return registry;
+        }
+
+        @Bean
+        FailingScheduledWorker failingScheduledWorker() {
+            return new FailingScheduledWorker();
+        }
+    }
+
+    static final class FailingScheduledWorker {
+
+        private final CountDownLatch twoRuns = new CountDownLatch(2);
+        private final AtomicInteger attempts = new AtomicInteger();
+
+        @Scheduled(
+                fixedDelay = 10,
+                scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
+        void run() {
+            int attempt = attempts.incrementAndGet();
+            twoRuns.countDown();
+            if (attempt == 1) {
+                throw new IllegalStateException("sensitive scheduler detail");
+            }
+        }
     }
 }
