@@ -13,6 +13,7 @@ readonly TEMP_DIR
 readonly BASE_CONFIG="$TEMP_DIR/base.json"
 readonly TUNNEL_CONFIG="$TEMP_DIR/tunnel.json"
 readonly OBSERVABILITY_CONFIG="$TEMP_DIR/observability.json"
+readonly EVENT_DELIVERY_CONFIG="$TEMP_DIR/event-delivery.json"
 
 cleanup() {
     rm -rf "$TEMP_DIR"
@@ -36,6 +37,8 @@ render_config() {
         -u WATCH_TUNNEL_TOKEN_FILE \
         -u WATCH_OTLP_METRICS_URL \
         -u WATCH_OTLP_AUTHORIZATION_FILE \
+        -u WATCH_EVENT_DELIVERY_ENDPOINT \
+        -u WATCH_EVENT_DELIVERY_TOKEN_FILE \
         -u WATCH_DB_NAME \
         -u WATCH_DB_OWNER_USER \
         -u WATCH_DB_RUNTIME_USER \
@@ -60,6 +63,7 @@ render_config() {
         WATCH_IMAGE_REVISION=0000000000000000000000000000000000000001 \
         WATCH_POSTGRES_VOLUME_NAME=baton-watch-compose-policy-test \
         WATCH_OTLP_METRICS_URL=https://otlp.example.test/v1/metrics \
+        WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.example.test/api/v1/internal/resource-health-events \
         docker compose \
             --project-directory "$REPOSITORY_ROOT" \
             --env-file "$REPOSITORY_ROOT/ops/staging.env.example" \
@@ -79,8 +83,13 @@ render_config \
     --file "$REPOSITORY_ROOT/compose.staging.yml" \
     --file "$REPOSITORY_ROOT/compose.staging-tunnel.yml" \
     --file "$REPOSITORY_ROOT/compose.staging-observability.yml"
+render_config \
+    "$EVENT_DELIVERY_CONFIG" \
+    --file "$REPOSITORY_ROOT/compose.staging.yml" \
+    --file "$REPOSITORY_ROOT/compose.staging-tunnel.yml" \
+    --file "$REPOSITORY_ROOT/compose.staging-event-delivery.yml"
 
-python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$OBSERVABILITY_CONFIG" <<'PY'
+python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$OBSERVABILITY_CONFIG" "$EVENT_DELIVERY_CONFIG" <<'PY'
 import json
 import re
 import sys
@@ -116,6 +125,7 @@ def assert_digest_pinned(image: str, repository: str, label: str) -> None:
 base = load(sys.argv[1])
 tunnel = load(sys.argv[2])
 observability = load(sys.argv[3])
+event_delivery = load(sys.argv[4])
 
 require(
     set(base["services"]) == {"postgres", "database-role-init", "migrate", "watch"},
@@ -131,9 +141,15 @@ require(
     == {"postgres", "database-role-init", "migrate", "watch", "cloudflared"},
     "observability overlay services changed",
 )
+require(
+    set(event_delivery["services"])
+    == {"postgres", "database-role-init", "migrate", "watch", "cloudflared"},
+    "event delivery overlay services changed",
+)
 assert_no_host_ports(base, "base")
 assert_no_host_ports(tunnel, "tunnel")
 assert_no_host_ports(observability, "observability")
+assert_no_host_ports(event_delivery, "event delivery")
 
 networks = tunnel["networks"]
 require(networks["watch-db"].get("internal") is True, "database network must be internal")
@@ -158,6 +174,7 @@ migrate = tunnel["services"]["migrate"]
 watch = tunnel["services"]["watch"]
 cloudflared = tunnel["services"]["cloudflared"]
 observability_watch = observability["services"]["watch"]
+event_delivery_watch = event_delivery["services"]["watch"]
 
 require(watch.get("build") is None, "staging WATCH must use a prebuilt image")
 require(
@@ -266,6 +283,24 @@ require(
     not any("PASSWORD" in key or "TOKEN" in key for key in observability_environment),
     "observability overlay secrets must not be injected as environment variables",
 )
+event_delivery_environment = event_delivery_watch["environment"]
+require(
+    event_delivery_environment.get("WATCH_EVENT_DELIVERY_ENABLED") == "true",
+    "event delivery overlay must explicitly enable delivery",
+)
+require(
+    event_delivery_environment.get("WATCH_EVENT_DELIVERY_ENDPOINT")
+    == "https://baton.example.test/api/v1/internal/resource-health-events",
+    "event delivery overlay callback endpoint changed",
+)
+require(
+    "WATCH_OTLP_METRICS_ENABLED" not in event_delivery_environment,
+    "event delivery overlay must not enable OTLP metrics",
+)
+require(
+    not any("PASSWORD" in key or "TOKEN" in key for key in event_delivery_environment),
+    "event delivery overlay secrets must not be injected as environment variables",
+)
 require(
     postgres["environment"].get("POSTGRES_PASSWORD_FILE")
     == "/run/secrets/postgres-owner-password",
@@ -318,6 +353,15 @@ require(
     "observability overlay WATCH secret targets changed",
 )
 require(
+    secret_targets(event_delivery_watch)
+    == {
+        ("watch-db-runtime-password", "spring.datasource.password"),
+        ("watch-api-token", "watch.api-token"),
+        ("watch-event-delivery-token", "watch.event-delivery.bearer-token"),
+    },
+    "event delivery overlay WATCH secret targets changed",
+)
+require(
     secret_targets(cloudflared)
     == {("cloudflare-tunnel-token", "cloudflare-tunnel-token")},
     "cloudflared secret target changed",
@@ -348,6 +392,16 @@ require(
         / ".config/baton-watch/staging/secrets/grafana-otlp-authorization"
     ),
     "OTLP authorization example path did not resolve under the operator home",
+)
+
+event_delivery_token_file = event_delivery["secrets"]["watch-event-delivery-token"].get("file")
+require(
+    event_delivery_token_file
+    == str(
+        Path.home()
+        / ".config/baton-watch/staging/secrets/watch-event-delivery-token"
+    ),
+    "event delivery token example path did not resolve under the operator home",
 )
 
 volume = tunnel["volumes"]["watch-postgres-data"]
@@ -523,5 +577,5 @@ require(
     "cloudflared metrics must remain container-loopback only",
 )
 
-print("[staging-compose-policy-test] 기본·터널·관측 오버레이 정책 검증 통과")
+print("[staging-compose-policy-test] 기본·터널·관측·이벤트 전달 오버레이 정책 검증 통과")
 PY
