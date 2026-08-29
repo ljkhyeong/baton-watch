@@ -430,7 +430,8 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
 `staging-compose-policy-test.sh`, `staging-image-evidence-test.sh`,
 `staging-database-operation-test.sh`,
-`staging-event-delivery-preflight-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
+`staging-event-delivery-preflight-test.sh`, `staging-public-smoke-test.sh`,
+`staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. Trivy는 독립 부트 JAR과
 세 이미지의 CycloneDX SBOM 네 개를 만들고 부트 JAR의 라이선스를 명시적 허용
@@ -521,9 +522,19 @@ verify_backup_restore
 unset -f verify_backup_restore
 ~~~
 
-백업을 운영자의 보호된 백업 위치로 복사하고 타임스탬프, 크기, 체크섬, 배포된
-SHA, 복원 테스트 결과만 기록합니다. 격리된 데이터베이스에 복원해 보지 않은
-덤프는 검증된 백업이 아닙니다.
+이 로컬 `0600` 덤프는 같은 Mac에서 수행하는 업데이트 롤백용 사본일 뿐 재해 복구
+백업이 아닙니다. 비어 있지 않은 스테이징을 공개하기 전에는 다음 항목을 모두
+승인해야 합니다.
+
+- 같은 Mac의 손실과 도난에 영향을 받지 않는 암호화된 별도 저장 위치
+- 승인된 롤백 기간을 넘지 않는 명시적 만료 기간
+- 백업 복사, 만료 삭제, 암호화 키와 정기 복원 시험의 담당자
+
+승인된 위치로 백업을 복사하고 타임스탬프, 크기, 체크섬, 배포된 SHA, 만료 시각,
+복원 테스트 결과만 기록합니다. 저장 위치와 만료 기간이 정해지지 않았거나 격리된
+데이터베이스에 복원해 보지 않은 덤프는 검증된 재해 복구 백업으로 주장하지
+마세요. 스테이징 데이터를 폐기 가능한 것으로 운영하려면 백업을 만들지 않는 대신
+데이터 손실과 롤백 불가를 별도로 승인하고 기록해야 합니다.
 
 ## 배포
 
@@ -660,40 +671,16 @@ unset NEW_DATABASE_SECRET
 리소스 참조가 들어 있지 않습니다.
 
 ~~~bash
-PUBLIC_BASE_URL=https://watch-staging.b4ton.com
-curl --proto '=https' --tlsv1.2 --noproxy '*' \
-  --connect-timeout 5 --max-time 10 --max-filesize 65536 \
-  --silent --show-error --fail \
-  "$PUBLIC_BASE_URL/api/v1/system/status"
-
-UNAUTHORIZED_STATUS="$(curl --proto '=https' --tlsv1.2 --noproxy '*' \
-  --connect-timeout 5 --max-time 10 --max-filesize 65536 \
-  --silent --show-error \
-  --request PUT --header 'Content-Type: application/json' --data '{' \
-  --output /dev/null --write-out '%{http_code}' \
-  "$PUBLIC_BASE_URL/api/v1/resource-monitors/staging-auth-smoke")"
-test "$UNAUTHORIZED_STATUS" = 401
-
-CATCH_ALL_STATUS="$(curl --proto '=https' --tlsv1.2 --noproxy '*' \
-  --connect-timeout 5 --max-time 10 --max-filesize 65536 \
-  --silent --show-error \
-  --output /dev/null --write-out '%{http_code}' \
-  "$PUBLIC_BASE_URL/api/v1/ingress-deny-smoke")"
-test "$CATCH_ALL_STATUS" = 404
+WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com \
+  ./ops/staging-public-smoke.sh
 ~~~
 
-상태 JSON은 `baton-watch`를 `UP`으로 식별해야 합니다. 인증하지 않고 잘못된
-형식으로 보낸 모니터 요청은 `401`을 반환해야 합니다. 이 결과는 공개 경로가
-WATCH에 도달하고 파싱 전에 안전하게 차단된다는 점을 입증합니다. 라우팅되지
-않은 `/api/v1/**` 확인용 경로는 터널의 기타 모든 요청 처리 규칙에서 `404`를
-반환해야 합니다. WATCH로 제한 없이 라우팅됐다면 안전하게 차단하는 인증 경계를
-만나 `401`이 반환됩니다.
-
-응답 헤더만 보관하면서 상태 요청을 반복합니다. 인증서가
-`watch-staging.b4ton.com`에 유효하고, 어떤 리다이렉트도 호스트 이름이나
-스킴을 바꾸지 않으며, `CF-Cache-Status`가 절대 `HIT`가 아닌지 확인합니다.
-터널 없음, Cloudflare 엣지 오류, 캐시된 응답 또는 다른 서비스의 응답이
-발생하면 스모크 테스트는 실패합니다.
+스크립트는 인증서를 기본 검증하고 리다이렉트를 따르지 않습니다. 상태 경로가
+리다이렉트 없이 HTTP `200`을 반환하고 JSON이 `baton-watch`의 `UP` 상태인지,
+`CF-Cache-Status`가 `HIT`가 아닌지 판정합니다. 이어서 인증하지 않고 잘못된
+형식으로 보낸 모니터 요청의 `401`과 인그레스 기타 경로의 `404`를 판정합니다.
+터널 없음, Cloudflare 엣지 오류, 캐시된 응답, 다른 서비스의 JSON 또는 잘못된
+인그레스 규칙이 확인되면 스크립트가 실패합니다.
 
 ## 로그 비식별화 감사
 
@@ -713,13 +700,30 @@ umask 077
 AUDIT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/baton-watch-log-audit.XXXXXX")"
 staging_compose logs --no-color --since 15m > "$AUDIT_DIR/compose.log"
 chmod 0600 "$AUDIT_DIR/compose.log"
+install -m 0600 /dev/null "$AUDIT_DIR/forbidden-values"
+# 이번 검증에 사용한 대상 URL, 리소스 참조, 콜백 URL과 요청 페이로드를
+# 운영자가 통제하는 입력에서 한 줄에 하나씩 기록합니다. 값을 출력하지 마세요.
+test -s "$AUDIT_DIR/forbidden-values"
+./ops/staging-log-redaction-audit.sh \
+  "$AUDIT_DIR/compose.log" \
+  "$AUDIT_DIR/forbidden-values" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-owner-password" \
+  "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password" \
+  "$STAGING_CONFIG_DIR/secrets/watch-api-token" \
+  "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 ~~~
+
+이벤트 전달 토큰처럼 이번 배포에서 사용한 비밀 파일이 더 있으면 마지막 인수에
+추가합니다. 감사 도구는 정확한 비밀값, `Authorization` 헤더, Bearer 자격 증명과
+지정한 금지 값을 검사합니다. 일치한 줄이나 값은 출력하지 않고 범주별 통과/실패만
+반환합니다.
 
 원본 로그를 업로드하지 마세요. 범위가 제한된 결과를 기록한 뒤 파일을 삭제하고,
 그다음 비어 있는 디렉터리를 삭제합니다.
 
 ~~~bash
 rm "$AUDIT_DIR/compose.log"
+rm "$AUDIT_DIR/forbidden-values"
 rmdir "$AUDIT_DIR"
 unset AUDIT_DIR
 ~~~
@@ -838,4 +842,6 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 삭제하거나 비활성화한 뒤 Cloudflare에서 커넥터 토큰을 폐기합니다. 그런 다음
 해당 토큰 파일을 삭제합니다. API/데이터베이스 비밀 파일과 외부 PostgreSQL
 볼륨은 최종 검증 백업과 명시적인 데이터 보존 결정을 마친 뒤에만 제거하세요.
+암호화된 별도 백업 위치, 만료 기간과 삭제 책임이 승인되지 않은 로컬 덤프를
+재해 복구 백업으로 간주하지 마세요.
 저장소 정리만으로는 실행 중인 터널이나 DNS 경로가 비활성화되지 않습니다.
