@@ -120,6 +120,12 @@ jobs:
       - name: 스테이징 이벤트 전달 사전 검사 검증
         run: ./ops/tests/staging-event-delivery-preflight-test.sh
 
+      - name: 스테이징 공개 스모크 도구 검증
+        run: ./ops/tests/staging-public-smoke-test.sh
+
+      - name: 스테이징 로그 비식별화 감사 도구 검증
+        run: ./ops/tests/staging-log-redaction-audit-test.sh
+
       - name: 고정된 런타임 이미지 빌드
         run: |
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
