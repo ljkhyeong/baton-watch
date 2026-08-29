@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -85,6 +87,53 @@ class BoundedDnsLookupTest {
                     () -> lookup.resolve("public.example", Duration.ofSeconds(1)));
 
             assertEquals(DnsLookupException.Reason.INTERNAL_FAILURE, failure.reason());
+        }
+    }
+
+    @Test
+    void callerInterruptionCancelsTheResolverAndRestoresTheInterruptStatus() throws Exception {
+        CountDownLatch resolverStarted = new CountDownLatch(1);
+        CountDownLatch resolverInterrupted = new CountDownLatch(1);
+        CountDownLatch blockResolver = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        AtomicReference<DnsLookupException> failure = new AtomicReference<>();
+        AtomicBoolean interruptRestored = new AtomicBoolean();
+        BoundedDnsLookup lookup = new BoundedDnsLookup(executor, hostname -> {
+            resolverStarted.countDown();
+            try {
+                blockResolver.await();
+            } catch (InterruptedException exception) {
+                resolverInterrupted.countDown();
+                Thread.currentThread().interrupt();
+                throw new UnknownHostException();
+            }
+            return new InetAddress[] {InetAddress.getLoopbackAddress()};
+        });
+        Thread caller = Thread.ofPlatform().unstarted(() -> {
+            try {
+                lookup.resolve("public.example", Duration.ofSeconds(5));
+            } catch (DnsLookupException exception) {
+                failure.set(exception);
+            } finally {
+                interruptRestored.set(Thread.currentThread().isInterrupted());
+            }
+        });
+
+        try {
+            caller.start();
+            assertTrue(resolverStarted.await(1, TimeUnit.SECONDS));
+            caller.interrupt();
+            caller.join(1_000);
+
+            assertFalse(caller.isAlive());
+            assertEquals(DnsLookupException.Reason.INTERNAL_FAILURE, failure.get().reason());
+            assertTrue(interruptRestored.get());
+            assertTrue(resolverInterrupted.await(1, TimeUnit.SECONDS));
+        } finally {
+            blockResolver.countDown();
+            caller.interrupt();
+            caller.join(1_000);
+            lookup.close();
         }
     }
 

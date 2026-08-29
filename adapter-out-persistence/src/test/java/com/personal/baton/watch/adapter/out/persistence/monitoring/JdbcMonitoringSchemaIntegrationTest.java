@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -15,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -52,6 +54,32 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                 .noneMatch(name -> name.contains("exception"))
                 .noneMatch(name -> name.contains("header"))
                 .noneMatch(name -> name.contains("cookie"));
+    }
+
+    @Test
+    void databaseRejectsMonitorStateAndHealthMismatches() {
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO watch_monitor (
+                    resource_reference, source_revision, monitor_status, target_url,
+                    current_health, consecutive_failures, next_check_at, created_at, updated_at
+                ) VALUES (?, 1, 'INACTIVE', NULL, 'UNKNOWN', 0, ?, ?, ?)
+                """,
+                "resource:inactive-with-next-check",
+                databaseTime(BASE_TIME),
+                databaseTime(BASE_TIME),
+                databaseTime(BASE_TIME)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThatThrownBy(() -> jdbc.update("""
+                INSERT INTO watch_monitor (
+                    resource_reference, source_revision, monitor_status, target_url,
+                    current_health, consecutive_failures, next_check_at, created_at, updated_at
+                ) VALUES (?, 1, 'INACTIVE', NULL, 'HEALTHY', 1, NULL, ?, ?)
+                """,
+                "resource:healthy-with-failure",
+                databaseTime(BASE_TIME),
+                databaseTime(BASE_TIME)))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
