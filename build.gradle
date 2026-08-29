@@ -31,7 +31,7 @@ subprojects {
             mavenBom 'tools.jackson:jackson-bom:3.1.5'
         }
         dependencies {
-            dependency 'org.apache.httpcomponents.client5:httpclient5:5.6.3'
+            dependency 'org.apache.httpcomponents.client5:httpclient5:5.6.4'
             dependency 'org.apache.httpcomponents.core5:httpcore5:5.4.3'
             dependency 'org.apache.httpcomponents.core5:httpcore5-h2:5.4.3'
             dependency 'org.flywaydb:flyway-core:12.11.0'
