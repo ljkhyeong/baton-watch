@@ -74,3 +74,9 @@ watch:
 management:
   server:
     port: 8081
+  otlp:
+    metrics:
+      export:
+        enabled: ${WATCH_OTLP_METRICS_ENABLED:false}
+        url: ${WATCH_OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
+        step: 60s

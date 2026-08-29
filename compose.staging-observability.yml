@@ -1,0 +1,12 @@
+services:
+  watch:
+    environment:
+      WATCH_OTLP_METRICS_ENABLED: "true"
+      WATCH_OTLP_METRICS_URL: "${WATCH_OTLP_METRICS_URL:?WATCH_OTLP_METRICS_URL is required}"
+    secrets:
+      - source: watch-otlp-authorization
+        target: management.otlp.metrics.export.headers.authorization
+
+secrets:
+  watch-otlp-authorization:
+    file: "${WATCH_OTLP_AUTHORIZATION_FILE:?WATCH_OTLP_AUTHORIZATION_FILE is required}"
