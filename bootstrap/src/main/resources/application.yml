@@ -74,9 +74,11 @@ watch:
 management:
   server:
     port: 8081
+  opentelemetry:
+    enabled: false
   otlp:
     metrics:
       export:
         enabled: ${WATCH_OTLP_METRICS_ENABLED:false}
-        url: ${WATCH_OTLP_METRICS_URL:http://localhost:4318/v1/metrics}
+        url: ${WATCH_OTLP_METRICS_URL:}
         step: 60s

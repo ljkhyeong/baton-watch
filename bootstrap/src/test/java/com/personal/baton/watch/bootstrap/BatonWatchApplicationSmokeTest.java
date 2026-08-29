@@ -9,11 +9,15 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
@@ -31,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
         classes = BatonWatchApplication.class,
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
-            "management.server.port=-1",
+            "management.server.port=0",
             "management.endpoint.health.show-details=always",
             "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
@@ -68,18 +72,24 @@ class BatonWatchApplicationSmokeTest {
     private final Environment environment;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final List<MeterRegistry> meterRegistries;
 
     @LocalServerPort
     private int serverPort;
+
+    @LocalManagementPort
+    private int managementPort;
 
     @Autowired
     BatonWatchApplicationSmokeTest(
             Environment environment,
             JdbcTemplate jdbc,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            List<MeterRegistry> meterRegistries) {
         this.environment = environment;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.meterRegistries = meterRegistries;
     }
 
     @Test
@@ -120,6 +130,29 @@ class BatonWatchApplicationSmokeTest {
         assertThat(stored).isEqualTo(new StoredMonitor(1, "INACTIVE", "UNKNOWN", null, null));
         assertThat(countRowsInTable(jdbc, "watch_attempt")).isZero();
         assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isZero();
+
+        assertManagementEndpointsAndMetricsRegistries();
+    }
+
+    private void assertManagementEndpointsAndMetricsRegistries() throws Exception {
+        assertThat(managementGet("/actuator/health").statusCode()).isEqualTo(200);
+        HttpResponse<String> prometheus = managementGet("/actuator/prometheus");
+        assertThat(prometheus.statusCode()).isEqualTo(200);
+        assertThat(prometheus.body()).contains("jvm_info");
+        assertThat(managementGet("/actuator/scheduledtasks").statusCode()).isEqualTo(404);
+
+        assertThat(meterRegistries).anyMatch(PrometheusMeterRegistry.class::isInstance);
+        assertThat(meterRegistries).noneMatch(OtlpMeterRegistry.class::isInstance);
+    }
+
+    private HttpResponse<String> managementGet(String path) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + managementPort + path))
+                .timeout(Duration.ofSeconds(5))
+                .header(HttpHeaders.ACCEPT, "*/*")
+                .GET()
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     private void assertMigrationsAndRuntimePolicy() {
