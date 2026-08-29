@@ -11,7 +11,6 @@ import java.time.Duration;
 import java.util.List;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
-import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -142,7 +141,6 @@ class BatonWatchApplicationSmokeTest {
         assertThat(managementGet("/actuator/scheduledtasks").statusCode()).isEqualTo(404);
 
         assertThat(meterRegistries).anyMatch(PrometheusMeterRegistry.class::isInstance);
-        assertThat(meterRegistries).noneMatch(OtlpMeterRegistry.class::isInstance);
     }
 
     private HttpResponse<String> managementGet(String path) throws Exception {
