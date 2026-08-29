@@ -3,7 +3,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
 
-    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly('org.flywaydb:flyway-database-postgresql') {
+        exclude group: 'org.flywaydb', module: 'flyway-database-cockroachdb'
+    }
     runtimeOnly 'org.postgresql:postgresql'
 
     testImplementation 'org.springframework:spring-test'
