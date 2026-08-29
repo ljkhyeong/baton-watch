@@ -6,6 +6,8 @@
 
 - 2026-08-29 선택적 무료 OTLP 연동 변경과 검증 기록은
   [PR #29](https://github.com/ljkhyeong/baton-watch/pull/29)에 있다.
+- 2026-08-29 점검·전달 영속성 포트를 실제 실행 방식에 맞는 단건 점유 계약으로
+  좁히고, 계측 데코레이터가 업무 실패를 중복 변환하지 않도록 책임을 정리했다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
@@ -34,7 +36,7 @@
 ## 이번 변경의 검증 상태
 
 - `./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가
-  Gradle 9.7.1에서 358개 테스트와 실행 가능한 부트 JAR의 Apache-2.0 전문 검증을
+  Gradle 9.7.1에서 356개 테스트와 실행 가능한 부트 JAR의 Apache-2.0 전문 검증을
   통과했다.
 - 실제 PostgreSQL 18.6 격리 검증에서 런타임·소유자 비밀번호를 각각 교체한 뒤
   이전 자격 증명이 거부됐고, 원복 뒤 교체된 자격 증명이 거부됐으며 WATCH 재기동이
