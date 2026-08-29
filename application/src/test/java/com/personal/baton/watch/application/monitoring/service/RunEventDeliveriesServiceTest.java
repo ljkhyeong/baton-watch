@@ -52,7 +52,6 @@ class RunEventDeliveriesServiceTest {
                 new EventDeliveryBatchResult(1, 1, 0, 0, 0),
                 result);
         assertEquals(LEASE, persistence.leaseDuration);
-        assertEquals(1, persistence.limit);
         assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
         assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
         assertNull(persistence.finalization.nextAttemptAt());
@@ -153,7 +152,6 @@ class RunEventDeliveriesServiceTest {
         private final List<String> calls;
         private final ClaimedHealthChangeEvent claimed;
         private Duration leaseDuration;
-        private int limit;
         private EventDeliveryFinalization finalization;
         private EventDeliveryFinalizationStatus status = EventDeliveryFinalizationStatus.APPLIED;
         private boolean claimReturned;
@@ -164,15 +162,14 @@ class RunEventDeliveriesServiceTest {
         }
 
         @Override
-        public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
+        public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
             calls.add("claim");
             this.leaseDuration = leaseDuration;
-            this.limit = limit;
             if (claimReturned) {
-                return List.of();
+                return Optional.empty();
             }
             claimReturned = true;
-            return List.of(claimed);
+            return Optional.of(claimed);
         }
 
         @Override

@@ -18,8 +18,6 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,17 +52,16 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     }
 
     @Override
-    public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
+    public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
         Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
                 leaseDuration, "leaseDuration");
-        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> {
             Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
                     .query(OffsetDateTime.class)
                     .single()
                     .toInstant();
             Instant leaseUntil = claimedAt.plus(supportedLease);
-            return claimInTransaction(claimedAt, leaseUntil, limit);
+            return claimInTransaction(claimedAt, leaseUntil);
         });
     }
 
@@ -109,53 +106,53 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 .single();
     }
 
-    private List<ClaimedHealthChangeEvent> claimInTransaction(
-            Instant claimedAt, Instant leaseUntil, int limit) {
-        List<DeliveryRow> pending = jdbc.sql(
+    private Optional<ClaimedHealthChangeEvent> claimInTransaction(
+            Instant claimedAt, Instant leaseUntil) {
+        Optional<DeliveryRow> pending = jdbc.sql(
                         "SELECT " + DELIVERY_COLUMNS + """
                                  FROM watch_health_change_event
                                  WHERE delivery_status = 'PENDING'
                                    AND next_attempt_at <= ?
                                    AND (delivery_lease_expires_at IS NULL OR delivery_lease_expires_at <= ?)
                                  ORDER BY next_attempt_at, changed_at, event_id
-                                 LIMIT ?
+                                 LIMIT 1
                                  FOR UPDATE SKIP LOCKED
                                 """)
-                .params(databaseTime(claimedAt), databaseTime(claimedAt), limit)
+                .params(databaseTime(claimedAt), databaseTime(claimedAt))
                 .query(JdbcHealthChangeEventDeliveryAdapter::mapDelivery)
-                .list();
-
-        List<ClaimedHealthChangeEvent> claimed = new ArrayList<>(pending.size());
-        for (DeliveryRow event : pending) {
-            UUID leaseToken = UUID.randomUUID();
-            int deliveryAttempt = Math.clamp(
-                    (long) event.deliveryAttempt() + 1, 1, Integer.MAX_VALUE);
-            jdbc.sql("""
-                            UPDATE watch_health_change_event
-                            SET delivery_attempt = ?,
-                                delivery_lease_token = ?,
-                                delivery_lease_expires_at = ?
-                            WHERE event_id = ?
-                            """)
-                    .params(deliveryAttempt, leaseToken, databaseTime(leaseUntil), event.eventId())
-                    .update();
-            claimed.add(new ClaimedHealthChangeEvent(
-                    new HealthChangeEventPayload(
-                            event.eventId(),
-                            new ResourceReference(event.resourceReference()),
-                            new SourceRevision(event.sourceRevision()),
-                            Optional.ofNullable(event.attemptId()),
-                            event.previousHealth(),
-                            event.currentHealth(),
-                            event.changedAt()),
-                    leaseToken,
-                    deliveryAttempt,
-                    claimedAt,
-                    event.leaseToken() != null
-                            && event.leaseExpiresAt() != null
-                            && !event.leaseExpiresAt().isAfter(claimedAt)));
+                .optional();
+        if (pending.isEmpty()) {
+            return Optional.empty();
         }
-        return claimed;
+        DeliveryRow event = pending.orElseThrow();
+
+        UUID leaseToken = UUID.randomUUID();
+        int deliveryAttempt = Math.clamp(
+                (long) event.deliveryAttempt() + 1, 1, Integer.MAX_VALUE);
+        jdbc.sql("""
+                        UPDATE watch_health_change_event
+                        SET delivery_attempt = ?,
+                            delivery_lease_token = ?,
+                            delivery_lease_expires_at = ?
+                        WHERE event_id = ?
+                        """)
+                .params(deliveryAttempt, leaseToken, databaseTime(leaseUntil), event.eventId())
+                .update();
+        return Optional.of(new ClaimedHealthChangeEvent(
+                new HealthChangeEventPayload(
+                        event.eventId(),
+                        new ResourceReference(event.resourceReference()),
+                        new SourceRevision(event.sourceRevision()),
+                        Optional.ofNullable(event.attemptId()),
+                        event.previousHealth(),
+                        event.currentHealth(),
+                        event.changedAt()),
+                leaseToken,
+                deliveryAttempt,
+                claimedAt,
+                event.leaseToken() != null
+                        && event.leaseExpiresAt() != null
+                        && !event.leaseExpiresAt().isAfter(claimedAt)));
     }
 
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {

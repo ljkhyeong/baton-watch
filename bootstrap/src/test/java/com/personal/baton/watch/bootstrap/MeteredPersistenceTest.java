@@ -22,7 +22,6 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -49,12 +48,12 @@ class MeteredPersistenceTest {
                 CheckObservation.internalFailure(),
                 NOW,
                 NOW.plusSeconds(30));
-        when(delegate.claimDueChecks(LEASE, 1)).thenReturn(List.of(claim));
+        when(delegate.claimDueCheck(LEASE)).thenReturn(Optional.of(claim));
         when(delegate.finalizeCheck(finalization)).thenThrow(new IllegalStateException("database unavailable"));
         MeteredCheckWorkPersistence persistence =
                 new MeteredCheckWorkPersistence(delegate, new MonitoringMetrics(registry));
 
-        persistence.claimDueChecks(LEASE, 1);
+        persistence.claimDueCheck(LEASE);
         assertThrows(IllegalStateException.class, () -> persistence.finalizeCheck(finalization));
 
         assertEquals(1.0, registry.get("baton.watch.check.claimed").counter().count());
@@ -79,13 +78,13 @@ class MeteredPersistenceTest {
                 EventDeliveryObservation.failure(EventDeliveryOutcome.INTERNAL_FAILURE),
                 NOW,
                 NOW.plusSeconds(10));
-        when(delegate.claimPendingEvents(LEASE, 1)).thenReturn(List.of(claim));
+        when(delegate.claimPendingEvent(LEASE)).thenReturn(Optional.of(claim));
         when(delegate.finalizeDelivery(finalization)).thenThrow(new IllegalStateException("database unavailable"));
         MeteredHealthChangeEventDeliveryPersistence persistence =
                 new MeteredHealthChangeEventDeliveryPersistence(
                         delegate, new MonitoringMetrics(registry));
 
-        persistence.claimPendingEvents(LEASE, 1);
+        persistence.claimPendingEvent(LEASE);
         assertThrows(IllegalStateException.class, () -> persistence.finalizeDelivery(finalization));
 
         assertEquals(1.0, registry.get("baton.watch.event.delivery.claimed").counter().count());

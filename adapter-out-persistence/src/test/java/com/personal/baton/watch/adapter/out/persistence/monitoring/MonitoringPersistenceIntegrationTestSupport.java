@@ -56,7 +56,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected ClaimedCheck claimOne() {
-        return checkWorkPersistence.claimDueChecks(LEASE, 1).getFirst();
+        return checkWorkPersistence.claimDueCheck(LEASE).orElseThrow();
     }
 
     protected CheckFinalization finalization(

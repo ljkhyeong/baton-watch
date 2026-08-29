@@ -5,11 +5,11 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalizationSt
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.Optional;
 
 public interface CheckWorkPersistencePort {
 
-    List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit);
+    Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration);
 
     CheckFinalizationStatus finalizeCheck(CheckFinalization finalization);
 

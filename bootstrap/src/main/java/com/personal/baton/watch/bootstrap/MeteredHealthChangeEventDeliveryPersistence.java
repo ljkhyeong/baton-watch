@@ -7,7 +7,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.Optional;
 
 final class MeteredHealthChangeEventDeliveryPersistence
         implements HealthChangeEventDeliveryPersistencePort {
@@ -23,9 +23,10 @@ final class MeteredHealthChangeEventDeliveryPersistence
     }
 
     @Override
-    public List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit) {
-        List<ClaimedHealthChangeEvent> claimed = delegate.claimPendingEvents(leaseDuration, limit);
-        BestEffortMetrics.record(() -> metrics.recordEventDeliveryClaims(claimed));
+    public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
+        Optional<ClaimedHealthChangeEvent> claimed = delegate.claimPendingEvent(leaseDuration);
+        claimed.ifPresent(item ->
+                BestEffortMetrics.record(() -> metrics.recordEventDeliveryClaim(item)));
         return claimed;
     }
 

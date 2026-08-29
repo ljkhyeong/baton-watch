@@ -22,7 +22,6 @@ import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -68,7 +67,9 @@ class MonitoringMetricsTest {
                 1,
                 Duration.ofSeconds(17)));
         ClaimedCheck claimedCheck = claimedCheck(true);
-        metrics.recordCheckClaims(List.of(claimedCheck, claimedCheck, claimedCheck));
+        metrics.recordCheckClaim(claimedCheck);
+        metrics.recordCheckClaim(claimedCheck);
+        metrics.recordCheckClaim(claimedCheck);
         metrics.recordCheckFinalization(CheckFinalizationStatus.STALE_CLAIM);
         metrics.recordCheckAttempt(CheckObservation.failure(
                 CheckOutcome.CONNECT_TIMEOUT,
@@ -76,7 +77,10 @@ class MonitoringMetricsTest {
                 0,
                 0));
         ClaimedHealthChangeEvent claimedEvent = claimedEvent(true);
-        metrics.recordEventDeliveryClaims(List.of(claimedEvent, claimedEvent, claimedEvent, claimedEvent));
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
         metrics.recordEventDeliveryFinalization(
                 new EventDeliveryFinalization(
                         claimedEvent.payload().eventId(),
