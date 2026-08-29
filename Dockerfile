@@ -2,7 +2,7 @@ ARG OCI_SOURCE="https://github.com/ljkhyeong/baton-watch"
 ARG OCI_VERSION="0.1.0-SNAPSHOT"
 ARG OCI_REVISION="unknown"
 
-FROM eclipse-temurin:21.0.12_8-jdk-alpine-3.24@sha256:6ea5548706b60ac0a602eaf48af74792cbab012d90e811ca8db6184b16b5c3d6 AS build
+FROM eclipse-temurin:24-jdk-alpine-3.22@sha256:8fdbcb6bc6b846640cea7058e6eeb56c311fae4efaa506a213789134065c6b90 AS build
 WORKDIR /workspace
 COPY . .
 RUN chmod +x gradlew && ./gradlew --no-daemon :bootstrap:bootJar
@@ -40,7 +40,7 @@ RUN find /flyway/drivers -mindepth 1 -maxdepth 1 ! -name 'postgresql-*.jar' -exe
         /flyway/lib/flyway/flyway-sqlserver-*.jar \
     && rm -rf /flyway/lib/aad /flyway/lib/netty
 
-FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS migrations
+FROM eclipse-temurin:24-jre-alpine-3.22@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f AS migrations
 ARG OCI_SOURCE
 ARG OCI_VERSION
 ARG OCI_REVISION
@@ -72,7 +72,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
 
-FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS runtime
+FROM eclipse-temurin:24-jre-alpine-3.22@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f AS runtime
 ARG OCI_SOURCE
 ARG OCI_VERSION
 ARG OCI_REVISION
