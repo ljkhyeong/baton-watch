@@ -117,6 +117,9 @@ jobs:
       - name: 스테이징 데이터베이스 작업 검증
         run: ./ops/tests/staging-database-operation-test.sh
 
+      - name: 스테이징 URL 정책 검증
+        run: ./ops/tests/staging-url-policy-test.sh
+
       - name: 스테이징 이벤트 전달 사전 검사 검증
         run: ./ops/tests/staging-event-delivery-preflight-test.sh
 
