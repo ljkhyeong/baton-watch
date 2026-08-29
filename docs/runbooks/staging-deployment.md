@@ -22,6 +22,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 - PostgreSQL과 WATCH용 [compose.staging.yml](../../compose.staging.yml)
 - 호스트 포트를 공개하지 않는 경계를 유지하면서 `cloudflared`를 추가하는
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
+- 무료 OTLP 계정 사용이 확인된 경우에만 WATCH 메트릭 내보내기를 활성화하는
+  선택적 [compose.staging-observability.yml](../../compose.staging-observability.yml)
 - 비밀값이 없는 환경 템플릿인
   [ops/staging.env.example](../../ops/staging.env.example)
 - 로컬에서 빌드하고 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관한
@@ -41,7 +43,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 
 ## 네트워크 및 영속성 불변 조건
 
-두 Compose 파일을 모두 적용하면 다음 조건을 충족해야 합니다.
+기본 Compose와 터널 오버레이를 적용하면 다음 조건을 충족해야 합니다. 선택적
+관측 오버레이를 추가해도 같은 네트워크·포트 경계를 유지해야 합니다.
 
 - PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
   참여합니다.
@@ -167,14 +170,12 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 외부 대시보드·알림 전달 경로와 임계치가 모두 승인되고 장애 주입으로 검증되기
 전에는 이 문서의 공개 Cloudflare 배포 단계를 실행하지 마세요.
 
-Cloudflare에는 상태 경로와 인증된 모니터 경로를 구분한 요청 속도 제한을
-설정하세요. 모니터 경로의 허용량은 BATON의 정상 최대 동기화량보다 높고 검증된
-서버 처리량보다 낮아야 하며, 초과 요청은 터널과 WATCH에 도달하기 전에 `429`로
-거부해야 합니다. 공개 상태 경로에는 별도의 더 낮은 제한을 적용합니다. 제한값,
-적용 범위, 우회 목록과 `429` 외부 스모크 결과를 기록하고, 실제 BATON 요청과
-상태 점검이 정상적으로 통과하는지도 함께 확인하세요. WATCH의 인증과 16 KiB
-본문 제한, Tomcat 연결·대기열·워커 상한은 요청별 계약과 오리진 자원 경계일 뿐
-요청 빈도 제한을 대신하지 않습니다.
+상태 경로와 인증된 모니터 경로에는 서로 다른 요청 속도 제한이 필요하지만,
+비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한은 이 구성에 포함하지
+않습니다. 두 경로를 독립적으로 제한하고 `429`를 검증할 수 있는 비용 없는 대안이
+승인되기 전까지 공개 배포 차단 조건으로 남깁니다. WATCH의 인증과 16 KiB 본문
+제한, Tomcat 연결·대기열·워커 상한은 요청별 계약과 오리진 자원 경계일 뿐 요청
+빈도 제한을 대신하지 않습니다.
 
 ## Mac 준비
 
@@ -349,6 +350,43 @@ HikariCP 설정은 최대 풀 1~32, 최소 유휴 0~32, 연결·검증 250~30000
 쿼리 매개변수를 붙이지 마세요. pgJDBC 제한은 검증되는 `WATCH_DB_*` 설정으로만
 변경합니다.
 
+## 선택적 무료 OTLP 메트릭 내보내기
+
+이 단계는 선택 사항입니다. 환경 파일의 `WATCH_OTLP_METRICS_URL`을 비워 두면 관측
+오버레이를 적용하지 않고 OTLP 네트워크 요청도 발생하지 않습니다. 비용이 없는
+범위에서는 [Grafana Cloud Free](https://grafana.com/pricing/)처럼 계정 화면에서
+무료 플랜과 결제 없음이 확인되는 OTLP 서비스를 사용할 수 있습니다. 외부 서비스의
+요금제나 한도가 바뀌었거나 유료 전환이 필요한 경우에는 이 단계를 실행하지 마세요.
+이 저장소는 계정 생성, 유료 전환, 대시보드와 알림 생성을 자동화하지 않습니다.
+
+활성화할 때는 제공자 화면에서 메트릭용 전체 HTTPS OTLP 엔드포인트와 인증 헤더를
+확인합니다. 비밀 관리 시스템으로
+`$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization` 파일에
+`Basic <base64(instance-id:access-policy-token)>` 한 줄을 기록하고, 환경 파일의
+`WATCH_OTLP_METRICS_URL=` 뒤에는 제공자가 안내한 전체 메트릭 엔드포인트를
+입력합니다. 토큰이나 완성된 인증 헤더를 셸 명령행, 환경 변수, 저장소 또는 배포
+증거에 남기지 마세요.
+
+~~~bash
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+test -s "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+test -O "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+test -r "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+test -f "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+test ! -L "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
+grep -Eq '^WATCH_OTLP_METRICS_URL=https://[^[:space:]]+$' "$STAGING_ENV_FILE"
+~~~
+
+관측 오버레이는 인증 파일을 기존 `/run/watch-secrets` tmpfs로 복사하고 Spring
+`configtree`에서 읽습니다. 관리 포트 `8081`을 공개하거나 별도 수집기 컨테이너를
+추가하지 않습니다. 배포 뒤 제공자 화면에서 `baton_watch_check_attempts_total` 같은
+WATCH 메트릭이 도착하는지 확인하고 무료 사용량 화면도 함께 기록하세요. 이 외부
+확인을 수행하기 전에는 대시보드나 알림이 운영 중이라고 판단하지 않습니다.
+
+비활성화하려면 환경 파일의 값을 다시 `WATCH_OTLP_METRICS_URL=`로 비우고 아래
+`staging_compose` 헬퍼로 WATCH를 강제 재생성합니다. 헬퍼가 관측 오버레이를 제외한
+구성으로 다시 만들기 때문에 이후 OTLP 요청은 발생하지 않습니다.
+
 외부 데이터베이스 볼륨은 한 번만 생성하고, 이후 매 배포 전에 검사합니다.
 
 ~~~bash
@@ -365,14 +403,22 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 배포 중에 로컬에서 빌드한 SHA 태그 이미지를 레지스트리 이미지로 몰래 대체할 수
 없습니다.
 
-모든 작업에서 터널 오버레이를 사용하도록 헬퍼 하나를 먼저 정의합니다.
+모든 작업에서 터널 오버레이를 사용하고, 무료 OTLP 엔드포인트를 명시한 경우에만
+관측 오버레이를 추가하도록 헬퍼 하나를 먼저 정의합니다.
 
 ~~~bash
 staging_compose() {
+  local -a compose_files=(
+    -f compose.staging.yml
+    -f compose.staging-tunnel.yml
+  )
+  if grep -Eq '^WATCH_OTLP_METRICS_URL=https://[^[:space:]]+$' \
+    "$STAGING_ENV_FILE"; then
+    compose_files+=(-f compose.staging-observability.yml)
+  fi
   docker compose \
     --env-file "$STAGING_ENV_FILE" \
-    -f compose.staging.yml \
-    -f compose.staging-tunnel.yml \
+    "${compose_files[@]}" \
     "$@"
 }
 ~~~

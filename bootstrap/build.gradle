@@ -8,6 +8,7 @@ dependencies {
     implementation project(':adapter-out-persistence')
     implementation project(':adapter-out-external')
     compileOnly 'org.postgresql:postgresql'
+    implementation 'io.micrometer:micrometer-registry-otlp'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
