@@ -37,8 +37,7 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
                 BestEffortMetrics.record(() ->
                         metrics.eventDeliveryFinished(completedSample, recordedOutcome));
             }
-            BestEffortMetrics.record(() ->
-                    metrics.recordEventDeliveryAttempt(recordedOutcome));
+            metrics.recordEventDeliveryAttempt(recordedOutcome);
         }
     }
 }

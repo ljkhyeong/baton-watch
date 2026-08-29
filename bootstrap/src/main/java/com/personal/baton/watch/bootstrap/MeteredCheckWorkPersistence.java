@@ -21,7 +21,7 @@ final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
     @Override
     public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
         Optional<ClaimedCheck> claimed = delegate.claimDueCheck(leaseDuration);
-        claimed.ifPresent(item -> BestEffortMetrics.record(() -> metrics.recordCheckClaim(item)));
+        claimed.ifPresent(metrics::recordCheckClaim);
         return claimed;
     }
 
@@ -29,10 +29,10 @@ final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
     public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
         try {
             CheckFinalizationStatus status = delegate.finalizeCheck(finalization);
-            BestEffortMetrics.record(() -> metrics.recordCheckFinalization(status));
+            metrics.recordCheckFinalization(status);
             return status;
         } catch (RuntimeException failure) {
-            BestEffortMetrics.record(metrics::recordCheckFinalizationFailure);
+            metrics.recordCheckFinalizationFailure();
             throw failure;
         }
     }

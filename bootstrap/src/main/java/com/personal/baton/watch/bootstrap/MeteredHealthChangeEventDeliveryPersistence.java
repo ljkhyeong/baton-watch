@@ -25,8 +25,7 @@ final class MeteredHealthChangeEventDeliveryPersistence
     @Override
     public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
         Optional<ClaimedHealthChangeEvent> claimed = delegate.claimPendingEvent(leaseDuration);
-        claimed.ifPresent(item ->
-                BestEffortMetrics.record(() -> metrics.recordEventDeliveryClaim(item)));
+        claimed.ifPresent(metrics::recordEventDeliveryClaim);
         return claimed;
     }
 
@@ -34,10 +33,10 @@ final class MeteredHealthChangeEventDeliveryPersistence
     public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
         try {
             EventDeliveryFinalizationStatus status = delegate.finalizeDelivery(finalization);
-            BestEffortMetrics.record(() -> metrics.recordEventDeliveryFinalization(finalization, status));
+            metrics.recordEventDeliveryFinalization(finalization, status);
             return status;
         } catch (RuntimeException failure) {
-            BestEffortMetrics.record(metrics::recordEventDeliveryFinalizationFailure);
+            metrics.recordEventDeliveryFinalizationFailure();
             throw failure;
         }
     }
