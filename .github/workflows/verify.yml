@@ -274,7 +274,6 @@ jobs:
 
           # Trivy 0.74가 라이선스를 싣지 않지만 배포 POM은 Apache-2.0을 선언한다.
           approved_missing = {
-              "pkg:maven/org.flywaydb/flyway-database-cockroachdb@13.4.0",
               "pkg:maven/org.flywaydb/flyway-database-postgresql@13.4.0",
           }
           approved_alternatives = {
