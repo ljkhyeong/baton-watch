@@ -174,7 +174,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     @Test
-    void claimPendingEventsSkipsLockedLeadingEventWithoutWaiting() throws Exception {
+    void claimPendingEventSkipsLockedLeadingEventWithoutWaiting() throws Exception {
         UUID lockedEvent = createDeliveryEvent("resource:delivery-locked-leading");
         UUID followingEvent = createDeliveryEvent("resource:delivery-after-locked");
         DataSourceTransactionManager lockTransactionManager =

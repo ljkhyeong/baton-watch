@@ -160,7 +160,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     }
 
     @Test
-    void claimDueChecksSkipsLockedLeadingMonitorWithoutWaiting() throws Exception {
+    void claimDueCheckSkipsLockedLeadingMonitorWithoutWaiting() throws Exception {
         String lockedReference = "resource:check-locked-leading";
         String nextReference = "resource:check-after-locked";
         synchronize(
