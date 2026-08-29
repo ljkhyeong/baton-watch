@@ -4,30 +4,29 @@
 
 ## 현재 인계 상태
 
-- 2026-08-29 선택적 무료 OTLP 연동 변경과 검증 기록은
-  [PR #29](https://github.com/ljkhyeong/baton-watch/pull/29)에 있다.
+- 2026-08-29 저장소의 아웃바운드 안전 경계를 충족하지 않는 선택적 OTLP 전송과
+  스테이징 관측 오버레이를 제거하고 내부 Prometheus 조회만 유지했다.
 - 2026-08-29 점검·전달 영속성 포트를 실제 실행 방식에 맞는 단건 점유 계약으로
   좁히고, 계측 데코레이터가 업무 실패를 중복 변환하지 않도록 책임을 정리했다.
 - 2026-08-29 공개 스테이징 URL 검증을 Python 표준 라이브러리 기반 공통 정책으로
   통합하고, 카운터 계측 실패가 점검·전달 업무 결과를 바꾸지 않도록 격리했다.
 - 2026-08-29 Spring JDBC 구문 매개변수 로거를 차단하고 스테이징 URL 원문 경계와
   사전 검사 토큰 환경 정리를 강화했다.
-- 2026-08-29 Spring Boot OTLP 자동 구성을 실제 레지스트리까지 조립하고, 활성화
-  시 절대 HTTPS 엔드포인트를 요구하며 Prometheus와 Actuator 허용 경로를 실제
-  관리 포트에서 검증했다.
+- 2026-08-29 정적 Bearer 인증은 Spring Security Resource Server 모듈을 유지하되
+  JWT/JOSE 구현을 함께 가져오는 Boot 스타터는 제거했다. 이벤트 재시도 상한은
+  application 정책이 소유하고 카운터 계측 실패 격리는 한 번만 적용하도록 정리했다.
 - 2026-08-29 작업 주기 최소값과 기존 도메인·데이터베이스 상태 불변식, DNS 호출자
   중단 처리를 회귀 테스트로 고정했다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
   구축되거나 검증되지 않았다.
-- 내부 Prometheus를 유지하면서 표준 OTLP 메트릭을 내보낼 수 있는 선택적
-  스테이징 오버레이가 준비되어 있다. 기본값은 비활성화이며 외부 계정·대시보드·
-  알림은 생성되지 않았다.
+- 관리 포트의 내부 Prometheus 조회만 제공한다. 외부 메트릭 전송, 외부 계정,
+  대시보드와 알림은 구현하거나 생성하지 않았다.
 - BATON 콜백 사전 검사 뒤에만 토큰을 `configtree`로 주입해 전달을 켜는 선택적
   스테이징 이벤트 전달 오버레이가 준비되어 있다. 실제 콜백 전달은 검증하지 않았다.
-- Gradle·GitHub Actions의 GitHub Dependabot 보안 업데이트는 2026-08-29에
-  활성화했다. 컨테이너 기반 이미지·Compose·Alpine 패키지·Trivy 갱신 범위는
+- Gradle·GitHub Actions·Docker 기본 이미지의 주간 Dependabot 점검을 활성화했다.
+  다단계 Dockerfile·Compose·Alpine 패키지·Trivy의 추가 갱신 범위는
   `renovate.json`에 준비했지만 외부 Renovate 서비스는 활성화하지 않았다.
 
 ## 유지되는 구현 기준
@@ -50,14 +49,13 @@
 
 - `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
   :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 Gradle 9.7.1에서
-  371개 테스트를 실패·건너뜀 없이 실행했고, 실행 가능한 부트 JAR의 Apache-2.0
+  364개 테스트를 실패·건너뜀 없이 실행했고, 실행 가능한 부트 JAR의 Apache-2.0
   전문 검증을 통과했다.
 - 실제 PostgreSQL 18.6 격리 검증에서 런타임·소유자 비밀번호를 각각 교체한 뒤
   이전 자격 증명이 거부됐고, 원복 뒤 교체된 자격 증명이 거부됐으며 WATCH 재기동이
   정상 완료됐다.
-- 기본·터널·선택적 관측·선택적 이벤트 전달 오버레이의 스테이징 Compose 정책,
-  이미지 ID·아카이브
-  체크섬·복원, 데이터베이스 비밀 비노출, 이벤트 전달 사전 검사와 Compose 렌더링
+- 기본·터널·선택적 이벤트 전달 오버레이의 스테이징 Compose 정책, 이미지 ID·
+  아카이브 체크섬·복원, 데이터베이스 비밀 비노출, 이벤트 전달 사전 검사와 Compose 렌더링
   검증이 통과했다.
 - 비파괴 운영 셸 테스트 7종을 재실행했다. 공개 스모크 20개, 이벤트 전달 사전
   검사 12개, URL 원문 경계 18개, 로그 비식별화 감사 7개 격리 사례를 검증했다.
