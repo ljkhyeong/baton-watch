@@ -1,7 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -24,14 +23,35 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class MonitoringMetricsTest {
 
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
+    private static final Map<String, Set<String>> ALLOWED_TAG_KEYS = Map.ofEntries(
+            Map.entry("baton.watch.check.inflight", Set.of()),
+            Map.entry("baton.watch.check.schedule.delay", Set.of()),
+            Map.entry("baton.watch.check.claimed", Set.of()),
+            Map.entry("baton.watch.check.lease.recoveries", Set.of()),
+            Map.entry("baton.watch.check.attempts", Set.of("outcome")),
+            Map.entry("baton.watch.check.duration", Set.of("outcome")),
+            Map.entry("baton.watch.check.finalizations", Set.of("status")),
+            Map.entry("baton.watch.event.delivery.inflight", Set.of()),
+            Map.entry("baton.watch.event.delivery.backlog", Set.of()),
+            Map.entry("baton.watch.event.delivery.oldest.age", Set.of()),
+            Map.entry("baton.watch.event.delivery.claimed", Set.of()),
+            Map.entry("baton.watch.event.delivery.lease.recoveries", Set.of()),
+            Map.entry("baton.watch.event.delivery.attempts", Set.of("outcome")),
+            Map.entry("baton.watch.event.delivery.duration", Set.of("outcome")),
+            Map.entry("baton.watch.event.delivery.finalizations", Set.of("status")),
+            Map.entry("baton.watch.maintenance.items", Set.of("operation")),
+            Map.entry("baton.watch.database.clock.offset", Set.of()));
 
     @Test
     void emitsOnlyBoundedCheckAndDeliveryTags() {
@@ -114,14 +134,13 @@ class MonitoringMetricsTest {
                         .tag("outcome", "connect_timeout")
                         .timer()
                         .count());
-        assertTrue(registry.find("baton.watch.event.delivery.finalizations").meters().stream()
-                .allMatch(meter -> meter.getId().getTag("resourceReference") == null));
-        assertTrue(registry.find("baton.watch.check.attempts").meters().stream()
-                .allMatch(meter -> meter.getId().getTags().stream()
-                        .allMatch(tag -> tag.getKey().equals("outcome"))));
-        assertTrue(registry.find("baton.watch.check.duration").meters().stream()
-                .allMatch(meter -> meter.getId().getTags().stream()
-                        .allMatch(tag -> tag.getKey().equals("outcome"))));
+
+        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(1))));
+        metrics.recordStaleProjections(1);
+        metrics.recordPurgedAttempts(1);
+        metrics.recordPurgedDeliveredEvents(1);
+        metrics.updateDatabaseClockOffset(Duration.ofSeconds(1));
+        assertOnlyAllowedTags(registry);
 
         metrics.updateCheckScheduleDelay(new DueCheckBatchResult(0, 0, 0, 0, Duration.ZERO));
         assertEquals(0.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
@@ -203,5 +222,21 @@ class MonitoringMetricsTest {
                 1,
                 NOW,
                 recoveredLease);
+    }
+
+    private static void assertOnlyAllowedTags(SimpleMeterRegistry registry) {
+        Map<String, Set<String>> actualTagKeys = registry.getMeters().stream()
+                .filter(meter -> meter.getId().getName().startsWith("baton.watch."))
+                .collect(Collectors.toMap(
+                        meter -> meter.getId().getName(),
+                        meter -> meter.getId().getTags().stream()
+                                .map(tag -> tag.getKey())
+                                .collect(Collectors.toUnmodifiableSet()),
+                        (left, right) -> {
+                            assertEquals(left, right);
+                            return left;
+                        }));
+
+        assertEquals(ALLOWED_TAG_KEYS, actualTagKeys);
     }
 }
