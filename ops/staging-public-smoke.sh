@@ -75,8 +75,13 @@ read -r status_code redirect_count <<<"$status_result"
 if [[ "$status_code" != "200" || "$redirect_count" != "0" ]]; then
     fail "공개 상태 요청은 리다이렉트 없이 HTTP 200이어야 합니다"
 fi
-if grep -Eiq '^CF-Cache-Status:[[:space:]]*HIT[[:space:]]*$' "$response_headers"; then
-    fail "공개 상태 응답이 Cloudflare 캐시에서 제공됐습니다"
+if [[ "$(grep -Eic '^CF-Ray:' "$response_headers" || true)" != "1" ]] \
+        || ! grep -Eiq '^CF-Ray:[[:space:]]*[^[:space:]]+' "$response_headers"; then
+    fail "공개 상태 응답에서 Cloudflare 처리 증거를 확인할 수 없습니다"
+fi
+if [[ "$(grep -Eic '^CF-Cache-Status:' "$response_headers" || true)" != "1" ]] \
+        || ! grep -Eiq '^CF-Cache-Status:[[:space:]]*(DYNAMIC|BYPASS)[[:space:]]*$' "$response_headers"; then
+    fail "공개 상태 응답이 캐시 비대상 또는 우회 응답이 아닙니다"
 fi
 if ! python3 - "$response_body" <<'PY'
 import json
