@@ -4,8 +4,8 @@
 
 ## 현재 인계 상태
 
-- 작업 브랜치는 `codex/followup-maintenance-20260829`이며, 공개 PR은
-  [#28](https://github.com/ljkhyeong/baton-watch/pull/28)이다.
+- 2026-08-29 후속 유지보수 변경과 검증 기록은
+  [PR #28](https://github.com/ljkhyeong/baton-watch/pull/28)에 있다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
@@ -59,7 +59,7 @@
 
 ## 다음 작업 진입점
 
-1. PR #28의 최신 `Verify / verify` 결과를 확인한다.
+1. `main`의 최신 `Verify / verify`와 공급망 출처 증명 결과를 확인한다.
 2. 공개 배포를 추진한다면 위 차단 조건부터 별도 운영 승인으로 해소한다.
 3. 승인 뒤에만 [스테이징 배포 런북](docs/runbooks/staging-deployment.md)을 처음부터
    실행하고 내부·외부 스모크와 로그 비식별화 증거를 보관한다.
