@@ -1,6 +1,9 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
@@ -37,17 +40,20 @@ class MeteredHealthChangeEventSenderTest {
     }
 
     @Test
-    void convertsUnexpectedSenderErrorsAndRecordsTheInternalOutcome() {
+    void recordsUnexpectedSenderErrorsAndPropagatesTheOriginalFailure() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        IllegalStateException expected = new IllegalStateException("sensitive callback detail");
         MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
                 ignored -> {
-                    throw new IllegalStateException("sensitive callback detail");
+                    throw expected;
                 },
                 new MonitoringMetrics(registry));
 
-        EventDeliveryObservation observation = sender.send(null);
+        IllegalStateException actual = assertThrows(
+                IllegalStateException.class,
+                () -> sender.send(null));
 
-        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertSame(expected, actual);
         assertEquals(
                 1.0,
                 registry.get("baton.watch.event.delivery.attempts")
@@ -57,7 +63,7 @@ class MeteredHealthChangeEventSenderTest {
     }
 
     @Test
-    void convertsNullSenderResultsToInternalFailures() {
+    void recordsNullSenderResultsWithoutChangingThem() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
                 ignored -> null,
@@ -65,7 +71,7 @@ class MeteredHealthChangeEventSenderTest {
 
         EventDeliveryObservation observation = sender.send(null);
 
-        assertEquals(EventDeliveryOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertNull(observation);
         assertEquals(
                 1.0,
                 registry.get("baton.watch.event.delivery.attempts")

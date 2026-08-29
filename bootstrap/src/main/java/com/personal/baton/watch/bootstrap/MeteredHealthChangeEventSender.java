@@ -1,10 +1,10 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
+import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import io.micrometer.core.instrument.Timer;
-import java.util.Objects;
 
 final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
 
@@ -24,20 +24,21 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
         } catch (RuntimeException ignored) {
             // 텔레메트리 실패가 이벤트 전달을 막아서는 안 된다.
         }
-        EventDeliveryObservation observation;
+        EventDeliveryObservation observation = null;
         try {
-            observation = Objects.requireNonNull(delegate.send(payload), "delivery observation");
-        } catch (RuntimeException ignored) {
-            observation = EventDeliveryObservation.internalFailure();
-        }
-        EventDeliveryObservation recordedObservation = observation;
-        if (sample != null) {
-            Timer.Sample completedSample = sample;
+            observation = delegate.send(payload);
+            return observation;
+        } finally {
+            EventDeliveryOutcome recordedOutcome = observation == null
+                    ? EventDeliveryOutcome.INTERNAL_FAILURE
+                    : observation.outcome();
+            if (sample != null) {
+                Timer.Sample completedSample = sample;
+                BestEffortMetrics.record(() ->
+                        metrics.eventDeliveryFinished(completedSample, recordedOutcome));
+            }
             BestEffortMetrics.record(() ->
-                    metrics.eventDeliveryFinished(completedSample, recordedObservation.outcome()));
+                    metrics.recordEventDeliveryAttempt(recordedOutcome));
         }
-        BestEffortMetrics.record(() ->
-                metrics.recordEventDeliveryAttempt(recordedObservation.outcome()));
-        return observation;
     }
 }

@@ -3,7 +3,6 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
-import java.util.Objects;
 
 final class MeteredUrlChecker implements UrlChecker {
 
@@ -17,17 +16,17 @@ final class MeteredUrlChecker implements UrlChecker {
 
     @Override
     public CheckObservation check(TargetUrl targetUrl) {
-        CheckObservation observation;
+        CheckObservation observation = null;
         metrics.checkStarted();
         try {
-            observation = Objects.requireNonNull(delegate.check(targetUrl), "check observation");
-        } catch (RuntimeException ignored) {
-            observation = CheckObservation.internalFailure();
+            observation = delegate.check(targetUrl);
+            return observation;
         } finally {
             metrics.checkFinished();
+            CheckObservation recordedObservation = observation == null
+                    ? CheckObservation.internalFailure()
+                    : observation;
+            BestEffortMetrics.record(() -> metrics.recordCheckAttempt(recordedObservation));
         }
-        CheckObservation recordedObservation = observation;
-        BestEffortMetrics.record(() -> metrics.recordCheckAttempt(recordedObservation));
-        return observation;
     }
 }
