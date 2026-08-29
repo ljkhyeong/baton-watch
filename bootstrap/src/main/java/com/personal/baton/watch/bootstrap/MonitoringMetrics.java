@@ -185,13 +185,14 @@ final class MonitoringMetrics {
 
     private void increment(String name, double amount) {
         if (amount > 0) {
-            registry.counter(name).increment(amount);
+            BestEffortMetrics.record(() -> registry.counter(name).increment(amount));
         }
     }
 
     private void increment(String name, String tagName, String tagValue, double amount) {
         if (amount > 0) {
-            registry.counter(name, tagName, tagValue).increment(amount);
+            BestEffortMetrics.record(() ->
+                    registry.counter(name, tagName, tagValue).increment(amount));
         }
     }
 

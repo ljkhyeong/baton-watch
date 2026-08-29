@@ -1,6 +1,11 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -18,6 +23,7 @@ import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
@@ -200,6 +206,17 @@ class MonitoringMetricsTest {
         metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
 
         assertEquals(-1.5, registry.get("baton.watch.database.clock.offset").gauge().value());
+    }
+
+    @Test
+    void ignoresCounterFailures() {
+        MeterRegistry registry = mock(MeterRegistry.class);
+        when(registry.counter(anyString(), any(String[].class)))
+                .thenThrow(new IllegalStateException("meter registry unavailable"));
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+
+        assertDoesNotThrow(() -> metrics.recordCheckClaim(claimedCheck(false)));
+        assertDoesNotThrow(() -> metrics.recordStaleProjections(1));
     }
 
     private static ClaimedCheck claimedCheck(boolean recoveredLease) {
