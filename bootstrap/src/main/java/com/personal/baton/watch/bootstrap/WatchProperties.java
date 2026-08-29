@@ -18,16 +18,16 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("watch")
 public record WatchProperties(
         String apiToken,
-        @NotNull @DurationMin(inclusive = false) Duration pollInterval,
-        @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
+        @NotNull @DurationMin(seconds = 1) Duration pollInterval,
+        @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration leaseDuration,
-        @NotNull @DurationMin(inclusive = false)
+        @NotNull @DurationMin(seconds = 60)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration checkInterval,
-        @NotNull @DurationMin(inclusive = false)
+        @NotNull @DurationMin(seconds = 30)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration internalFailureRetryInterval,
         @NotNull @DurationMin(inclusive = false)
