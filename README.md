@@ -24,10 +24,10 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 ## 기술과 모듈
 
 - Java 21
-- Spring Boot 4.1.0
-- Gradle 9.2.1
+- Spring Boot 4.1.1
+- Gradle 9.7.1
 - PostgreSQL 18.6
-- Flyway 12.11.0 마이그레이션 이미지
+- Flyway 13.4.0 마이그레이션 이미지
 
 운영 코드의 의존성은 안쪽을 향합니다.
 
@@ -37,7 +37,7 @@ bootstrap -> adapters -> application -> domain
 
 ## 빌드와 실행
 
-저장소에는 공식 SHA-256 체크섬과 함께 9.2.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
+저장소에는 공식 SHA-256 체크섬과 함께 9.7.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
 
 HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는 최대 풀 이하여야 합니다. 연결·검증 제한은 각각 250~30000ms이며 검증 제한이 연결 제한보다 작아야 합니다. 유휴 10000~1800000ms와 생존 확인 30000~1800000ms를 허용하며, 가변 풀의 유휴 제한은 최대 수명 30000~3600000ms보다 1000ms 이상 짧고 생존 확인은 최대 수명보다 짧아야 합니다. 초기화 실패 제한은 1~30000ms입니다. pgJDBC의 연결·로그인·취소 제한은 1~30초, 소켓 제한은 1~120초며, `WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다. `SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 하며, 검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다. 환경 변수 이름과 로컬 기본값은 [.env.example](.env.example)을 참고하세요.
 

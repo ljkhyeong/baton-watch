@@ -3,10 +3,13 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.task.TaskSchedulingAutoConfiguration;
@@ -91,32 +94,39 @@ class WorkerSchedulingConfigurationTest {
     }
 
     @Test
-    void routesEveryScheduledMethodToItsOwnedScheduler() throws NoSuchMethodException {
-        assertScheduler(
-                MonitoringScheduler.class.getDeclaredMethod("checkDueMonitors"),
-                WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER);
-        assertScheduler(
-                MonitoringScheduler.class.getDeclaredMethod("markStaleProjections"),
+    void routesEveryScheduledMethodToItsOwnedScheduler() {
+        Map<String, String> expectedSchedulers = Map.of(
+                "MonitoringScheduler#checkDueMonitors",
+                WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER,
+                "MonitoringScheduler#markStaleProjections",
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
+                "MonitoringScheduler#purgeAttemptHistory",
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
+                "MonitoringScheduler#updateDatabaseClockOffset",
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
+                "EventDeliveryScheduler#deliverPendingEvents",
+                WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER,
+                "EventDeliveryMaintenanceScheduler#purgeDeliveredEventHistory",
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
+                "EventDeliveryMaintenanceScheduler#refreshEventDeliveryBacklog",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
-        assertScheduler(
-                MonitoringScheduler.class.getDeclaredMethod("purgeAttemptHistory"),
-                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
-        assertScheduler(
-                MonitoringScheduler.class.getDeclaredMethod("updateDatabaseClockOffset"),
-                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
-        assertScheduler(
-                EventDeliveryScheduler.class.getDeclaredMethod("deliverPendingEvents"),
-                WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER);
-        assertScheduler(
-                EventDeliveryMaintenanceScheduler.class.getDeclaredMethod("purgeDeliveredEventHistory"),
-                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
-        assertScheduler(
-                EventDeliveryMaintenanceScheduler.class.getDeclaredMethod("refreshEventDeliveryBacklog"),
-                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER);
+
+        Map<String, String> actualSchedulers = List.of(
+                        MonitoringScheduler.class,
+                        EventDeliveryScheduler.class,
+                        EventDeliveryMaintenanceScheduler.class)
+                .stream()
+                .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
+                .filter(method -> method.isAnnotationPresent(Scheduled.class))
+                .collect(Collectors.toMap(
+                        WorkerSchedulingConfigurationTest::methodKey,
+                        method -> method.getAnnotation(Scheduled.class).scheduler()));
+
+        assertThat(actualSchedulers).isEqualTo(expectedSchedulers);
     }
 
-    private static void assertScheduler(Method method, String expectedScheduler) {
-        assertThat(method.getAnnotation(Scheduled.class).scheduler()).isEqualTo(expectedScheduler);
+    private static String methodKey(Method method) {
+        return method.getDeclaringClass().getSimpleName() + "#" + method.getName();
     }
 
     private static void await(CountDownLatch latch) {

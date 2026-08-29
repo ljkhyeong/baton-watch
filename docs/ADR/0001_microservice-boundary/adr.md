@@ -12,7 +12,7 @@
 
 ## 결정
 
-BATON WATCH를 독립적인 Java 21 / Spring Boot 4.1.0 서비스로 만든다.
+BATON WATCH를 독립적인 Java 21 / Spring Boot 4.1.1 서비스로 만든다.
 `com.personal.baton.watch` 아래의 여섯 Gradle 모듈에서 운영 의존성 방향을
 `bootstrap -> adapters -> application -> domain`으로 유지한다.
 
