@@ -36,7 +36,7 @@ subprojects {
             dependency 'org.apache.httpcomponents.core5:httpcore5-h2:5.4.3'
             dependency 'org.flywaydb:flyway-core:12.11.0'
             dependency 'org.flywaydb:flyway-database-postgresql:12.11.0'
-            dependency 'org.postgresql:postgresql:42.7.12'
+            dependency 'org.postgresql:postgresql:42.7.13'
         }
     }
 
