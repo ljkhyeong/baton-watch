@@ -177,10 +177,14 @@ assert_failure "" \
 assert_failure "" \
     WATCH_EVENT_DELIVERY_ENDPOINT="https://-bad.example.com/api/v1/internal/resource-health-events"
 assert_failure "" \
+    WATCH_PUBLIC_BASE_URL="https://2130706433"
+assert_failure "" \
+    WATCH_EVENT_DELIVERY_ENDPOINT="https://0x7f.0.0.1/api/v1/internal/resource-health-events"
+assert_failure "" \
     WATCH_EVENT_DELIVERY_ENABLED="false"
 assert_failure "watch" \
     FAKE_WATCH_STATUS="503"
 assert_failure $'watch\nreceiver' \
     FAKE_RECEIVER_STATUS="400"
 
-printf '[staging-event-delivery-preflight-test] 10개 사례와 curl 요청 계약이 통과했습니다\n'
+printf '[staging-event-delivery-preflight-test] 12개 사례와 curl 요청 계약이 통과했습니다\n'

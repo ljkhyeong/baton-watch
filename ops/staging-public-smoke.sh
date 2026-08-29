@@ -5,6 +5,9 @@ set +x
 umask 077
 
 readonly PREFIX="[staging-public-smoke]"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+readonly URL_POLICY="$SCRIPT_DIR/staging-url-policy.py"
 
 fail() {
     printf '%s %s\n' "$PREFIX" "$1" >&2
@@ -24,46 +27,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     fail "python3가 필요합니다"
 fi
 
-if ! python3 - "$WATCH_PUBLIC_BASE_URL" <<'PY'
-import ipaddress
-import re
-import sys
-from urllib.parse import urlsplit
-
-value = sys.argv[1]
-try:
-    parsed = urlsplit(value)
-    port = parsed.port
-except ValueError:
-    raise SystemExit(1)
-
-host = parsed.hostname
-if (
-    len(value) > 2048
-    or parsed.scheme != "https"
-    or host is None
-    or parsed.username is not None
-    or parsed.password is not None
-    or port not in (None, 443)
-    or parsed.path not in ("", "/")
-    or parsed.query
-    or parsed.fragment
-):
-    raise SystemExit(1)
-
-try:
-    ipaddress.ip_address(host)
-except ValueError:
-    labels = host.split(".")
-    if not labels or any(
-        not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
-        for label in labels
-    ):
-        raise SystemExit(1)
-else:
-    raise SystemExit(1)
-PY
-then
+if ! printf '%s' "$WATCH_PUBLIC_BASE_URL" | python3 "$URL_POLICY" origin; then
     fail "WATCH_PUBLIC_BASE_URL은 기본 HTTPS 포트의 DNS 오리진이어야 합니다"
 fi
 
