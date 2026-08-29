@@ -4,8 +4,8 @@
 
 ## 현재 인계 상태
 
-- 2026-08-29 후속 유지보수 변경과 검증 기록은
-  [PR #28](https://github.com/ljkhyeong/baton-watch/pull/28)에 있다.
+- 2026-08-29 선택적 무료 OTLP 연동 변경과 검증 기록은
+  [PR #29](https://github.com/ljkhyeong/baton-watch/pull/29)에 있다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
