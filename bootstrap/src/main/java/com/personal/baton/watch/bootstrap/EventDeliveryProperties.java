@@ -25,12 +25,8 @@ public record EventDeliveryProperties(
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration leaseDuration,
-        @NotNull @DurationMin(seconds = 5)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
-        Duration initialRetryDelay,
-        @NotNull @DurationMin(seconds = 5)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
-        Duration maxRetryDelay,
+        @NotNull @DurationMin(seconds = 5) Duration initialRetryDelay,
+        @NotNull @DurationMin(seconds = 5) Duration maxRetryDelay,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration retention,
