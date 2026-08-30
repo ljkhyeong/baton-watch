@@ -3,7 +3,7 @@
 상태: 채택됨
 
 날짜: 2026-08-01
-수정일: 2026-08-30
+수정일: 2026-08-31
 
 ## 배경
 
@@ -97,6 +97,11 @@ HTTP 요청은 실행기에 제출하기 전에 만들고, JDK `FutureTask.done(
 실제 연결 취소에 연결한다. 실행기는 완료되지 않은 작업만 추적하며, 종료 시
 새 제출을 차단한 뒤 실행 중인 작업과 대기 작업을 취소한다. 취소된 대기 작업의
 호출자도 즉시 반환하며 별도 감시 스레드나 소켓 관리 구현은 두지 않는다.
+
+점검과 전달의 DNS 실행기는 JDK `shutdownNow()`가 반환한 미실행 작업의
+`Future`를 `cancel(false)`로 취소한다. 호출자의 `CancellationException`은
+`INTERNAL_FAILURE`로 바꿔 대상의 DNS 장애와 구분한다. 실행 중인 JVM 리졸버를
+강제로 멈추는 별도 구현은 추가하지 않는다.
 
 Bootstrap은 Apache HttpClient의 원본 헤더, wire, 구현과 TLS 로거 범주 및
 Spring JDBC의 `StatementCreatorUtils` 구문 매개변수 로거를 `OFF`로 고정한다.
