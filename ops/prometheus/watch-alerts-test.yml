@@ -1,0 +1,101 @@
+rule_files:
+  - watch-alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: 지속 장애 감지와 복구
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="watch"}
+        values: '0x10 1x10'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",outcome="ERROR"}
+        values: '0+1x10 10x10'
+      - series: baton_watch_check_finalizations_total{job="baton-watch",instance="watch",status="failure"}
+        values: '0+1x10 10x10'
+      - series: baton_watch_event_delivery_lease_recoveries_total{job="baton-watch",instance="watch"}
+        values: '0+1x10 10x10'
+      - series: baton_watch_check_schedule_delay_seconds{job="baton-watch",instance="watch"}
+        values: '180x10 0x10'
+      - series: baton_watch_database_clock_offset_seconds{job="baton-watch",instance="watch"}
+        values: '-2x10 0x10'
+      - series: baton_watch_event_delivery_oldest_age_seconds{job="baton-watch",instance="watch",event_delivery_enabled="true"}
+        values: '1000x10 0x10'
+      - series: baton_watch_event_delivery_backlog{job="baton-watch",instance="watch",event_delivery_enabled="true"}
+        values: '10x10 0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WatchScrapeFailed
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: critical}
+            exp_annotations: {summary: WATCH 메트릭 수집 실패}
+      - eval_time: 10m
+        alertname: WatchScheduledFailures
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 예약 작업 반복 실패}
+      - eval_time: 10m
+        alertname: WatchFinalizationFailures
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 완료 처리 반복 실패}
+      - eval_time: 10m
+        alertname: WatchLeaseRecoveryBurst
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 만료 리스 반복 회수}
+      - eval_time: 10m
+        alertname: WatchCheckScheduleDelayed
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 점검 일정 지연}
+      - eval_time: 10m
+        alertname: WatchDatabaseClockOffset
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH와 DB 시계 편차 증가}
+      - eval_time: 10m
+        alertname: WatchEventDeliveryDelayed
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 상태 변경 이벤트 전달 지연}
+    promql_expr_test:
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 1m
+        exp_samples: []
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 20m
+        exp_samples: []
+  - name: 정상 환경과 전달 비활성 및 카운터 초기화
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="watch"}
+        values: '1x15'
+      - series: baton_watch_check_finalizations_total{job="baton-watch",instance="watch",status="failure"}
+        values: '10x5 0x10'
+      - series: baton_watch_event_delivery_backlog{job="baton-watch",instance="disabled",event_delivery_enabled="false"}
+        values: '1000x15'
+      - series: baton_watch_event_delivery_oldest_age_seconds{job="baton-watch",instance="disabled",event_delivery_enabled="false"}
+        values: '10000x15'
+      - series: baton_watch_event_delivery_backlog{job="baton-watch",instance="unlabelled"}
+        values: '1000x15'
+      - series: baton_watch_event_delivery_oldest_age_seconds{job="baton-watch",instance="unlabelled"}
+        values: '10000x15'
+      - series: baton_watch_check_schedule_delay_seconds{job="baton-watch",instance="watch"}
+        values: '120x15'
+      - series: baton_watch_database_clock_offset_seconds{job="baton-watch",instance="watch"}
+        values: '1 -1 1 -1 1 -1 1 -1 1 -1 1 -1 1 -1 1 -1'
+    promql_expr_test:
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 10m
+        exp_samples: []
+  - name: 수집 대상 자체가 사라진 경우
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WatchScrapeTargetMissing
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: WatchScrapeTargetMissing
+        exp_alerts:
+          - exp_labels: {job: baton-watch, severity: critical}
+            exp_annotations: {summary: WATCH 수집 대상 누락}

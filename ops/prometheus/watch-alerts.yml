@@ -1,0 +1,63 @@
+# 배포 예시다. 승인된 내부 수집 경로와 알림 수신자는 별도로 구성해야 한다.
+groups:
+  - name: baton-watch
+    rules:
+      - alert: WatchScrapeFailed
+        expr: up{job="baton-watch"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: WATCH 메트릭 수집 실패
+      - alert: WatchScrapeTargetMissing
+        expr: absent(up{job="baton-watch"})
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: WATCH 수집 대상 누락
+      - alert: WatchScheduledFailures
+        expr: sum by (job, instance) (increase(tasks_scheduled_execution_seconds_count{job="baton-watch",outcome="ERROR",code_namespace=~"com[.]personal[.]baton[.]watch[.]bootstrap[.].*"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 예약 작업 반복 실패
+      - alert: WatchFinalizationFailures
+        expr: sum by (job, instance) (increase({__name__=~"baton_watch_(check|event_delivery)_finalizations_total",job="baton-watch",status="failure"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 완료 처리 반복 실패
+      - alert: WatchLeaseRecoveryBurst
+        expr: sum by (job, instance) (increase({__name__=~"baton_watch_(check|event_delivery)_lease_recoveries_total",job="baton-watch"}[5m])) >= 3
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 만료 리스 반복 회수
+      - alert: WatchCheckScheduleDelayed
+        expr: baton_watch_check_schedule_delay_seconds{job="baton-watch"} > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 점검 일정 지연
+      - alert: WatchDatabaseClockOffset
+        expr: abs(baton_watch_database_clock_offset_seconds{job="baton-watch"}) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH와 DB 시계 편차 증가
+      - alert: WatchEventDeliveryDelayed
+        expr: |
+          (baton_watch_event_delivery_oldest_age_seconds{job="baton-watch",event_delivery_enabled="true"} > 900)
+          and on (job, instance)
+          (baton_watch_event_delivery_backlog{job="baton-watch",event_delivery_enabled="true"} > 0)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 상태 변경 이벤트 전달 지연

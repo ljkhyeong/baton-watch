@@ -23,6 +23,18 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
+        "/^ops/tests/prometheus-rules-test\\.sh$/"
+      ],
+      "matchStrings": [
+        "PROMETHEUS_IMAGE='prom/prometheus:(?<currentValue>[^@']+)@(?<currentDigest>sha256:[0-9a-f]{64})'"
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "prom/prometheus",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
         "/^Dockerfile$/"
       ],
       "matchStrings": [
