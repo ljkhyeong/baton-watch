@@ -4,6 +4,9 @@
 
 ## 현재 인계 상태
 
+- 2026-08-30 설정 검증 테스트의 예외 원인 탐색을 AssertJ로 교체하고, HTTP 설정
+  레코드 생성만 확인하던 테스트를 실제 시간 제한 계산 테스트로 바꿨다.
+  이번 검증 결과와 이전 작업의 운영 검증 기록을 구분했다.
 - 2026-08-30 예약 작업 관측 연결을 Spring Boot 자동 구성에 위임하고, 모니터·점검
   영속성 어댑터를 `JdbcClient`로 통일했으며 실행기 테스트는 진단용 스레드 이름
   접두사만 검증하도록 완화했다.
@@ -53,7 +56,29 @@
 
 ## 이번 변경의 검증 상태
 
-- `./gradlew --no-daemon test`가 364개 테스트를 실패·건너뜀 없이 실행했다.
+- 검증 대상 코드 리비전은 `94d14ed`다. 이번 변경은 테스트와 인계 문서에 한정되며
+  운영 코드는 수정하지 않았다.
+- `./gradlew --no-daemon :bootstrap:test --tests '*ConfigurationPropertiesValidationTest'
+  --tests '*WatchPropertiesTest' :adapter-out-external:test
+  --tests '*ApacheHttpClientLimitsTest'`로 관련 테스트 14개를 통과했다.
+- `./gradlew --no-daemon test --rerun-tasks --no-build-cache`로 전체 테스트 365개를
+  실패·오류·건너뜀 없이 통과했다. 6개 모듈의 테스트 작업을 모두 다시 실행했으며,
+  `UP-TO-DATE`나 빌드 캐시의 테스트 결과를 재사용하지 않았다.
+- 이전 운영 검증 이후의 Java/Spring 리팩터링을 반영한 배포 이미지 재빌드와
+  운영 스모크는 수행하지 않았다. 아래 이전 기록을 현재 코드의 운영 검증 결과로
+  사용하지 않는다.
+- 실제 공개 스테이징 배포, 외부 HTTPS 스모크와 외부 로그 감사는 수행하지 않았다.
+- PR은 최신 HEAD에서 `Verify / verify`가 성공해야 병합할 수 있다.
+
+### 이전 작업에서 인계된 검증 기록
+
+다음은 이전 작업에서 남긴 결과이며 이번 변경에서 재실행하지 않았다.
+당시 이미지 빌드의 정확한 코드 리비전은 이 문서에 기록되어 있지 않다.
+
+- 직전 `./gradlew --no-daemon test` 실행은 성공했고, 테스트 결과 파일에는
+  364개 테스트가 실패·오류·건너뜀 없이 기록됐다. 다만 `bootstrap`,
+  `adapter-out-external`, `adapter-out-persistence`의 테스트 작업만 실행됐고
+  나머지 3개 모듈의 테스트 작업은 `UP-TO-DATE`였다.
 - `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
   :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 Gradle 9.7.1에서
   364개 테스트를 실패·건너뜀 없이 실행했고, 실행 가능한 부트 JAR의 Apache-2.0
@@ -69,11 +94,9 @@
   검사 9개, URL 원문 경계 27개, 로그 비식별화 감사 7개 격리 사례를 검증했다.
   공통 URL 정책의 Python 구문, 전체 운영 셸 파일의 Bash 구문과 로컬 고정
   `koalaman/shellcheck:v0.11.0` 정적 검사가 통과했다.
-- 현재 코드 리비전으로 배포 이미지 세 개를 빌드한 뒤 실제 PostgreSQL 역할 분리,
+- 당시 코드로 배포 이미지 세 개를 빌드한 뒤 실제 PostgreSQL 역할 분리,
   Flyway V1~V4, 비밀번호 교체·원복과 WATCH 재기동 스모크가 통과했다. 이미지는
   외부 레지스트리에 게시하거나 배포하지 않았다.
-- 실제 공개 스테이징 배포, 외부 HTTPS 스모크와 외부 로그 감사는 수행하지 않았다.
-- PR은 최신 HEAD에서 `Verify / verify`가 성공해야 병합할 수 있다.
 
 ## 공개 배포 차단 조건
 
