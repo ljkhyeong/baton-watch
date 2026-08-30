@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -9,9 +10,12 @@ import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -87,6 +91,47 @@ class BoundedDnsLookupTest {
                     () -> lookup.resolve("public.example", Duration.ofSeconds(1)));
 
             assertEquals(DnsLookupException.Reason.INTERNAL_FAILURE, failure.reason());
+        }
+    }
+
+    @Test
+    void shutdownCancelsQueuedLookupsWithoutWaitingForTheirDeadline() throws Exception {
+        ArrayBlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(1);
+        ExecutorService executor = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, queue);
+        CountDownLatch releaseWorker = new CountDownLatch(1);
+        AtomicBoolean resolverCalled = new AtomicBoolean();
+        BoundedDnsLookup lookup = new BoundedDnsLookup(executor, hostname -> {
+            resolverCalled.set(true);
+            return new InetAddress[] {InetAddress.getLoopbackAddress()};
+        });
+        ExecutorService caller = Executors.newSingleThreadExecutor();
+
+        try {
+            executor.execute(() -> {
+                try {
+                    releaseWorker.await();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            Future<DnsLookupException> result = caller.submit(() -> assertThrows(
+                    DnsLookupException.class,
+                    () -> lookup.resolve("queued.example", Duration.ofSeconds(10))));
+            Runnable queued = queue.poll(1, TimeUnit.SECONDS);
+            assertNotNull(queued);
+            queue.add(queued);
+
+            lookup.close();
+
+            assertEquals(
+                    DnsLookupException.Reason.INTERNAL_FAILURE,
+                    result.get(1, TimeUnit.SECONDS).reason());
+            assertFalse(resolverCalled.get());
+        } finally {
+            releaseWorker.countDown();
+            lookup.close();
+            caller.shutdownNow();
+            assertTrue(caller.awaitTermination(1, TimeUnit.SECONDS));
         }
     }
 
