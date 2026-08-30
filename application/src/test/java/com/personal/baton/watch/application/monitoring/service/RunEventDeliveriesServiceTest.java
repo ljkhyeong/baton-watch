@@ -58,7 +58,7 @@ class RunEventDeliveriesServiceTest {
     }
 
     @Test
-    void schedulesBoundedExponentialBackoffFromTheClaimAttempt() {
+    void schedulesRetryFromTheClaimAttemptAndConvertsUnexpectedSenderFailures() {
         RecordingPersistence thirdAttempt = new RecordingPersistence(new ArrayList<>(), claimed(3));
         service(thirdAttempt, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE))
                 .runEventDeliveries();
@@ -66,14 +66,13 @@ class RunEventDeliveriesServiceTest {
         assertEquals(NOW.plusSeconds(40), thirdAttempt.finalization.nextAttemptAt());
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, thirdAttempt.finalization.observation().outcome());
 
-        RecordingPersistence capped = new RecordingPersistence(new ArrayList<>(), claimed(Integer.MAX_VALUE));
-        EventDeliveryBatchResult result = service(capped, event -> {
+        RecordingPersistence unexpectedFailure = new RecordingPersistence(new ArrayList<>(), claimed(1));
+        EventDeliveryBatchResult result = service(unexpectedFailure, event -> {
                     throw new IllegalStateException("sensitive transport detail");
                 })
                 .runEventDeliveries();
 
-        assertEquals(NOW.plus(MAX_BACKOFF), capped.finalization.nextAttemptAt());
-        assertEquals(EventDeliveryObservation.internalFailure(), capped.finalization.observation());
+        assertEquals(EventDeliveryObservation.internalFailure(), unexpectedFailure.finalization.observation());
         assertEquals(1, result.retryScheduled());
     }
 

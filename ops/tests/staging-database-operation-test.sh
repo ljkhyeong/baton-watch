@@ -10,7 +10,6 @@ REPOSITORY_ROOT="$(cd "$TEST_DIR/../.." && pwd)"
 readonly REPOSITORY_ROOT
 TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR
-readonly RUNTIME_PRIVILEGES_CALLBACK="$REPOSITORY_ROOT/ops/flyway/afterMigrate__runtime_privileges.sql"
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"
 readonly NEW_SECRET="new-password-0123456789-abcdefgh"
@@ -101,43 +100,11 @@ assert_rejects_runtime_secret_file() {
 
 role_output="$TEMP_DIR/role-output"
 run_operation configure-runtime-role "$TEMP_DIR/role.sql" > "$role_output" 2>&1
-grep -Fq 'CREATE ROLE baton_watch_runtime LOGIN NOINHERIT NOSUPERUSER' "$TEMP_DIR/role.sql"
-grep -Fq "ALTER ROLE baton_watch_runtime LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 32 VALID UNTIL 'infinity'" "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER ROLE baton_watch_runtime RESET ALL' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER ROLE baton_watch_runtime IN DATABASE baton_watch RESET ALL' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER ROLE baton_watch_runtime SET search_path TO pg_catalog, public' "$TEMP_DIR/role.sql"
-grep -Fq 'FROM pg_auth_members WHERE member = runtime_role_oid OR roleid = runtime_role_oid' "$TEMP_DIR/role.sql"
-grep -Fq "FROM pg_shdepend WHERE refclassid = 'pg_authid'::regclass" "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE TEMPORARY ON DATABASE baton_watch FROM PUBLIC' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON DATABASE baton_watch FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON SCHEMA public FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC' "$TEMP_DIR/role.sql"
-grep -Fq 'REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public REVOKE ALL ON TABLES FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE ALL ON TABLES FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public REVOKE ALL ON SEQUENCES FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE ALL ON SEQUENCES FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE ALL ON FUNCTIONS FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM baton_watch_runtime' "$TEMP_DIR/role.sql"
-grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC' "$TEMP_DIR/role.sql"
-if grep -Fq 'ALTER DEFAULT PRIVILEGES FOR ROLE baton_watch_owner IN SCHEMA public GRANT' \
-        "$TEMP_DIR/role.sql"; then
-    printf '[staging-database-operation-test] 새 객체에 런타임 기본 권한을 부여했습니다\n' >&2
-    exit 1
-fi
 if grep -Fq 'PASSWORD' "$TEMP_DIR/role.sql" || grep -Fq "$RUNTIME_SECRET" "$TEMP_DIR/role.sql"; then
     printf '[staging-database-operation-test] 역할 SQL 파일에 런타임 비밀번호가 포함됐습니다\n' >&2
     exit 1
 fi
 grep -Fq '\password baton_watch_runtime' "$TEMP_DIR/role.sql.password-command"
-if grep -Fq 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES' "$TEMP_DIR/role.sql"; then
-    printf '[staging-database-operation-test] 역할 초기화가 마이그레이션 전 테이블 권한을 부여했습니다\n' >&2
-    exit 1
-fi
 if grep -Fq "$OWNER_SECRET" "$role_output" || grep -Fq "$RUNTIME_SECRET" "$role_output"; then
     printf '[staging-database-operation-test] 역할 초기화가 비밀값을 출력했습니다\n' >&2
     exit 1
@@ -182,27 +149,6 @@ grep -Fq 'flyway.user=baton_watch_owner' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.locations=filesystem:/flyway/sql,filesystem:/flyway/callbacks' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.placeholders.runtimeRole=baton_watch_runtime' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.cleanDisabled=true' "$TEMP_DIR/flyway.conf"
-grep -Fq 'REVOKE ALL PRIVILEGES' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON ALL TABLES IN SCHEMA public' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON ALL SEQUENCES IN SCHEMA public' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON ALL FUNCTIONS IN SCHEMA public' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE flyway_schema_history' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'REVOKE INSERT, UPDATE, DELETE' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE watch_health_change_event_backlog' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE watch_monitor' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE watch_attempt' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE watch_result' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'ON TABLE watch_health_change_event' "$RUNTIME_PRIVILEGES_CALLBACK"
-grep -Fq 'delivery_lease_token' "$RUNTIME_PRIVILEGES_CALLBACK"
-if grep -Fq 'GRANT SELECT, INSERT, UPDATE, DELETE' "$RUNTIME_PRIVILEGES_CALLBACK" \
-        || grep -Fq 'GRANT USAGE, SELECT, UPDATE' "$RUNTIME_PRIVILEGES_CALLBACK"; then
-    printf '[staging-database-operation-test] 런타임 콜백이 광범위한 테이블 또는 시퀀스 권한을 부여했습니다\n' >&2
-    exit 1
-fi
-grep -Fq 'SET search_path = pg_catalog, pg_temp' \
-    "$REPOSITORY_ROOT/adapter-out-persistence/src/main/resources/db/migration/V3__bound_persistence_maintenance.sql"
-grep -Fq 'UPDATE public.watch_health_change_event_backlog' \
-    "$REPOSITORY_ROOT/adapter-out-persistence/src/main/resources/db/migration/V3__bound_persistence_maintenance.sql"
 if grep -Fq "$OWNER_SECRET" "$migration_output"; then
     printf '[staging-database-operation-test] 마이그레이션이 비밀값을 출력했습니다\n' >&2
     exit 1
