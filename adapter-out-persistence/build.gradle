@@ -13,3 +13,18 @@ dependencies {
     testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.testcontainers:testcontainers-postgresql'
 }
+
+tasks.named('test', Test) {
+    useJUnitPlatform { excludeTags 'load' }
+}
+
+tasks.register('loadTest', Test) {
+    description = '격리 PostgreSQL에서 동기화·점검·전달 부하와 장애 복구를 확인한다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'load' }
+    systemProperty 'watch.load.monitors', providers.gradleProperty('watchLoadMonitors').getOrElse('100')
+    testLogging.showStandardStreams = true
+    outputs.upToDateWhen { false }
+}
