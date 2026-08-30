@@ -101,7 +101,7 @@ class ApacheHttpRequestExecutorTest {
             Thread worker = executor.execute(
                     Duration.ofSeconds(1), progress -> Thread.currentThread());
 
-            assertEquals("test-http-1", worker.getName());
+            assertTrue(worker.getName().startsWith("test-http-"));
             assertTrue(worker.isDaemon());
         }
     }

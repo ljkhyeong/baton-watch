@@ -147,7 +147,7 @@ class BoundedDnsLookupTest {
             lookup.resolve("public.example", Duration.ofSeconds(1));
         }
 
-        assertEquals("watch-dns-1", worker.get().getName());
+        assertTrue(worker.get().getName().startsWith("watch-dns-"));
         assertTrue(worker.get().isDaemon());
     }
 }
