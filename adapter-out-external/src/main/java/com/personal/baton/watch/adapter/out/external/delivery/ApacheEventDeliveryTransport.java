@@ -37,9 +37,11 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
     @Override
     public int execute(ApprovedDeliveryRequest request, Duration remainingTime)
             throws OutboundHttpFailure {
+        HttpPost httpRequest = new HttpPost(request.endpoint().uri());
         return requestExecutor.execute(
+                httpRequest,
                 remainingTime,
-                progress -> executeBlocking(request, remainingTime, progress));
+                progress -> executeBlocking(request, httpRequest, remainingTime, progress));
     }
 
     @Override
@@ -49,6 +51,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
     private int executeBlocking(
             ApprovedDeliveryRequest delivery,
+            HttpPost request,
             Duration remainingTime,
             ApacheHttpRequestExecutor.Progress progress)
             throws IOException {
@@ -61,7 +64,6 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
         try (CloseableHttpClient client = clientFactory.open(
                 delivery.endpoint().hostname(), delivery.addresses(), clientLimits)) {
-            HttpPost request = new HttpPost(delivery.endpoint().uri());
             request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + delivery.bearerToken());
             request.setHeader(IDEMPOTENCY_KEY, delivery.idempotencyKey());
             request.setHeader(HttpHeaders.ACCEPT_ENCODING, "identity");

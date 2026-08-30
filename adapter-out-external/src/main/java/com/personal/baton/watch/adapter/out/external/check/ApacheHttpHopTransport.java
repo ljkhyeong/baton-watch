@@ -36,10 +36,12 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
     @Override
     public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
             throws OutboundHttpFailure {
+        HttpGet request = new HttpGet(target.target().uri());
         return requestExecutor.execute(
+                request,
                 remainingTime,
                 progress -> executeBlocking(
-                        target, remainingTime, remainingBytes, progress));
+                        target, request, remainingTime, remainingBytes, progress));
     }
 
     @Override
@@ -49,6 +51,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
 
     private HttpHopResponse executeBlocking(
             ApprovedTarget target,
+            HttpGet request,
             Duration remainingTime,
             long remainingBytes,
             ApacheHttpRequestExecutor.Progress progress)
@@ -62,7 +65,6 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
 
         try (CloseableHttpClient client = clientFactory.open(
                 target.target().hostname(), target.addresses(), clientLimits)) {
-            HttpGet request = new HttpGet(target.target().uri());
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(target.target().uri()), request, response -> {
                         progress.responseStarted();

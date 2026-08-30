@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
+import com.personal.baton.watch.adapter.out.external.http.StreamingHttpTestServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -22,6 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class ApacheHttpHopTransportTest {
 
@@ -169,6 +172,51 @@ class ApacheHttpHopTransportTest {
         }
     }
 
+    @ParameterizedTest
+    @EnumSource(StopReason.class)
+    void cancelsTheSocketAndReleasesTheWorker(StopReason reason) throws Exception {
+        try (var streaming = new StreamingHttpTestServer();
+                var transport = new ApacheHttpHopTransport(testLimits(65_536), 1, 1)) {
+            AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
+            AtomicBoolean callerInterrupted = new AtomicBoolean();
+            Thread caller = new Thread(() -> {
+                try {
+                    transport.execute(target(streaming.uri("check.test", "/stream")),
+                            Duration.ofSeconds(reason == StopReason.TIMEOUT ? 2 : 10), 65_536);
+                } catch (OutboundHttpFailure exception) {
+                    failure.set(exception);
+                    callerInterrupted.set(Thread.currentThread().isInterrupted());
+                }
+            }, "test-streaming-caller");
+            caller.start();
+            try {
+                assertTrue(streaming.awaitResponseStarted());
+                switch (reason) {
+                    case TIMEOUT -> { }
+                    case CALLER_INTERRUPTED -> caller.interrupt();
+                    case SHUTDOWN -> transport.close();
+                }
+                caller.join(3_000);
+                assertFalse(caller.isAlive());
+                assertEquals(reason == StopReason.TIMEOUT
+                        ? OutboundHttpFailure.Kind.READ_TIMEOUT
+                        : OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.get().kind());
+                assertEquals(reason == StopReason.CALLER_INTERRUPTED, callerInterrupted.get());
+                if (reason != StopReason.SHUTDOWN) {
+                    assertEquals(204, transport.execute(
+                            target(streaming.uri("check.test", "/quick")),
+                            Duration.ofSeconds(1), 65_536).statusCode());
+                }
+                assertTrue(streaming.awaitDisconnected());
+            } finally {
+                caller.interrupt();
+                caller.join(1_000);
+            }
+        }
+    }
+
+    private enum StopReason { TIMEOUT, CALLER_INTERRUPTED, SHUTDOWN }
+
     private HttpServer server() throws Exception {
         return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     }
@@ -176,6 +224,10 @@ class ApacheHttpHopTransportTest {
     private ApprovedTarget target(String path) throws Exception {
         int port = server.getAddress().getPort();
         URI uri = URI.create("http://check.test:" + port + path);
+        return target(uri);
+    }
+
+    private static ApprovedTarget target(URI uri) {
         ValidatedUri validated = new ValidatedUri(uri, "http", "check.test", uri.toString());
         return new ApprovedTarget(validated, List.of(InetAddress.getLoopbackAddress()));
     }

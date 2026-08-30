@@ -7,10 +7,13 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.net.ssl.SSLException;
 import org.apache.hc.client5.http.ConnectTimeoutException;
+import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.MessageConstraintException;
@@ -36,6 +40,7 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
     }
 
     private final ExecutorService executor;
+    private final Set<FutureTask<?>> requests = ConcurrentHashMap.newKeySet();
 
     public ApacheHttpRequestExecutor(
             int threadCount, int queueCapacity, String threadNamePrefix) {
@@ -46,8 +51,9 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
-    public <T> T execute(Duration timeout, IOFunction<Progress, T> operation)
+    public <T> T execute(HttpUriRequestBase request, Duration timeout, IOFunction<Progress, T> operation)
             throws OutboundHttpFailure {
+        Objects.requireNonNull(request, "request");
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
         if (!timeout.isPositive()) {
@@ -62,10 +68,21 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         }
 
         RequestProgress progress = new RequestProgress();
-        Future<T> future;
+        FutureTask<T> future = new FutureTask<>(() -> executeBlocking(operation, progress)) {
+            @Override
+            protected void done() {
+                // 스레드 인터럽트만으로는 플랫폼 스레드의 소켓 읽기를 중단할 수 없다.
+                if (isCancelled()) {
+                    request.cancel();
+                }
+                requests.remove(this);
+            }
+        };
+        requests.add(future);
         try {
-            future = executor.submit(() -> executeBlocking(operation, progress));
+            executor.execute(future);
         } catch (RejectedExecutionException exception) {
+            future.cancel(true);
             throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, 0);
         }
 
@@ -81,6 +98,8 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
             future.cancel(true);
             Thread.currentThread().interrupt();
             throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
+        } catch (CancellationException exception) {
+            throw failure(OutboundHttpFailure.Kind.INTERNAL_FAILURE, progress.responseBytes());
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof OutboundHttpFailure httpFailure) {
                 throw httpFailure;
@@ -91,6 +110,8 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
 
     @Override
     public void close() {
+        executor.shutdown();
+        requests.forEach(request -> request.cancel(true));
         executor.shutdownNow();
     }
 

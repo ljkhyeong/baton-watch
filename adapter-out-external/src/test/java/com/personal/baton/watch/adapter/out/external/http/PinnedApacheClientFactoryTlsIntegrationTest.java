@@ -83,7 +83,7 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
 
     @Test
     void connectsToTheApprovedAddressWhilePreservingHostAndSni() throws Exception {
-        int statusCode = execute(CERTIFICATE_HOSTNAME);
+        int statusCode = execute(request(CERTIFICATE_HOSTNAME));
 
         assertEquals(204, statusCode);
         assertEquals(1, handlerCalls.get());
@@ -95,10 +95,11 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
     void mapsATrustedCertificateHostnameMismatchToTlsFailure() {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-pinned-tls-")) {
+            HttpGet request = request(MISMATCHED_HOSTNAME);
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
                     () -> executor.execute(
-                            Duration.ofSeconds(5), ignored -> execute(MISMATCHED_HOSTNAME)));
+                            request, Duration.ofSeconds(5), ignored -> execute(request)));
 
             assertEquals(OutboundHttpFailure.Kind.TLS_FAILURE, failure.kind());
             assertEquals(0, failure.responseBytes());
@@ -106,15 +107,19 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
         }
     }
 
-    private int execute(String hostname) throws IOException {
-        URI uri = URI.create(
-                "https://" + hostname + ":" + server.getAddress().getPort() + "/probe");
+    private int execute(HttpGet request) throws IOException {
+        String hostname = request.getAuthority().getHostName();
         try (CloseableHttpClient client = clientFactory.open(
                 hostname, List.of(LOOPBACK), clientLimits())) {
-            HttpGet request = new HttpGet(uri);
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(uri), request, response -> response.getCode());
+                    client, new HttpHost("https", hostname, server.getAddress().getPort()),
+                    request, response -> response.getCode());
         }
+    }
+
+    private HttpGet request(String hostname) {
+        return new HttpGet(URI.create(
+                "https://" + hostname + ":" + server.getAddress().getPort() + "/probe"));
     }
 
     private static ApacheHttpClientLimits clientLimits() {
