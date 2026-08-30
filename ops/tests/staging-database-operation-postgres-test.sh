@@ -179,6 +179,75 @@ if [[ "$migration_evidence" != "1,2,3,4" ]]; then
     fail "Flyway V1~V4 적용 증거가 올바르지 않습니다"
 fi
 
+role_evidence="$(
+    printf '%s\n' \
+        "SELECT concat_ws('|'," \
+        "  r.rolcanlogin," \
+        "  r.rolinherit," \
+        "  r.rolsuper," \
+        "  r.rolcreatedb," \
+        "  r.rolcreaterole," \
+        "  r.rolreplication," \
+        "  r.rolbypassrls," \
+        "  r.rolconnlimit," \
+        "  r.rolvaliduntil = 'infinity'::timestamptz," \
+        "  NOT EXISTS (" \
+        "    SELECT 1 FROM pg_catalog.pg_auth_members m" \
+        "    WHERE m.member = r.oid OR m.roleid = r.oid" \
+        "  )," \
+        "  NOT EXISTS (" \
+        "    SELECT 1 FROM pg_catalog.pg_shdepend d" \
+        "    WHERE d.refclassid = 'pg_authid'::regclass" \
+        "      AND d.refobjid = r.oid" \
+        "      AND d.deptype = 'o'" \
+        "  ))" \
+        "FROM pg_catalog.pg_roles r" \
+        "WHERE r.rolname = '${RUNTIME_ROLE}';" \
+        | owner_psql \
+        | tr -d '[:space:]'
+)"
+if [[ "$role_evidence" != "t|f|f|f|f|f|f|32|t|t|t" ]]; then
+    fail "런타임 역할의 속성·소속·소유권 경계가 올바르지 않습니다"
+fi
+
+runtime_search_path="$(
+    printf 'SHOW search_path;\n' \
+        | runtime_psql \
+        | tr -d '[:space:]'
+)"
+if [[ "$runtime_search_path" != "pg_catalog,public" ]]; then
+    fail "런타임 역할의 search_path가 올바르지 않습니다"
+fi
+
+printf '%s\n' \
+    "CREATE TABLE public.watch_default_privilege_probe (id BIGINT);" \
+    "CREATE SEQUENCE public.watch_default_privilege_probe_sequence;" \
+    'CREATE FUNCTION public.watch_default_privilege_probe() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;' \
+    | owner_psql \
+    >/dev/null
+
+default_privilege_evidence="$(
+    printf '%s\n' \
+        "SELECT concat_ws('|'," \
+        "  has_table_privilege(" \
+        "    '${RUNTIME_ROLE}'," \
+        "    'public.watch_default_privilege_probe'," \
+        "    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')," \
+        "  has_sequence_privilege(" \
+        "    '${RUNTIME_ROLE}'," \
+        "    'public.watch_default_privilege_probe_sequence'," \
+        "    'USAGE,SELECT,UPDATE')," \
+        "  has_function_privilege(" \
+        "    '${RUNTIME_ROLE}'," \
+        "    'public.watch_default_privilege_probe()'," \
+        "    'EXECUTE'));" \
+        | owner_psql \
+        | tr -d '[:space:]'
+)"
+if [[ "$default_privilege_evidence" != "f|f|f" ]]; then
+    fail "소유자가 새로 만든 객체에 런타임 기본 권한이 부여됐습니다"
+fi
+
 privilege_evidence="$(
     printf '%s\n' \
         "SELECT concat_ws('|'," \
