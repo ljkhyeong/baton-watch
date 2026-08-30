@@ -4,6 +4,8 @@
 
 ## 현재 인계 상태
 
+- 2026-08-30 DB 잠금 경합 테스트의 직접 폴링을 Awaitility로 교체했다. 첫 조회의
+  즉시 실행, 10초 제한, 20ms 확인 간격과 실제 PostgreSQL 잠금 확인은 유지했다.
 - 2026-08-30 설정 검증 테스트의 예외 원인 탐색을 AssertJ로 교체하고, HTTP 설정
   레코드 생성만 확인하던 테스트를 실제 시간 제한 계산 테스트로 바꿨다.
   이번 검증 결과와 이전 작업의 운영 검증 기록을 구분했다.
@@ -56,33 +58,27 @@
 
 ## 이번 변경의 검증 상태
 
-- 검증 대상 코드 리비전은 `94d14ed`다. 이번 변경은 테스트와 인계 문서에 한정되며
-  운영 코드는 수정하지 않았다.
-- `./gradlew --no-daemon :bootstrap:test --tests '*ConfigurationPropertiesValidationTest'
-  --tests '*WatchPropertiesTest' :adapter-out-external:test
-  --tests '*ApacheHttpClientLimitsTest'`로 관련 테스트 14개를 통과했다.
-- `./gradlew --no-daemon test --rerun-tasks --no-build-cache`로 전체 테스트 365개를
-  실패·오류·건너뜀 없이 통과했다. 6개 모듈의 테스트 작업을 모두 다시 실행했으며,
-  `UP-TO-DATE`나 빌드 캐시의 테스트 결과를 재사용하지 않았다.
+- 검증 대상 코드 리비전은 `6774ef7`이다. 이번 변경은 테스트·테스트 의존성과
+  인계 문서에 한정되며 운영 코드는 수정하지 않았다.
+- `./gradlew --no-daemon :adapter-out-persistence:test
+  --tests '*JdbcMonitoringSchemaIntegrationTest'`로 관련 DB 통합 테스트 7개를 통과했다.
+- `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
+  :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`로 전체 테스트 365개를
+  실패·오류·건너뜀 없이 통과했다. 6개 모듈의 테스트 작업을 모두 다시 실행했고,
+  실행 가능한 부트 JAR의 Apache-2.0 전문 검증도 통과했다.
+- Awaitility는 기존 관리 버전 `4.3.0`과 체크섬을 그대로 사용한다.
+  `gradle/verification-metadata.xml`의 변경은 없었다.
 - 이전 운영 검증 이후의 Java/Spring 리팩터링을 반영한 배포 이미지 재빌드와
   운영 스모크는 수행하지 않았다. 아래 이전 기록을 현재 코드의 운영 검증 결과로
   사용하지 않는다.
 - 실제 공개 스테이징 배포, 외부 HTTPS 스모크와 외부 로그 감사는 수행하지 않았다.
 - PR은 최신 HEAD에서 `Verify / verify`가 성공해야 병합할 수 있다.
 
-### 이전 작업에서 인계된 검증 기록
+### 이전 작업에서 인계된 운영 검증 기록
 
-다음은 이전 작업에서 남긴 결과이며 이번 변경에서 재실행하지 않았다.
+다음 운영 검증은 이전 작업에서 남긴 결과이며 이번 변경에서 재실행하지 않았다.
 당시 이미지 빌드의 정확한 코드 리비전은 이 문서에 기록되어 있지 않다.
 
-- 직전 `./gradlew --no-daemon test` 실행은 성공했고, 테스트 결과 파일에는
-  364개 테스트가 실패·오류·건너뜀 없이 기록됐다. 다만 `bootstrap`,
-  `adapter-out-external`, `adapter-out-persistence`의 테스트 작업만 실행됐고
-  나머지 3개 모듈의 테스트 작업은 `UP-TO-DATE`였다.
-- `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
-  :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 Gradle 9.7.1에서
-  364개 테스트를 실패·건너뜀 없이 실행했고, 실행 가능한 부트 JAR의 Apache-2.0
-  전문 검증을 통과했다.
 - 실제 PostgreSQL 18.6 격리 검증에서 런타임 역할 속성·검색 경로·역할 소속·객체
   소유 금지와 소유자가 새로 만든 테이블·시퀀스·함수의 기본 권한 차단을 확인했다.
   런타임·소유자 비밀번호를 각각 교체한 뒤 이전 자격 증명이 거부됐고, 원복 뒤
