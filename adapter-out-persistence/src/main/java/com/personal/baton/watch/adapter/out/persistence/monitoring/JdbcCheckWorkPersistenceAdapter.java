@@ -21,9 +21,8 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -47,16 +46,15 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     }
 
     @Override
-    public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
+    public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
         Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
                 leaseDuration, "leaseDuration");
-        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> {
             Instant claimedAt = jdbc.queryForObject(
                             "SELECT transaction_timestamp()", OffsetDateTime.class)
                     .toInstant();
             Instant leaseUntil = claimedAt.plus(supportedLease);
-            return claimInTransaction(claimedAt, leaseUntil, limit);
+            return claimInTransaction(claimedAt, leaseUntil);
         });
     }
 
@@ -116,66 +114,65 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 limit));
     }
 
-    private List<ClaimedCheck> claimInTransaction(
-            Instant claimedAt, Instant leaseUntil, int limit) {
-        List<MonitorRow> due = jdbc.query(
+    private Optional<ClaimedCheck> claimInTransaction(
+            Instant claimedAt, Instant leaseUntil) {
+        Optional<MonitorRow> due = DataAccessUtils.optionalResult(jdbc.query(
                 "SELECT " + MONITOR_COLUMNS + """
                          FROM watch_monitor
                          WHERE monitor_status = 'ACTIVE'
                            AND next_check_at <= ?
                            AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
                          ORDER BY next_check_at, resource_reference
-                         LIMIT ?
+                         LIMIT 1
                          FOR UPDATE SKIP LOCKED
                         """,
                 MonitoringJdbcRows::mapMonitor,
                 databaseTime(claimedAt),
-                databaseTime(claimedAt),
-                limit);
-
-        List<ClaimedCheck> claimed = new ArrayList<>(due.size());
-        for (MonitorRow monitor : due) {
-            UUID attemptId = UUID.randomUUID();
-            UUID leaseToken = UUID.randomUUID();
-            jdbc.update("""
-                    INSERT INTO watch_attempt (
-                        attempt_id,
-                        resource_reference,
-                        source_revision,
-                        target_url,
-                        lease_token,
-                        claimed_at,
-                        lease_expires_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    attemptId,
-                    monitor.resourceReference(),
-                    monitor.sourceRevision().value(),
-                    monitor.targetUrl(),
-                    leaseToken,
-                    databaseTime(claimedAt),
-                    databaseTime(leaseUntil));
-            jdbc.update("""
-                    UPDATE watch_monitor
-                    SET lease_token = ?, lease_attempt_id = ?, lease_expires_at = ?, updated_at = ?
-                    WHERE resource_reference = ?
-                    """,
-                    leaseToken,
-                    attemptId,
-                    databaseTime(leaseUntil),
-                    databaseTime(claimedAt),
-                    monitor.resourceReference());
-            claimed.add(new ClaimedCheck(
-                    attemptId,
-                    leaseToken,
-                    new TargetUrl(monitor.targetUrl()),
-                    monitor.nextCheckAt(),
-                    claimedAt,
-                    monitor.leaseAttemptId() != null
-                            && monitor.leaseExpiresAt() != null
-                            && !monitor.leaseExpiresAt().isAfter(claimedAt)));
+                databaseTime(claimedAt)));
+        if (due.isEmpty()) {
+            return Optional.empty();
         }
-        return claimed;
+        MonitorRow monitor = due.orElseThrow();
+
+        UUID attemptId = UUID.randomUUID();
+        UUID leaseToken = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO watch_attempt (
+                    attempt_id,
+                    resource_reference,
+                    source_revision,
+                    target_url,
+                    lease_token,
+                    claimed_at,
+                    lease_expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                attemptId,
+                monitor.resourceReference(),
+                monitor.sourceRevision().value(),
+                monitor.targetUrl(),
+                leaseToken,
+                databaseTime(claimedAt),
+                databaseTime(leaseUntil));
+        jdbc.update("""
+                UPDATE watch_monitor
+                SET lease_token = ?, lease_attempt_id = ?, lease_expires_at = ?, updated_at = ?
+                WHERE resource_reference = ?
+                """,
+                leaseToken,
+                attemptId,
+                databaseTime(leaseUntil),
+                databaseTime(claimedAt),
+                monitor.resourceReference());
+        return Optional.of(new ClaimedCheck(
+                attemptId,
+                leaseToken,
+                new TargetUrl(monitor.targetUrl()),
+                monitor.nextCheckAt(),
+                claimedAt,
+                monitor.leaseAttemptId() != null
+                        && monitor.leaseExpiresAt() != null
+                        && !monitor.leaseExpiresAt().isAfter(claimedAt)));
     }
 
     private CheckFinalizationStatus finalizeInTransaction(

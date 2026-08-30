@@ -6,11 +6,11 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.Optional;
 
 public interface HealthChangeEventDeliveryPersistencePort {
 
-    List<ClaimedHealthChangeEvent> claimPendingEvents(Duration leaseDuration, int limit);
+    Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration);
 
     EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization);
 

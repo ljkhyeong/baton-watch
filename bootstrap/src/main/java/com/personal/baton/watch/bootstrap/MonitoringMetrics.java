@@ -13,7 +13,6 @@ import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
-import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
@@ -91,11 +90,11 @@ final class MonitoringMetrics {
         maximumCheckScheduleDelaySeconds.set(result.maximumScheduleDelay().toSeconds());
     }
 
-    void recordCheckClaims(List<ClaimedCheck> claimed) {
-        increment(CHECK_CLAIMED, claimed.size());
-        increment(
-                CHECK_LEASE_RECOVERIES,
-                claimed.stream().filter(ClaimedCheck::recoveredLease).count());
+    void recordCheckClaim(ClaimedCheck claimed) {
+        increment(CHECK_CLAIMED, 1);
+        if (claimed.recoveredLease()) {
+            increment(CHECK_LEASE_RECOVERIES, 1);
+        }
     }
 
     void recordCheckFinalization(CheckFinalizationStatus status) {
@@ -112,11 +111,11 @@ final class MonitoringMetrics {
         registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
     }
 
-    void recordEventDeliveryClaims(List<ClaimedHealthChangeEvent> claimed) {
-        increment(DELIVERY_CLAIMED, claimed.size());
-        increment(
-                DELIVERY_LEASE_RECOVERIES,
-                claimed.stream().filter(ClaimedHealthChangeEvent::recoveredLease).count());
+    void recordEventDeliveryClaim(ClaimedHealthChangeEvent claimed) {
+        increment(DELIVERY_CLAIMED, 1);
+        if (claimed.recoveredLease()) {
+            increment(DELIVERY_LEASE_RECOVERIES, 1);
+        }
     }
 
     void recordEventDeliveryFinalization(
@@ -186,13 +185,14 @@ final class MonitoringMetrics {
 
     private void increment(String name, double amount) {
         if (amount > 0) {
-            registry.counter(name).increment(amount);
+            BestEffortMetrics.record(() -> registry.counter(name).increment(amount));
         }
     }
 
     private void increment(String name, String tagName, String tagValue, double amount) {
         if (amount > 0) {
-            registry.counter(name, tagName, tagValue).increment(amount);
+            BestEffortMetrics.record(() ->
+                    registry.counter(name, tagName, tagValue).increment(amount));
         }
     }
 

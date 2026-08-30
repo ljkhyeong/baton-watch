@@ -5,6 +5,9 @@ set +x
 umask 077
 
 readonly PREFIX="[staging-public-smoke]"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_DIR
+readonly URL_POLICY="$SCRIPT_DIR/staging-url-policy.py"
 
 fail() {
     printf '%s %s\n' "$PREFIX" "$1" >&2
@@ -24,46 +27,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     fail "python3가 필요합니다"
 fi
 
-if ! python3 - "$WATCH_PUBLIC_BASE_URL" <<'PY'
-import ipaddress
-import re
-import sys
-from urllib.parse import urlsplit
-
-value = sys.argv[1]
-try:
-    parsed = urlsplit(value)
-    port = parsed.port
-except ValueError:
-    raise SystemExit(1)
-
-host = parsed.hostname
-if (
-    len(value) > 2048
-    or parsed.scheme != "https"
-    or host is None
-    or parsed.username is not None
-    or parsed.password is not None
-    or port not in (None, 443)
-    or parsed.path not in ("", "/")
-    or parsed.query
-    or parsed.fragment
-):
-    raise SystemExit(1)
-
-try:
-    ipaddress.ip_address(host)
-except ValueError:
-    labels = host.split(".")
-    if not labels or any(
-        not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
-        for label in labels
-    ):
-        raise SystemExit(1)
-else:
-    raise SystemExit(1)
-PY
-then
+if ! printf '%s' "$WATCH_PUBLIC_BASE_URL" | python3 "$URL_POLICY" origin; then
     fail "WATCH_PUBLIC_BASE_URL은 기본 HTTPS 포트의 DNS 오리진이어야 합니다"
 fi
 
@@ -111,8 +75,13 @@ read -r status_code redirect_count <<<"$status_result"
 if [[ "$status_code" != "200" || "$redirect_count" != "0" ]]; then
     fail "공개 상태 요청은 리다이렉트 없이 HTTP 200이어야 합니다"
 fi
-if grep -Eiq '^CF-Cache-Status:[[:space:]]*HIT[[:space:]]*$' "$response_headers"; then
-    fail "공개 상태 응답이 Cloudflare 캐시에서 제공됐습니다"
+if [[ "$(grep -Eic '^CF-Ray:' "$response_headers" || true)" != "1" ]] \
+        || ! grep -Eiq '^CF-Ray:[[:space:]]*[^[:space:]]+' "$response_headers"; then
+    fail "공개 상태 응답에서 Cloudflare 처리 증거를 확인할 수 없습니다"
+fi
+if [[ "$(grep -Eic '^CF-Cache-Status:' "$response_headers" || true)" != "1" ]] \
+        || ! grep -Eiq '^CF-Cache-Status:[[:space:]]*(DYNAMIC|BYPASS)[[:space:]]*$' "$response_headers"; then
+    fail "공개 상태 응답이 캐시 비대상 또는 우회 응답이 아닙니다"
 fi
 if ! python3 - "$response_body" <<'PY'
 import json

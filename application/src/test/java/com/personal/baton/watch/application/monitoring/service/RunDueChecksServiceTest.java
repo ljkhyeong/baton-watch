@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -56,7 +57,6 @@ class RunDueChecksServiceTest {
         assertEquals(List.of("claim", "check", "finalize", "claim"), calls);
         assertEquals(new DueCheckBatchResult(1, 1, 0, 0, Duration.ofSeconds(12)), result);
         assertEquals(LEASE, persistence.leaseDuration);
-        assertEquals(1, persistence.limit);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
     }
@@ -167,7 +167,6 @@ class RunDueChecksServiceTest {
 
         private final List<String> calls;
         private Duration leaseDuration;
-        private int limit;
         private CheckFinalization finalization;
         private List<ClaimedCheck> claims = List.of(CLAIM);
         private CheckFinalizationStatus status = CheckFinalizationStatus.APPLIED;
@@ -177,16 +176,15 @@ class RunDueChecksServiceTest {
         }
 
         @Override
-        public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
+        public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
             calls.add("claim");
             this.leaseDuration = leaseDuration;
-            this.limit = limit;
             if (claims.isEmpty()) {
-                return claims;
+                return Optional.empty();
             }
             ClaimedCheck next = claims.getFirst();
             claims = claims.subList(1, claims.size());
-            return List.of(next);
+            return Optional.of(next);
         }
 
         @Override

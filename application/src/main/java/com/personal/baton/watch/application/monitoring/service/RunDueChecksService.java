@@ -12,8 +12,8 @@ import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class RunDueChecksService implements RunDueChecksUseCase {
 
@@ -54,14 +54,11 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int staleClaims = 0;
         Duration maximumScheduleDelay = Duration.ZERO;
         while (claimed < batchSize) {
-            List<ClaimedCheck> claimedChecks = persistence.claimDueChecks(leaseDuration, 1);
-            if (claimedChecks.size() > 1) {
-                throw new IllegalStateException("persistence returned more work than requested");
-            }
-            if (claimedChecks.isEmpty()) {
+            Optional<ClaimedCheck> nextClaim = persistence.claimDueCheck(leaseDuration);
+            if (nextClaim.isEmpty()) {
                 break;
             }
-            ClaimedCheck claimedCheck = claimedChecks.getFirst();
+            ClaimedCheck claimedCheck = nextClaim.orElseThrow();
             claimed++;
             Duration scheduleDelay = Duration.between(
                     claimedCheck.scheduledAt(), claimedCheck.claimedAt());

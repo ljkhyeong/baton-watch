@@ -1,6 +1,11 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -18,11 +23,11 @@ import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -68,7 +73,9 @@ class MonitoringMetricsTest {
                 1,
                 Duration.ofSeconds(17)));
         ClaimedCheck claimedCheck = claimedCheck(true);
-        metrics.recordCheckClaims(List.of(claimedCheck, claimedCheck, claimedCheck));
+        metrics.recordCheckClaim(claimedCheck);
+        metrics.recordCheckClaim(claimedCheck);
+        metrics.recordCheckClaim(claimedCheck);
         metrics.recordCheckFinalization(CheckFinalizationStatus.STALE_CLAIM);
         metrics.recordCheckAttempt(CheckObservation.failure(
                 CheckOutcome.CONNECT_TIMEOUT,
@@ -76,7 +83,10 @@ class MonitoringMetricsTest {
                 0,
                 0));
         ClaimedHealthChangeEvent claimedEvent = claimedEvent(true);
-        metrics.recordEventDeliveryClaims(List.of(claimedEvent, claimedEvent, claimedEvent, claimedEvent));
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
+        metrics.recordEventDeliveryClaim(claimedEvent);
         metrics.recordEventDeliveryFinalization(
                 new EventDeliveryFinalization(
                         claimedEvent.payload().eventId(),
@@ -196,6 +206,17 @@ class MonitoringMetricsTest {
         metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
 
         assertEquals(-1.5, registry.get("baton.watch.database.clock.offset").gauge().value());
+    }
+
+    @Test
+    void ignoresCounterFailures() {
+        MeterRegistry registry = mock(MeterRegistry.class);
+        when(registry.counter(anyString(), any(String[].class)))
+                .thenThrow(new IllegalStateException("meter registry unavailable"));
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+
+        assertDoesNotThrow(() -> metrics.recordCheckClaim(claimedCheck(false)));
+        assertDoesNotThrow(() -> metrics.recordStaleProjections(1));
     }
 
     private static ClaimedCheck claimedCheck(boolean recoveredLease) {

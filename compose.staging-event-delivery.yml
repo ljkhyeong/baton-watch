@@ -1,0 +1,12 @@
+services:
+  watch:
+    environment:
+      WATCH_EVENT_DELIVERY_ENABLED: "true"
+      WATCH_EVENT_DELIVERY_ENDPOINT: "${WATCH_EVENT_DELIVERY_ENDPOINT:?WATCH_EVENT_DELIVERY_ENDPOINT is required}"
+    secrets:
+      - source: watch-event-delivery-token
+        target: watch.event-delivery.bearer-token
+
+secrets:
+  watch-event-delivery-token:
+    file: "${WATCH_EVENT_DELIVERY_TOKEN_FILE:?WATCH_EVENT_DELIVERY_TOKEN_FILE is required}"

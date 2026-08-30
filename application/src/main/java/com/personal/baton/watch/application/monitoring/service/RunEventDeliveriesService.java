@@ -11,8 +11,8 @@ import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEven
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class RunEventDeliveriesService implements RunEventDeliveriesUseCase {
 
@@ -49,15 +49,12 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         int alreadyDelivered = 0;
         int staleClaims = 0;
         while (claimed < batchSize) {
-            List<ClaimedHealthChangeEvent> claimedEvents =
-                    persistence.claimPendingEvents(leaseDuration, 1);
-            if (claimedEvents.size() > 1) {
-                throw new IllegalStateException("persistence returned more events than requested");
-            }
-            if (claimedEvents.isEmpty()) {
+            Optional<ClaimedHealthChangeEvent> nextEvent =
+                    persistence.claimPendingEvent(leaseDuration);
+            if (nextEvent.isEmpty()) {
                 break;
             }
-            ClaimedHealthChangeEvent event = claimedEvents.getFirst();
+            ClaimedHealthChangeEvent event = nextEvent.orElseThrow();
             claimed++;
             EventDeliveryObservation observation = send(event);
             Instant observedAt = clock.instant();

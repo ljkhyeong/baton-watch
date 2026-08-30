@@ -22,8 +22,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 - PostgreSQL과 WATCH용 [compose.staging.yml](../../compose.staging.yml)
 - 호스트 포트를 공개하지 않는 경계를 유지하면서 `cloudflared`를 추가하는
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
-- 무료 OTLP 계정 사용이 확인된 경우에만 WATCH 메트릭 내보내기를 활성화하는
-  선택적 [compose.staging-observability.yml](../../compose.staging-observability.yml)
+- 호환 BATON 콜백의 사전 검사가 끝난 경우에만 전달을 활성화하는 선택적
+  [compose.staging-event-delivery.yml](../../compose.staging-event-delivery.yml)
 - 비밀값이 없는 환경 템플릿인
   [ops/staging.env.example](../../ops/staging.env.example)
 - 로컬에서 빌드하고 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관한
@@ -31,20 +31,21 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
   `baton-watch:<full-git-sha>` 런타임 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
-- Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 비밀
-  파일 세 개와, 권한 모드 `0700` 상위 디렉터리 안의 `0444` 터널 토큰 파일
+- Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 필수 비밀
+  파일 세 개, 선택한 오버레이의 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
+  상위 디렉터리 안의 `0444` 터널 토큰 파일
 
-이 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다. Compose
-파일은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정합니다. 이 실행 절차서를
-따르는 동안 BATON 콜백이나 전달 토큰을 추가하지 마세요. 호환되는 BATON
-수신기를 준비한 뒤에만 별도의
+기본 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다.
+`compose.staging.yml`은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정하며, 이 실행
+절차서만 따르는 동안 콜백과 전달 토큰 값을 채우지 않습니다. 호환되는 BATON
+수신기를 준비하고 사전 검사를 통과한 뒤에만 선택적 이벤트 전달 오버레이와 별도의
 [공개 스테이징 전달 검증 실행 절차서](public-staging-event-delivery.md)를
 사용하세요.
 
 ## 네트워크 및 영속성 불변 조건
 
 기본 Compose와 터널 오버레이를 적용하면 다음 조건을 충족해야 합니다. 선택적
-관측 오버레이를 추가해도 같은 네트워크·포트 경계를 유지해야 합니다.
+이벤트 전달 오버레이를 추가해도 같은 네트워크·포트 경계를 유지해야 합니다.
 
 - PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
   참여합니다.
@@ -60,7 +61,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   비루트 주체가 담당합니다.
 - WATCH 이미지는 기본적으로 UID/GID `10001`로 실행합니다. 스테이징에서는 시작
   래퍼만 root와 `CHOWN`, `DAC_READ_SEARCH`, `SETGID`, `SETUID` capability로
-  데이터베이스 비밀번호와 API 토큰을 전용 `/run/watch-secrets` tmpfs에 복사한 뒤
+  데이터베이스 비밀번호와 API 토큰, 선택적 이벤트 전달 토큰을 전용
+  `/run/watch-secrets` tmpfs에 복사한 뒤
   Java를 UID/GID `10001`의 PID 1로 실행합니다. 복사 뒤 디렉터리는 `0500`, 파일은
   `0400`이며 Java와 상태 점검 프로세스에는 capability가 남지 않습니다.
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
@@ -350,43 +352,6 @@ HikariCP 설정은 최대 풀 1~32, 최소 유휴 0~32, 연결·검증 250~30000
 쿼리 매개변수를 붙이지 마세요. pgJDBC 제한은 검증되는 `WATCH_DB_*` 설정으로만
 변경합니다.
 
-## 선택적 무료 OTLP 메트릭 내보내기
-
-이 단계는 선택 사항입니다. 환경 파일의 `WATCH_OTLP_METRICS_URL`을 비워 두면 관측
-오버레이를 적용하지 않고 OTLP 네트워크 요청도 발생하지 않습니다. 비용이 없는
-범위에서는 [Grafana Cloud Free](https://grafana.com/pricing/)처럼 계정 화면에서
-무료 플랜과 결제 없음이 확인되는 OTLP 서비스를 사용할 수 있습니다. 외부 서비스의
-요금제나 한도가 바뀌었거나 유료 전환이 필요한 경우에는 이 단계를 실행하지 마세요.
-이 저장소는 계정 생성, 유료 전환, 대시보드와 알림 생성을 자동화하지 않습니다.
-
-활성화할 때는 제공자 화면에서 메트릭용 전체 HTTPS OTLP 엔드포인트와 인증 헤더를
-확인합니다. 비밀 관리 시스템으로
-`$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization` 파일에
-`Basic <base64(instance-id:access-policy-token)>` 한 줄을 기록하고, 환경 파일의
-`WATCH_OTLP_METRICS_URL=` 뒤에는 제공자가 안내한 전체 메트릭 엔드포인트를
-입력합니다. 토큰이나 완성된 인증 헤더를 셸 명령행, 환경 변수, 저장소 또는 배포
-증거에 남기지 마세요.
-
-~~~bash
-chmod 0600 "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-test -s "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-test -O "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-test -r "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-test -f "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-test ! -L "$STAGING_CONFIG_DIR/secrets/grafana-otlp-authorization"
-grep -Eq '^WATCH_OTLP_METRICS_URL=https://[^[:space:]]+$' "$STAGING_ENV_FILE"
-~~~
-
-관측 오버레이는 인증 파일을 기존 `/run/watch-secrets` tmpfs로 복사하고 Spring
-`configtree`에서 읽습니다. 관리 포트 `8081`을 공개하거나 별도 수집기 컨테이너를
-추가하지 않습니다. 배포 뒤 제공자 화면에서 `baton_watch_check_attempts_total` 같은
-WATCH 메트릭이 도착하는지 확인하고 무료 사용량 화면도 함께 기록하세요. 이 외부
-확인을 수행하기 전에는 대시보드나 알림이 운영 중이라고 판단하지 않습니다.
-
-비활성화하려면 환경 파일의 값을 다시 `WATCH_OTLP_METRICS_URL=`로 비우고 아래
-`staging_compose` 헬퍼로 WATCH를 강제 재생성합니다. 헬퍼가 관측 오버레이를 제외한
-구성으로 다시 만들기 때문에 이후 OTLP 요청은 발생하지 않습니다.
-
 외부 데이터베이스 볼륨은 한 번만 생성하고, 이후 매 배포 전에 검사합니다.
 
 ~~~bash
@@ -403,8 +368,8 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 배포 중에 로컬에서 빌드한 SHA 태그 이미지를 레지스트리 이미지로 몰래 대체할 수
 없습니다.
 
-모든 작업에서 터널 오버레이를 사용하고, 무료 OTLP 엔드포인트를 명시한 경우에만
-관측 오버레이를 추가하도록 헬퍼 하나를 먼저 정의합니다.
+모든 작업에서 터널 오버레이를 사용합니다. 별도 전달 런북에 따라 BATON 콜백을
+명시한 경우에만 이벤트 전달 오버레이를 추가하도록 헬퍼 하나를 먼저 정의합니다.
 
 ~~~bash
 staging_compose() {
@@ -412,9 +377,9 @@ staging_compose() {
     -f compose.staging.yml
     -f compose.staging-tunnel.yml
   )
-  if grep -Eq '^WATCH_OTLP_METRICS_URL=https://[^[:space:]]+$' \
+  if grep -Eq '^WATCH_EVENT_DELIVERY_ENDPOINT=https://[^[:space:]]+$' \
     "$STAGING_ENV_FILE"; then
-    compose_files+=(-f compose.staging-observability.yml)
+    compose_files+=(-f compose.staging-event-delivery.yml)
   fi
   docker compose \
     --env-file "$STAGING_ENV_FILE" \
@@ -476,6 +441,7 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
 `staging-compose-policy-test.sh`, `staging-image-evidence-test.sh`,
 `staging-database-operation-test.sh`,
+`staging-url-policy-test.sh`,
 `staging-event-delivery-preflight-test.sh`, `staging-public-smoke-test.sh`,
 `staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
@@ -490,9 +456,11 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 실행 가능한 부트 JAR 생성을 소유합니다.
 로컬 실제 PostgreSQL 스모크는 Flyway V1~V4, 허용된 런타임 DML, 불변 시도·결과·
 이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
-Gradle·GitHub Actions·Docker 의존성은 주간 Dependabot 점검 대상이지만,
-업데이트 PR은 자동 배포하지 말고 같은 검증을 통과시켜야 합니다. 변경
-사항이 남아 있는 작업 트리,
+Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검 대상입니다.
+다단계 Dockerfile·Compose 이미지·Alpine 고정 패키지·Trivy 이미지의 추가 범위는
+`renovate.json`에 주간 갱신을 준비했지만, 외부 Renovate 서비스는 자동으로
+활성화되지 않고 자동 병합도 하지 않습니다. 어떤 업데이트 PR도 자동 배포하지
+말고 같은 검증을 통과시켜야 합니다. 변경 사항이 남아 있는 작업 트리,
 `latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
 `archive`는 같은 리비전의 기존 보관 디렉터리를 덮어쓰지 않습니다. 보관된
 `manifest.tsv`와 세 아카이브는 태그만으로는 증명할 수 없는 실제 이미지 ID와
@@ -508,8 +476,10 @@ staging_compose config
 렌더링된 `postgres`, `database-role-init`, `migrate`, `watch`, `cloudflared`
 서비스를 검사합니다. 어느 서비스에도
 `ports` 항목이 있어서는 안 됩니다. 렌더링된 WATCH 환경은
-`WATCH_EVENT_DELIVERY_ENABLED: "false"`, `SPRING_FLYWAY_ENABLED: "false"`를
-유지해야 하며, 비밀값 내용이 나타나서는 안 됩니다.
+`SPRING_FLYWAY_ENABLED: "false"`를 유지해야 하며 비밀값 내용이 나타나서는 안
+됩니다. 이벤트 전달 오버레이를 선택하지 않았다면
+`WATCH_EVENT_DELIVERY_ENABLED: "false"`, 선택했다면 `"true"`와
+`watch.event-delivery.bearer-token` 비밀 대상이 렌더링되어야 합니다.
 
 ## 업데이트 전 백업
 
@@ -714,19 +684,24 @@ unset NEW_DATABASE_SECRET
 ## 외부 HTTPS 스모크 테스트
 
 가능하면 오리진 Mac 외부 네트워크에서 실행합니다. 이 요청에는 토큰이나 실제
-리소스 참조가 들어 있지 않습니다.
+리소스 참조가 들어 있지 않습니다. 실행 호스트에서는 `curl`과 Python 3을 사용할
+수 있어야 합니다.
 
 ~~~bash
 WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com \
   ./ops/staging-public-smoke.sh
 ~~~
 
-스크립트는 인증서를 기본 검증하고 리다이렉트를 따르지 않습니다. 상태 경로가
-리다이렉트 없이 HTTP `200`을 반환하고 JSON이 `baton-watch`의 `UP` 상태인지,
-`CF-Cache-Status`가 `HIT`가 아닌지 판정합니다. 이어서 인증하지 않고 잘못된
-형식으로 보낸 모니터 요청의 `401`과 인그레스 기타 경로의 `404`를 판정합니다.
-터널 없음, Cloudflare 엣지 오류, 캐시된 응답, 다른 서비스의 JSON 또는 잘못된
-인그레스 규칙이 확인되면 스크립트가 실패합니다.
+스크립트는 공통 URL 정책으로 IP 리터럴과 정수·8진수·16진수·축약 IPv4 표기를
+요청 전에 거부하고, 인증서를 기본 검증하며 리다이렉트를 따르지 않습니다. 상태
+경로가 리다이렉트 없이 HTTP `200`을 반환하고 JSON이 `baton-watch`의 `UP`
+상태인지 판정합니다. `CF-Ray`가 정확히 하나 존재하고 `CF-Cache-Status`가
+정확히 하나의 `DYNAMIC` 또는 `BYPASS`인지도 확인합니다. 이는 해당 응답이
+Cloudflare에서 처리되고 캐시되지 않았다는 HTTP 증거이며, 의도한 Tunnel 연결
+자체의 정본은 계속 Cloudflare 대시보드/API입니다. 이어서 인증하지 않고
+잘못된 형식으로 보낸 모니터 요청의 `401`과 인그레스 기타 경로의 `404`를
+판정합니다. 터널 없음, Cloudflare 엣지 오류, 캐시된 응답, 다른 서비스의 JSON
+또는 잘못된 인그레스 규칙이 확인되면 스크립트가 실패합니다.
 
 ## 로그 비식별화 감사
 

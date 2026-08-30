@@ -2,7 +2,7 @@
 
 상태: 운영자용 실행 절차서이며, 실제 실행 완료를 의미하지 않음
 
-최종 수정일: 2026-08-27
+최종 수정일: 2026-08-29
 
 ## 목적
 
@@ -12,6 +12,7 @@
 
 ## 필수 환경
 
+- `curl`과 Python 3을 사용할 수 있는 운영자 실행 호스트
 - 공개 DNS 이름과 443 포트의 유효한 HTTPS를 사용하는 배포된 WATCH 인스턴스와
   호환되는 BATON 수신기
 - 정확한 BATON 콜백과 URL에 안전한 32~200자 Bearer 토큰을 사용해 전달이
@@ -39,13 +40,16 @@ DNS 레코드, 유효한 HTTPS 라우팅, 배포된 인스턴스, 외부 상태 
 셸 추적을 활성화하지 않은 상태에서 스테이징 비밀 저장소의 값을 불러옵니다.
 
 ~~~bash
-set +x
-export WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com
-export WATCH_EVENT_DELIVERY_ENABLED=true
-export WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.staging.example.com/api/v1/internal/resource-health-events
-read -r -s -p 'WATCH API token: ' WATCH_API_TOKEN && export WATCH_API_TOKEN
-read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATCH_EVENT_DELIVERY_TOKEN
-./ops/staging-event-delivery-preflight.sh
+(
+  set +x
+  export WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com
+  export WATCH_EVENT_DELIVERY_ENABLED=true
+  export WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.staging.example.com/api/v1/internal/resource-health-events
+  read -r -s -p 'WATCH API token: ' WATCH_API_TOKEN && export WATCH_API_TOKEN
+  read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATCH_EVENT_DELIVERY_TOKEN
+  trap 'unset WATCH_API_TOKEN WATCH_EVENT_DELIVERY_TOKEN' EXIT
+  ./ops/staging-event-delivery-preflight.sh
+)
 ~~~
 
 사전 점검은 호환되는 토큰 형식과 토큰 간 분리를 검증하고, 공개 WATCH 상태
@@ -53,13 +57,39 @@ read -r -s -p 'WATCH delivery token: ' WATCH_EVENT_DELIVERY_TOKEN && export WATC
 전송합니다. 수신기는 반드시 `401`을 반환해야 합니다. 대신 파서 수준의 4xx가
 반환되면 인증이 JSON 역직렬화보다 먼저 수행됐음을 입증하지 못했으므로 사전
 점검은 실패합니다. 스크립트는 두 토큰을 어느 것도 전송하지 않으며 응답 본문을
-버립니다. 실행 가능한 테스트는 콜백 메서드, 콘텐츠 유형, 잘못된 본문, 사용자
-curl 설정 격리, HTTPS 전용 프로토콜, 프록시 미사용 동작, TLS 최저 버전, 제한
-시간, 출력 폐기를 고정합니다. 입력 검증이 실패하면 curl을 호출하지 않고,
-WATCH 상태 확인이 실패하면 BATON 수신기를 호출하지 않으며, 수신기 검증까지
-진행한 경우에만 두 번째 curl 호출을 허용합니다. 사전 점검 통과는 도달 가능성과
-외부에서 관찰한 수신기 인증 경계만 입증합니다. 유효한 인증 정보의 수락,
-배포된 WATCH 설정, 전달 동작을 입증하지는 않습니다.
+버립니다. 공통 URL 정책은 IP 리터럴과 정수·8진수·16진수·축약 IPv4 표기를
+요청 전에 거부합니다. 실행 가능한 테스트는 콜백 메서드, 콘텐츠 유형, 잘못된
+본문, 사용자 curl 설정 격리, HTTPS 전용 프로토콜, 프록시 미사용 동작, TLS 최저
+버전, 제한 시간, 출력 폐기를 고정합니다. 입력 검증이 실패하면 curl을 호출하지
+않고, WATCH 상태 확인이 실패하면 BATON 수신기를 호출하지 않으며, 수신기
+검증까지 진행한 경우에만 두 번째 curl 호출을 허용합니다. 스크립트는 토큰 형식과
+분리를 확인한 직후 두 토큰을 하위 Python·curl 환경에서 제거합니다. 사전 점검
+통과는 도달 가능성과 외부에서 관찰한 수신기 인증 경계만 입증합니다. 유효한 인증 정보의
+수락, 배포된 WATCH 설정, 전달 동작을 입증하지는 않습니다.
+
+## 이벤트 전달 오버레이 활성화
+
+사전 점검이 통과한 뒤에만 스테이징 배포 런북에서 정의한
+`STAGING_CONFIG_DIR`, `STAGING_ENV_FILE`, `staging_compose`를 사용합니다. 전달
+토큰 파일에는 값 하나와 마지막 줄바꿈만 기록하고 저장소·명령행·환경 변수에는
+토큰을 넣지 않습니다. 환경 파일에는 검증한 콜백 URL과 토큰 파일 경로만 둡니다.
+
+~~~bash
+chmod 0600 "$STAGING_CONFIG_DIR/secrets/watch-event-delivery-token"
+test -s "$STAGING_CONFIG_DIR/secrets/watch-event-delivery-token"
+test -O "$STAGING_CONFIG_DIR/secrets/watch-event-delivery-token"
+test -f "$STAGING_CONFIG_DIR/secrets/watch-event-delivery-token"
+test ! -L "$STAGING_CONFIG_DIR/secrets/watch-event-delivery-token"
+grep -Eq '^WATCH_EVENT_DELIVERY_ENDPOINT=https://[^[:space:]]+$' "$STAGING_ENV_FILE"
+staging_compose config --quiet
+staging_compose up -d --force-recreate watch cloudflared
+~~~
+
+헬퍼는 콜백 URL이 있을 때만 `compose.staging-event-delivery.yml`을 추가합니다.
+오버레이는 전달을 명시적으로 활성화하고 토큰을 Compose secret과 Spring
+`configtree`로 주입합니다. 렌더링된 환경이나 `docker inspect`에 토큰이 보이면
+실패입니다. 재기동 뒤 공개 상태와 내부 상태를 다시 확인하고 나서 아래 전달 실습을
+시작합니다. 이 활성화만으로 실제 전달 성공을 주장해서는 안 됩니다.
 
 ## 증거 수집 규칙
 
@@ -177,6 +207,11 @@ WHERE event_id = UUID_TO_BIN(?);
 때까지 기다립니다. 수신기나 인그레스가 계속 비정상이면 새로운 전달 작업 선점을
 비활성화하고 보류 중인 행을 유지하세요. 삭제해서는 안 됩니다. 터미널 기록이나
 로그에 나타난 비밀값은 모두 교체하세요.
+
+전달을 비활성화할 때는 `WATCH_EVENT_DELIVERY_ENDPOINT=`를 비우고
+`staging_compose up -d --force-recreate watch cloudflared`를 실행해 기본
+비활성 Compose로 되돌립니다. 토큰 파일은 감사와 롤백 판단이 끝난 뒤 비밀 관리
+절차로 폐기하거나 교체합니다.
 
 최초 전달, 동일 이벤트 재전달, BATON 단일 행 중복 제거, 백로그 해소, 로그/비밀값
 감사가 모두 통과해야만 실습에 성공합니다. 실제 실행 후에만 실행 날짜와 범위가

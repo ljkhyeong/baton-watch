@@ -9,7 +9,7 @@ readonly target_gid=10001
 readonly secret_directory=/run/watch-secrets
 readonly datasource_secret=/run/secrets/spring.datasource.password
 readonly api_token_secret=/run/secrets/watch.api-token
-readonly otlp_authorization_secret=/run/secrets/management.otlp.metrics.export.headers.authorization
+readonly event_delivery_token_secret=/run/secrets/watch.event-delivery.bearer-token
 
 require_secret() {
     source_file="$1"
@@ -42,11 +42,11 @@ chmod 0700 "$secret_directory"
 
 copy_secret "$datasource_secret" "$secret_directory/spring.datasource.password"
 copy_secret "$api_token_secret" "$secret_directory/watch.api-token"
-if [ -e "$otlp_authorization_secret" ] || [ -L "$otlp_authorization_secret" ]; then
-    require_secret "$otlp_authorization_secret"
+if [ -e "$event_delivery_token_secret" ] || [ -L "$event_delivery_token_secret" ]; then
+    require_secret "$event_delivery_token_secret"
     copy_secret \
-        "$otlp_authorization_secret" \
-        "$secret_directory/management.otlp.metrics.export.headers.authorization"
+        "$event_delivery_token_secret" \
+        "$secret_directory/watch.event-delivery.bearer-token"
 fi
 chmod 0500 "$secret_directory"
 chown "$target_uid:$target_gid" "$secret_directory"

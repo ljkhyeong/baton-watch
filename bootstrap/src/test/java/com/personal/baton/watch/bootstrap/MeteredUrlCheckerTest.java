@@ -1,11 +1,12 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
-import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.config.MeterFilter;
@@ -57,17 +58,20 @@ class MeteredUrlCheckerTest {
     }
 
     @Test
-    void convertsUnexpectedCheckerErrorsAndRecordsTheInternalOutcome() {
+    void recordsUnexpectedCheckerErrorsAndPropagatesTheOriginalFailure() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        IllegalStateException expected = new IllegalStateException("sensitive target detail");
         MeteredUrlChecker checker = new MeteredUrlChecker(
                 ignored -> {
-                    throw new IllegalStateException("sensitive target detail");
+                    throw expected;
                 },
                 new MonitoringMetrics(registry));
 
-        CheckObservation observation = checker.check(TARGET);
+        IllegalStateException actual = assertThrows(
+                IllegalStateException.class,
+                () -> checker.check(TARGET));
 
-        assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertSame(expected, actual);
         assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
         assertEquals(
                 1.0,
@@ -78,7 +82,7 @@ class MeteredUrlCheckerTest {
     }
 
     @Test
-    void convertsNullCheckerResultsToInternalFailures() {
+    void recordsNullCheckerResultsWithoutChangingThem() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MeteredUrlChecker checker = new MeteredUrlChecker(
                 ignored -> null,
@@ -86,7 +90,13 @@ class MeteredUrlCheckerTest {
 
         CheckObservation observation = checker.check(TARGET);
 
-        assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
+        assertNull(observation);
+        assertEquals(
+                1.0,
+                registry.get("baton.watch.check.attempts")
+                        .tag("outcome", "internal_failure")
+                        .counter()
+                        .count());
     }
 
     @Test

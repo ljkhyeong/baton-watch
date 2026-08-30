@@ -48,6 +48,42 @@ class ConfigurationPropertiesValidationTest {
                 });
     }
 
+    @Test
+    void rejectsWatchPeriodsBelowOperationalMinimums() {
+        watchContext(
+                        "watch.poll-interval=999ms",
+                        "watch.maintenance-interval=59s",
+                        "watch.check-interval=59s",
+                        "watch.internal-failure-retry-interval=29s")
+                .run(context -> {
+                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
+                    assertThat(fieldNames(failure))
+                            .containsExactlyInAnyOrder(
+                                    "pollInterval",
+                                    "maintenanceInterval",
+                                    "checkInterval",
+                                    "internalFailureRetryInterval");
+                });
+    }
+
+    @Test
+    void rejectsDeliveryPeriodsBelowOperationalMinimums() {
+        eventDeliveryContext(
+                        "watch.event-delivery.poll-interval=999ms",
+                        "watch.event-delivery.maintenance-interval=59s",
+                        "watch.event-delivery.initial-retry-delay=4s",
+                        "watch.event-delivery.max-retry-delay=4s")
+                .run(context -> {
+                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
+                    assertThat(fieldNames(failure))
+                            .containsExactlyInAnyOrder(
+                                    "pollInterval",
+                                    "maintenanceInterval",
+                                    "initialRetryDelay",
+                                    "maxRetryDelay");
+                });
+    }
+
     private static ApplicationContextRunner watchContext(String... invalidProperties) {
         return new ApplicationContextRunner()
                 .withUserConfiguration(WatchConfiguration.class)

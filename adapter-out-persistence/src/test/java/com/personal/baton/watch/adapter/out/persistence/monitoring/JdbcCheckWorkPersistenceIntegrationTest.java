@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -70,7 +71,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 historicalTarget,
                 "resource:a-legacy");
 
-        List<ClaimedCheck> claims = checkWorkPersistence.claimDueChecks(LEASE, 2);
+        List<ClaimedCheck> claims = List.of(claimOne(), claimOne());
 
         assertThat(claims)
                 .extracting(claim -> claim.targetUrl().value())
@@ -95,7 +96,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         ClaimedCheck first = claimOne();
 
         assertThat(first.recoveredLease()).isFalse();
-        assertThat(checkWorkPersistence.claimDueChecks(LEASE, 1))
+        assertThat(checkWorkPersistence.claimDueCheck(LEASE))
                 .isEmpty();
         jdbc.update("""
                 UPDATE watch_monitor
@@ -132,8 +133,8 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        Future<List<ClaimedCheck>> first = null;
-        Future<List<ClaimedCheck>> second = null;
+        Future<Optional<ClaimedCheck>> first = null;
+        Future<Optional<ClaimedCheck>> second = null;
         try {
             first = executor.submit(
                     () -> claimChecksConcurrently(checkWorkPersistence, ready, start));
@@ -141,14 +142,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                     () -> claimChecksConcurrently(anotherPersistence, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
-            List<ClaimedCheck> firstClaims = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            List<ClaimedCheck> secondClaims = second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            assertThat(firstClaims).hasSize(1);
-            assertThat(secondClaims).hasSize(1);
+            ClaimedCheck firstClaim = first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
+            ClaimedCheck secondClaim = second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
             assertThat(List.of(
-                            firstClaims.getFirst().targetUrl().value(),
-                            secondClaims.getFirst().targetUrl().value()))
+                            firstClaim.targetUrl().value(),
+                            secondClaim.targetUrl().value()))
                     .containsExactlyInAnyOrder(
                             "https://one.example/path", "https://two.example/path");
             assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(2);
@@ -160,7 +160,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     }
 
     @Test
-    void claimDueChecksSkipsLockedLeadingMonitorWithoutWaiting() throws Exception {
+    void claimDueCheckSkipsLockedLeadingMonitorWithoutWaiting() throws Exception {
         String lockedReference = "resource:check-locked-leading";
         String nextReference = "resource:check-after-locked";
         synchronize(
@@ -176,17 +176,16 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
                 new DefaultTransactionDefinition());
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<List<ClaimedCheck>> claimFuture = null;
+        Future<Optional<ClaimedCheck>> claimFuture = null;
         try {
             assertThat(lockLeadingDueMonitor(lockJdbc)).isEqualTo(lockedReference);
-            claimFuture = executor.submit(() -> competingPersistence.claimDueChecks(LEASE, 1));
+            claimFuture = executor.submit(() -> competingPersistence.claimDueCheck(LEASE));
 
-            List<ClaimedCheck> claims = claimFuture.get(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            ClaimedCheck claim = claimFuture.get(
+                            CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
 
-            assertThat(claims)
-                    .extracting(claim -> claim.targetUrl().value())
-                    .containsExactly("https://next.example/path");
+            assertThat(claim.targetUrl().value()).isEqualTo("https://next.example/path");
             assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(1);
         } finally {
             try {
@@ -196,47 +195,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 shutdownAndAwait(executor);
             }
         }
-    }
-
-    @Test
-    void batchClaimRollsBackEveryAttemptAndLeaseWhenLaterInsertFails() {
-        String firstReference = "resource:check-batch-rollback-1";
-        String secondReference = "resource:check-batch-rollback-2";
-        synchronize(firstReference, 1, "https://batch-one.example/path", BASE_TIME);
-        synchronize(secondReference, 1, "https://batch-two.example/path", BASE_TIME);
-        jdbc.execute("""
-                ALTER TABLE watch_attempt
-                ADD CONSTRAINT ck_test_check_claim_failure
-                CHECK (resource_reference <> 'resource:check-batch-rollback-2')
-                """);
-
-        try {
-            assertThatThrownBy(() -> checkWorkPersistence.claimDueChecks(LEASE, 2))
-                    .isInstanceOf(DataIntegrityViolationException.class);
-
-            assertThat(countRowsInTable(jdbc, "watch_attempt")).isZero();
-            assertThat(jdbc.queryForObject("""
-                    SELECT COUNT(*)
-                    FROM watch_monitor
-                    WHERE resource_reference IN (?, ?)
-                      AND (
-                          lease_token IS NOT NULL
-                          OR lease_attempt_id IS NOT NULL
-                          OR lease_expires_at IS NOT NULL
-                      )
-                    """, Integer.class, firstReference, secondReference)).isZero();
-        } finally {
-            jdbc.execute("""
-                    ALTER TABLE watch_attempt
-                    DROP CONSTRAINT ck_test_check_claim_failure
-                    """);
-        }
-
-        assertThat(checkWorkPersistence.claimDueChecks(LEASE, 2))
-                .extracting(claim -> claim.targetUrl().value())
-                .containsExactly(
-                        "https://batch-one.example/path",
-                        "https://batch-two.example/path");
     }
 
     @Test
@@ -420,13 +378,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         }
     }
 
-    private List<ClaimedCheck> claimChecksConcurrently(
+    private Optional<ClaimedCheck> claimChecksConcurrently(
             JdbcCheckWorkPersistenceAdapter claimingAdapter,
             CountDownLatch ready,
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return claimingAdapter.claimDueChecks(LEASE, 1);
+        return claimingAdapter.claimDueCheck(LEASE);
     }
 
     private CheckFinalizationStatus finalizeConcurrently(

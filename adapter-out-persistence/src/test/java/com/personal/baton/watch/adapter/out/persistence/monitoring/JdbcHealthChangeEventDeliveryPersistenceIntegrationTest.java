@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -19,6 +18,7 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -27,7 +27,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -55,7 +54,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(first.recoveredLease()).isFalse();
         assertThat(first.payload().attemptId()).isPresent();
         assertThat(deliveryAdapter.getBacklogSnapshot().pendingCount()).isEqualTo(1);
-        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
+        assertThat(deliveryAdapter.claimPendingEvent(LEASE))
                 .isEmpty();
 
         jdbc.update("""
@@ -88,7 +87,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryBacklogSnapshot deliveredBacklog = deliveryAdapter.getBacklogSnapshot();
         assertThat(deliveredBacklog.pendingCount()).isZero();
         assertThat(deliveredBacklog.oldestChangedAt()).isEmpty();
-        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
+        assertThat(deliveryAdapter.claimPendingEvent(LEASE))
                 .isEmpty();
         assertThat(jdbc.queryForMap("""
                         SELECT delivery_status, delivery_attempt, last_delivery_outcome, last_http_status_code
@@ -120,7 +119,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         assertThat(retryBacklog.pendingCount()).isEqualTo(1);
         assertThat(retryBacklog.oldestChangedAt()).contains(first.payload().changedAt());
 
-        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 1))
+        assertThat(deliveryAdapter.claimPendingEvent(LEASE))
                 .isEmpty();
         jdbc.update("""
                 UPDATE watch_health_change_event
@@ -148,8 +147,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
-        Future<List<ClaimedHealthChangeEvent>> first = null;
-        Future<List<ClaimedHealthChangeEvent>> second = null;
+        Future<Optional<ClaimedHealthChangeEvent>> first = null;
+        Future<Optional<ClaimedHealthChangeEvent>> second = null;
         try {
             first = executor.submit(
                     () -> claimDeliveriesConcurrently(deliveryAdapter, ready, start));
@@ -157,16 +156,15 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                     () -> claimDeliveriesConcurrently(anotherAdapter, ready, start));
             assertThat(ready.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             start.countDown();
-            List<ClaimedHealthChangeEvent> firstClaims =
-                    first.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            List<ClaimedHealthChangeEvent> secondClaims =
-                    second.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-            assertThat(firstClaims).hasSize(1);
-            assertThat(secondClaims).hasSize(1);
+            ClaimedHealthChangeEvent firstClaim = first.get(
+                            CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
+            ClaimedHealthChangeEvent secondClaim = second.get(
+                            CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
             assertThat(List.of(
-                            firstClaims.getFirst().payload().eventId(),
-                            secondClaims.getFirst().payload().eventId()))
+                            firstClaim.payload().eventId(),
+                            secondClaim.payload().eventId()))
                     .containsExactlyInAnyOrder(firstEvent, secondEvent);
         } finally {
             cancelIfRunning(first);
@@ -176,7 +174,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     @Test
-    void claimPendingEventsSkipsLockedLeadingEventWithoutWaiting() throws Exception {
+    void claimPendingEventSkipsLockedLeadingEventWithoutWaiting() throws Exception {
         UUID lockedEvent = createDeliveryEvent("resource:delivery-locked-leading");
         UUID followingEvent = createDeliveryEvent("resource:delivery-after-locked");
         DataSourceTransactionManager lockTransactionManager =
@@ -186,16 +184,16 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         TransactionStatus lockTransaction = lockTransactionManager.getTransaction(
                 new DefaultTransactionDefinition());
         ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<List<ClaimedHealthChangeEvent>> claimFuture = null;
+        Future<Optional<ClaimedHealthChangeEvent>> claimFuture = null;
         try {
             assertThat(lockLeadingDueEvent(lockJdbc)).isEqualTo(lockedEvent);
-            claimFuture = executor.submit(() -> competingAdapter.claimPendingEvents(LEASE, 1));
+            claimFuture = executor.submit(() -> competingAdapter.claimPendingEvent(LEASE));
 
-            List<ClaimedHealthChangeEvent> claims = claimFuture.get(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            ClaimedHealthChangeEvent claim = claimFuture.get(
+                            CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                    .orElseThrow();
 
-            assertThat(claims).extracting(claim -> claim.payload().eventId())
-                    .containsExactly(followingEvent);
+            assertThat(claim.payload().eventId()).isEqualTo(followingEvent);
         } finally {
             try {
                 cancelIfRunning(claimFuture);
@@ -257,39 +255,6 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     @Test
-    void batchClaimRollsBackEveryLeaseWhenLaterUpdateFails() {
-        UUID firstEvent = createDeliveryEvent("resource:delivery-batch-rollback-1");
-        UUID secondEvent = createDeliveryEvent("resource:delivery-batch-rollback-2");
-        jdbc.execute("""
-                ALTER TABLE watch_health_change_event
-                ADD CONSTRAINT ck_test_delivery_claim_failure
-                CHECK (event_id <> '%s'::uuid OR delivery_attempt = 0)
-                """.formatted(secondEvent));
-
-        assertThatThrownBy(() -> deliveryAdapter.claimPendingEvents(LEASE, 2))
-                .isInstanceOf(DataIntegrityViolationException.class);
-
-        assertThat(jdbc.queryForObject("""
-                SELECT COUNT(*)
-                FROM watch_health_change_event
-                WHERE event_id IN (?, ?)
-                  AND (
-                      delivery_attempt <> 0
-                      OR delivery_lease_token IS NOT NULL
-                      OR delivery_lease_expires_at IS NOT NULL
-                  )
-                """, Integer.class, firstEvent, secondEvent)).isZero();
-
-        jdbc.execute("""
-                ALTER TABLE watch_health_change_event
-                DROP CONSTRAINT ck_test_delivery_claim_failure
-                """);
-        assertThat(deliveryAdapter.claimPendingEvents(LEASE, 2))
-                .extracting(claim -> claim.payload().eventId())
-                .containsExactlyInAnyOrder(firstEvent, secondEvent);
-    }
-
-    @Test
     void saturatedDeliveryAttemptDoesNotBlockLaterPendingEvents() {
         monitorPersistence.synchronize(
                 SynchronizeMonitorCommand.inactive(
@@ -300,7 +265,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         UUID following = insertPendingEvent(
                 "resource:saturated-attempt", BASE_TIME.minusSeconds(1), 3);
 
-        List<ClaimedHealthChangeEvent> claims = deliveryAdapter.claimPendingEvents(LEASE, 2);
+        List<ClaimedHealthChangeEvent> claims = List.of(
+                claimOneDelivery(),
+                claimOneDelivery());
 
         assertThat(claims)
                 .extracting(
@@ -407,7 +374,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
     }
 
     private ClaimedHealthChangeEvent claimOneDelivery() {
-        return deliveryAdapter.claimPendingEvents(LEASE, 1).getFirst();
+        return deliveryAdapter.claimPendingEvent(LEASE).orElseThrow();
     }
 
     private EventDeliveryFinalization deliveredFinalization(
@@ -420,13 +387,13 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 null);
     }
 
-    private List<ClaimedHealthChangeEvent> claimDeliveriesConcurrently(
+    private Optional<ClaimedHealthChangeEvent> claimDeliveriesConcurrently(
             JdbcHealthChangeEventDeliveryAdapter claimingAdapter,
             CountDownLatch ready,
             CountDownLatch start) throws InterruptedException {
         ready.countDown();
         start.await();
-        return claimingAdapter.claimPendingEvents(LEASE, 1);
+        return claimingAdapter.claimPendingEvent(LEASE);
     }
 
     private EventDeliveryFinalizationStatus finalizeDeliveryConcurrently(

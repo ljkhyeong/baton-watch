@@ -20,13 +20,13 @@ public record EventDeliveryProperties(
         boolean enabled,
         URI endpoint,
         String bearerToken,
-        @NotNull @DurationMin(inclusive = false) Duration pollInterval,
-        @NotNull @DurationMin(inclusive = false) Duration maintenanceInterval,
+        @NotNull @DurationMin(seconds = 1) Duration pollInterval,
+        @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration leaseDuration,
-        Duration initialRetryDelay,
-        Duration maxRetryDelay,
+        @NotNull @DurationMin(seconds = 5) Duration initialRetryDelay,
+        @NotNull @DurationMin(seconds = 5) Duration maxRetryDelay,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
         Duration retention,

@@ -6,7 +6,7 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.List;
+import java.util.Optional;
 
 final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
 
@@ -19,9 +19,9 @@ final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
     }
 
     @Override
-    public List<ClaimedCheck> claimDueChecks(Duration leaseDuration, int limit) {
-        List<ClaimedCheck> claimed = delegate.claimDueChecks(leaseDuration, limit);
-        BestEffortMetrics.record(() -> metrics.recordCheckClaims(claimed));
+    public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
+        Optional<ClaimedCheck> claimed = delegate.claimDueCheck(leaseDuration);
+        claimed.ifPresent(metrics::recordCheckClaim);
         return claimed;
     }
 
@@ -29,10 +29,10 @@ final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
     public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
         try {
             CheckFinalizationStatus status = delegate.finalizeCheck(finalization);
-            BestEffortMetrics.record(() -> metrics.recordCheckFinalization(status));
+            metrics.recordCheckFinalization(status);
             return status;
         } catch (RuntimeException failure) {
-            BestEffortMetrics.record(metrics::recordCheckFinalizationFailure);
+            metrics.recordCheckFinalizationFailure();
             throw failure;
         }
     }

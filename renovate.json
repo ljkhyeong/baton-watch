@@ -1,0 +1,108 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "enabledManagers": [
+    "dockerfile",
+    "docker-compose",
+    "custom.regex"
+  ],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "timezone": "Asia/Seoul",
+  "prConcurrentLimit": 5,
+  "automerge": false,
+  "semanticCommits": "enabled",
+  "commitMessagePrefix": "chore:",
+  "commitMessageAction": "의존성 갱신",
+  "commitMessageTopic": "{{{depName}}}",
+  "commitMessageExtra": "{{{newValue}}}",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"bash=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/bash",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"(?:libcrypto3|libssl3|openssl)=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/openssl",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"libexpat=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/expat",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"(?:p11-kit|p11-kit-trust)=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/p11-kit",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"sqlite-libs=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/sqlite",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "\\\"su-exec=(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "datasourceTemplate": "repology",
+      "depNameTemplate": "alpine_3_24/su-exec",
+      "versioningTemplate": "loose"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/verify\\.yml$/"
+      ],
+      "matchStrings": [
+        "trivy_image=\\\"docker\\.io/aquasec/trivy:(?<currentValue>[^@\\\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\\\""
+      ],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "aquasec/trivy",
+      "versioningTemplate": "docker"
+    }
+  ]
+}

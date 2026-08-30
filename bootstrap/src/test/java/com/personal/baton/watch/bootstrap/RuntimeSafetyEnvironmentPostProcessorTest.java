@@ -19,6 +19,9 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
                         Map.entry("spring.task.scheduling.shutdown.await-termination", "false"),
                         Map.entry("server.tomcat.max-connections", "4096"),
                         Map.entry("logging.level.org.apache.hc.client5.http.headers", "DEBUG"),
+                        Map.entry(
+                                "logging.level.org.springframework.jdbc.core.StatementCreatorUtils",
+                                "TRACE"),
                         Map.entry("management.endpoint.health.show-details", "always"),
                         Map.entry("management.endpoints.web.exposure.include", "*"))));
 
@@ -34,6 +37,9 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
         assertThat(environment.getProperty("server.tomcat.max-connections"))
                 .isEqualTo("128");
         assertThat(environment.getProperty("logging.level.org.apache.hc.client5.http.headers"))
+                .isEqualTo("OFF");
+        assertThat(environment.getProperty(
+                        "logging.level.org.springframework.jdbc.core.StatementCreatorUtils"))
                 .isEqualTo("OFF");
         assertThat(environment.getProperty("management.endpoint.health.show-details"))
                 .isEqualTo("never");
