@@ -485,59 +485,45 @@ staging_compose config
 ## 업데이트 전 백업
 
 최초 빈 배포에는 백업할 내용이 없습니다. 이후 모든 업데이트 전에는 기존
-데이터베이스가 정상인 동안 권한 모드 `0600` 논리 백업을 생성합니다. 이 명령은
-컨테이너 내부에서 PostgreSQL 인증 정보를 읽으므로 명령줄에 비밀번호를 넣지
-않습니다.
+데이터베이스가 정상인 동안 권한 모드 `0600` 논리 백업을 생성합니다.
+`staging-database-backup.sh create`는 지정한 원본 컨테이너 안의 `pg_dump`를
+사용하며 명령줄에 비밀번호를 넣지 않습니다. 기존 파일을 덮어쓰지 않고, 덤프
+실패 시 불완전한 파일도 남기지 않습니다. 이 절차는 운영자가 직접 실행할 때만
+원본 DB에 접근합니다.
 
 ~~~bash
 umask 077
-BACKUP_DIR="${HOME}/baton-watch-staging-backups"
-mkdir -p "$BACKUP_DIR"
-BACKUP_FILE="${BACKUP_DIR}/baton-watch-$(date -u +%Y%m%dT%H%M%SZ).dump"
-staging_compose exec -T postgres sh -c \
-  'exec pg_dump --format=custom --no-owner --no-privileges --username="$POSTGRES_USER" "$POSTGRES_DB"' \
-  > "$BACKUP_FILE"
-chmod 0600 "$BACKUP_FILE"
-test -s "$BACKUP_FILE"
-staging_compose exec -T postgres pg_restore --list \
-  < "$BACKUP_FILE" >/dev/null
-
-verify_backup_restore() {
-  local restore_database="watch_restore_test_$(date -u +%Y%m%dT%H%M%SZ)_$$"
-  local restore_evidence
-
-  staging_compose exec -T --env RESTORE_DATABASE="$restore_database" \
-    postgres sh -c \
-    'exec createdb --username="$POSTGRES_USER" "$RESTORE_DATABASE"'
-
-  if ! staging_compose exec -T --env RESTORE_DATABASE="$restore_database" \
-    postgres sh -c \
-    'exec pg_restore --exit-on-error --single-transaction --no-owner --no-privileges --username="$POSTGRES_USER" --dbname="$RESTORE_DATABASE"' \
-    < "$BACKUP_FILE"; then
-    staging_compose exec -T --env RESTORE_DATABASE="$restore_database" \
-      postgres sh -c \
-      'exec dropdb --if-exists --username="$POSTGRES_USER" "$RESTORE_DATABASE"'
-    return 1
-  fi
-
-  if ! restore_evidence="$(staging_compose exec -T \
-    --env RESTORE_DATABASE="$restore_database" postgres sh -c \
-    'exec psql --username="$POSTGRES_USER" --dbname="$RESTORE_DATABASE" --tuples-only --no-align --command="SELECT count(*) > 0 AND bool_and(success) FROM flyway_schema_history"')"; then
-    staging_compose exec -T --env RESTORE_DATABASE="$restore_database" \
-      postgres sh -c \
-      'exec dropdb --if-exists --username="$POSTGRES_USER" "$RESTORE_DATABASE"'
-    return 1
-  fi
-
-  staging_compose exec -T --env RESTORE_DATABASE="$restore_database" \
-    postgres sh -c \
-    'exec dropdb --username="$POSTGRES_USER" "$RESTORE_DATABASE"'
-  test "$restore_evidence" = t
-}
-
-verify_backup_restore
-unset -f verify_backup_restore
+WATCH_BACKUP_DIR="${HOME}/baton-watch-staging-backups"
+mkdir -p "$WATCH_BACKUP_DIR"
+chmod 0700 "$WATCH_BACKUP_DIR"
+BACKUP_FILE="${WATCH_BACKUP_DIR}/baton-watch-$(date -u +%Y%m%dT%H%M%SZ).dump"
+WATCH_POSTGRES_CONTAINER="$(staging_compose ps -q postgres)"
+./ops/staging-database-backup.sh create "$WATCH_POSTGRES_CONTAINER" "$BACKUP_FILE"
+./ops/staging-database-backup.sh verify "$BACKUP_FILE"
+shasum -a 256 "$BACKUP_FILE"
 ~~~
+
+`verify`는 [복원 시험 Compose](../../ops/compose.restore-test.yml)로 별도
+PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미지가 없으면
+최초 실행 시 내려받습니다. 운영 볼륨·호스트 포트·외부 네트워크는 연결하지
+않습니다. 원본 DB가 아니라 이 임시 컨테이너에 `pg_restore`를 실행하고,
+마이그레이션 성공 이력과 실제 미전달 이벤트·백로그 요약의 일치를 확인합니다.
+모니터·시도·결과·대기/완료 이벤트·전달 시도 합계만 출력하고 임시 환경을 삭제합니다.
+
+복원 환경은 메모리 1.5GiB, 데이터·WAL을 포함한 임시 저장 공간 1GiB로 제한합니다.
+더 큰 백업의 복원은 승인된 별도 격리 환경이 필요하며, 이 도구의 성공으로 운영
+규모의 복구 시간이나 지원 용량을 보장하지 않습니다. 복원 입력은 직접 생성하고
+보관 경로·체크섬을 확인한 신뢰할 수 있는 WATCH 백업만 사용합니다.
+`--no-owner --no-privileges`로 복원하므로 스테이징 역할·비밀번호·권한은 복원 대상이
+아닙니다. 실제 복구 시에는 이 런북의 역할 초기화와 마이그레이션 권한 절차도
+다시 수행해야 합니다. 백업·복원 형식은 PostgreSQL의
+[pg_restore 문서](https://www.postgresql.org/docs/18/app-pgrestore.html)를 따릅니다.
+
+정리에 실패하면 도구가 정확한 임시 Compose 프로젝트 이름을 출력하고 실패로
+종료합니다. 이때 출력된 프로젝트에 한해서 같은 Compose 파일의 `down --volumes`로
+정리합니다. 운영 프로젝트나 다른 작업의 볼륨은 삭제하지 않습니다. 백업 원본은
+성공·실패 모두 보존합니다. 원본 URL이 포함될 수 있는 덤프와 도구 내부 오류
+출력은 공개 로그나 Git에 보관하지 않습니다.
 
 이 로컬 `0600` 덤프는 같은 Mac에서 수행하는 업데이트 롤백용 사본일 뿐 재해 복구
 백업이 아닙니다. 비어 있지 않은 스테이징을 공개하기 전에는 다음 항목을 모두
