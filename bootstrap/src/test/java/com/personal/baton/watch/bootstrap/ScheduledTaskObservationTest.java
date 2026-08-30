@@ -10,6 +10,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.observation.autoconfigure.ScheduledTasksObservationAutoConfiguration;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -23,6 +25,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 class ScheduledTaskObservationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                    ScheduledTasksObservationAutoConfiguration.class))
             .withUserConfiguration(
                     WorkerSchedulingConfiguration.class,
                     ScheduledTaskTestConfiguration.class);
