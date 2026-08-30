@@ -1,16 +1,13 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.ArrayDeque;
-import java.util.Arrays;
-import java.util.Queue;
 import org.junit.jupiter.api.Test;
 
 class MonitoringConfigurationTest {
@@ -29,33 +26,12 @@ class MonitoringConfigurationTest {
             Instant databaseTime,
             Instant before,
             Instant after) {
+        Clock clock = mock(Clock.class);
+        when(clock.instant()).thenReturn(before, after);
         GetDatabaseClockOffsetUseCase useCase = new MonitoringConfiguration()
-                .getDatabaseClockOffsetUseCase(() -> databaseTime, new SequenceClock(before, after));
+                .getDatabaseClockOffsetUseCase(() -> databaseTime, clock);
 
         assertEquals(expected, useCase.getDatabaseClockOffset());
     }
 
-    private static final class SequenceClock extends Clock {
-
-        private final Queue<Instant> instants;
-
-        private SequenceClock(Instant... instants) {
-            this.instants = new ArrayDeque<>(Arrays.asList(instants));
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return instants.remove();
-        }
-    }
 }
