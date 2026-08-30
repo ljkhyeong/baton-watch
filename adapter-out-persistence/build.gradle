@@ -12,6 +12,7 @@ dependencies {
     testImplementation 'org.assertj:assertj-core'
     testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'tools.jackson.core:jackson-databind'
 }
 
 tasks.named('test', Test) {

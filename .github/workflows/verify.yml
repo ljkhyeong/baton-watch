@@ -73,6 +73,7 @@ jobs:
 
           expected = {
               "com.personal.baton.watch.adapter.out.persistence.monitoring.DatabaseBackupIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringDiagnosticsIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapterIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
@@ -137,6 +138,7 @@ jobs:
             adapter-out-persistence/build/reports/tests/processRecoveryTest
             adapter-out-persistence/build/test-results/processRecoveryTest/*.xml
             adapter-out-persistence/build/test-results/test/TEST-*DatabaseBackupIntegrationTest.xml
+            adapter-out-persistence/build/test-results/test/TEST-*MonitoringDiagnosticsIntegrationTest.xml
           retention-days: 7
           if-no-files-found: warn
 
