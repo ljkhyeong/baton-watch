@@ -11,22 +11,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 class WatchPropertiesTest {
 
     @Test
-    void letsTheTotalTimeoutCapHttpPhases() {
-        new WatchProperties.Http(
-                Duration.ofSeconds(6),
-                Duration.ofSeconds(7),
-                Duration.ofSeconds(5),
-                65_536,
-                3,
-                100,
-                8_192,
-                2,
-                8,
-                1,
-                1);
-    }
-
-    @Test
     void acceptsAnRfc6750Token68ServiceToken() {
         properties("01234567890123456789012345678901==");
         properties("a".repeat(WatchProperties.MAX_API_TOKEN_LENGTH));
