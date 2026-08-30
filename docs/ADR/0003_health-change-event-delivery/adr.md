@@ -3,7 +3,7 @@
 상태: 채택됨
 
 날짜: 2026-08-02
-수정일: 2026-08-28
+수정일: 2026-08-30
 
 ## 배경
 
@@ -21,6 +21,12 @@ PostgreSQL 아웃박스를 정의한다. 기록만으로는 BATON에 알릴 수 
 
 각 상태 변경 이벤트를 운영자가 설정한 하나의 BATON 콜백에 HTTPS `POST`로
 직접 전달한다. 메시지 브로커나 WATCH 수신 웹훅 경로는 도입하지 않는다.
+
+전달 클라이언트·계측 래퍼·실행 서비스·예약 작업은
+`EventDeliveryConfiguration.EnabledCondition`을 공유한다. Spring `Condition`에서
+`Environment.getProperty`의 `Boolean` 변환으로 활성화 여부를 읽어 설정 바인딩과
+실제 등록이 일치하게 한다. 사용자 설정 빈을 조건 평가 중 미리 초기화하지 않으며,
+기본 비활성 상태와 독립적인 유지보수 등록은 유지한다.
 
 콜백에는 모니터 API 토큰과 구별되는 정적 Bearer 서비스 토큰,
 `Idempotency-Key` 헤더와 PRD-0004의 정확하고 버전이 지정된 JSON 형태를

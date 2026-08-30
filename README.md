@@ -135,6 +135,10 @@ WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.example.com/api/v1/internal/resource
 WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 ~~~
 
+`WATCH_EVENT_DELIVERY_ENABLED`는 기본 `false`이며, 점검 설정과 같은 Spring 불리언
+변환을 사용합니다. `on`·`yes`·`1`과 앞뒤 공백도 해석하지만 운영 설정에는
+`true`·`false`를 사용하세요. 값 변경 후에는 프로세스 재시작 또는 컨테이너 재생성이 필요합니다.
+
 엔드포인트는 포트 `443`의 절대 공개 글로벌 HTTPS URL이어야 하며 사용자 정보, 쿼리, 프래그먼트, IP 리터럴 호스트를 포함할 수 없습니다. BATON은 Bearer 토큰을 인증하고 `2xx`로 응답하기 전에 `Idempotency-Key`/`eventId`를 내구성 있게 중복 제거해야 합니다. 정확한 페이로드와 재시도 동작은 전달 계약을 참고합니다.
 콜백 Bearer 토큰은 모니터 API 토큰과 달라야 하고 `[A-Za-z0-9._~-]` 문자 32~200개로 구성합니다.
 
