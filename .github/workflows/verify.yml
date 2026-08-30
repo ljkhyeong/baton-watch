@@ -56,6 +56,9 @@ jobs:
       - name: 셸 스크립트 정적 검사
         run: shellcheck ops/*.sh ops/tests/*.sh
 
+      - name: 런타임 라이선스 정책 회귀 검사
+        run: python3 ops/tests/runtime-license-policy-test.py
+
       - name: 전체 Gradle 검증
         run: ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
 
@@ -268,82 +271,7 @@ jobs:
           scan_image_archive migrations.tar migrations.cdx.json
           scan_image_archive runtime.tar runtime.cdx.json
 
-          ignored_licenses="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          reports = Path("build/supply-chain")
-          for report in sorted(reports.glob("*.cdx.json")):
-              document = json.loads(report.read_text())
-              if document.get("bomFormat") != "CycloneDX":
-                  raise SystemExit(f"CycloneDX 보고서가 올바르지 않습니다: {report}")
-              if not document.get("components"):
-                  raise SystemExit(f"SBOM에 구성요소가 없습니다: {report}")
-
-          allowed = set()
-          reading_allowlist = False
-          for line in Path(".github/dependency-review-config.yml").read_text().splitlines():
-              if line == "allow-licenses:":
-                  reading_allowlist = True
-                  continue
-              if reading_allowlist and line.startswith("  - "):
-                  allowed.add(line.removeprefix("  - "))
-                  continue
-              if reading_allowlist and line.strip():
-                  break
-          if not allowed:
-              raise SystemExit("런타임 라이선스 허용 목록이 비어 있습니다.")
-
-          # Trivy 0.74가 라이선스를 싣지 않지만 각 배포 POM은 Apache-2.0을 선언한다.
-          approved_missing = {
-              "pkg:maven/org.flywaydb/flyway-database-postgresql@13.4.0",
-          }
-          approved_alternatives = {
-              "pkg:maven/ch.qos.logback/logback-classic@1.5.38": {"LGPL-2.1-only"},
-              "pkg:maven/ch.qos.logback/logback-core@1.5.38": {"LGPL-2.1-only"},
-              "pkg:maven/jakarta.annotation/jakarta.annotation-api@3.0.0": {
-                  "GPL-2.0-only WITH classpath-exception"
-              },
-          }
-
-          document = json.loads((reports / "baton-watch.cdx.json").read_text())
-          missing = set()
-          alternatives = {}
-          for component in document["components"]:
-              identifiers = {
-                  entry.get("license", {}).get("id")
-                  or entry.get("license", {}).get("name")
-                  or entry.get("expression")
-                  for entry in component.get("licenses", [])
-              } - {None}
-              purl = component.get("purl", component.get("bom-ref", "알 수 없는 구성요소"))
-              if not identifiers:
-                  missing.add(purl)
-                  continue
-              additional = identifiers - allowed
-              if additional:
-                  if identifiers.isdisjoint(allowed):
-                      continue
-                  alternatives[purl] = additional
-          if missing != approved_missing:
-              raise SystemExit(
-                  "라이선스를 판별하지 못한 런타임 의존성이 승인 목록과 다릅니다: "
-                  f"실제={sorted(missing)}, 승인={sorted(approved_missing)}"
-              )
-          if alternatives != approved_alternatives:
-              raise SystemExit(
-                  "대체 라이선스가 있는 런타임 의존성이 승인 목록과 다릅니다: "
-                  f"실제={alternatives}, 승인={approved_alternatives}"
-              )
-
-          ignored = allowed | {
-              identifier
-              for identifiers in approved_alternatives.values()
-              for identifier in identifiers
-          }
-          print(",".join(sorted(ignored)))
-          PY
-          )"
+          ignored_licenses="$(python3 ops/check-runtime-licenses.py "${reports_dir}")"
 
           docker run --rm \
             --volume "${reports_dir}:/reports:ro" \
