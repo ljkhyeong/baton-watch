@@ -4,40 +4,29 @@
 
 ## 현재 인계 상태
 
-- 2026-08-30 DB 잠금 경합 테스트의 직접 폴링을 Awaitility로 교체했다. 첫 조회의
-  즉시 실행, 10초 제한, 20ms 확인 간격과 실제 PostgreSQL 잠금 확인은 유지했다.
-- 2026-08-30 설정 검증 테스트의 예외 원인 탐색을 AssertJ로 교체하고, HTTP 설정
-  레코드 생성만 확인하던 테스트를 실제 시간 제한 계산 테스트로 바꿨다.
-  이번 검증 결과와 이전 작업의 운영 검증 기록을 구분했다.
-- 2026-08-30 예약 작업 관측 연결을 Spring Boot 자동 구성에 위임하고, 모니터·점검
-  영속성 어댑터를 `JdbcClient`로 통일했으며 실행기 테스트는 진단용 스레드 이름
-  접두사만 검증하도록 완화했다.
-- 2026-08-30 재시도와 시계 테스트 대역을 기존 라이브러리 API로 단순화하고, URL
-  정책 사례를 공통 정책 테스트로 모았으며 데이터베이스 권한은 실제 PostgreSQL
-  동작으로 검증하도록 정리했다.
-- 2026-08-29 저장소의 아웃바운드 안전 경계를 충족하지 않는 선택적 OTLP 전송과
-  스테이징 관측 오버레이를 제거하고 내부 Prometheus 조회만 유지했다.
-- 2026-08-29 점검·전달 영속성 포트를 실제 실행 방식에 맞는 단건 점유 계약으로
-  좁히고, 계측 데코레이터가 업무 실패를 중복 변환하지 않도록 책임을 정리했다.
-- 2026-08-29 공개 스테이징 URL 검증을 Python 표준 라이브러리 기반 공통 정책으로
-  통합하고, 카운터 계측 실패가 점검·전달 업무 결과를 바꾸지 않도록 격리했다.
-- 2026-08-29 Spring JDBC 구문 매개변수 로거를 차단하고 스테이징 URL 원문 경계와
-  사전 검사 토큰 환경 정리를 강화했다.
-- 2026-08-29 정적 Bearer 인증은 Spring Security Resource Server 모듈을 유지하되
-  JWT/JOSE 구현을 함께 가져오는 Boot 스타터는 제거했다. 이벤트 재시도 상한은
-  application 정책이 소유하고 카운터 계측 실패 격리는 한 번만 적용하도록 정리했다.
-- 2026-08-29 작업 주기 최소값과 기존 도메인·데이터베이스 상태 불변식, DNS 호출자
-  중단 처리를 회귀 테스트로 고정했다.
+- 2026-08-30 격리 PostgreSQL에서 동기화·점검·전달 부하와 DB 잠금·콜백 장애 후
+  복구를 확인하는 `:adapter-out-persistence:loadTest`를 추가했다. 기본 100개,
+  최대 1000개 모니터를 사용하고 일반 테스트와 분리했다. CI는 25개로 실행한다.
+- 기존 메트릭을 사용하는 경보 규칙 8개와 `promtool` 테스트를 추가했다. 전달
+  비활성 환경의 백로그는 경보에서 제외하며 실제 수집기·외부 알림은 연결하지 않았다.
+- 표준 `pg_dump`로 `0600` 파일을 만들고 별도 임시 PostgreSQL에서 실제 복원하는
+  도구를 추가했다. 운영 볼륨·외부 네트워크를 연결하지 않으며 마이그레이션 이력과
+  이벤트 백로그 일치를 확인한다. 실제 운영 데이터 백업은 수행하지 않았다.
+- CI는 DB 백업·복원 통합 테스트, 부하·복구 스모크와 경보 규칙을 검사하고 시험
+  보고서를 7일 보관하도록 구성했다. 이 변경의 원격 CI 결과는 아직 확인하지 않았다.
+- 이전 Java/Spring 정리에서 적용한 `JdbcClient`, Spring 예약 관측 자동 구성,
+  Awaitility와 AssertJ 재사용을 유지했다. 이번 변경은 운영 애플리케이션 코드나
+  HTTP 계약·DB 스키마·런타임 기본 설정을 바꾸지 않는다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
   구축되거나 검증되지 않았다.
-- 관리 포트의 내부 Prometheus 조회만 제공한다. 외부 메트릭 전송, 외부 계정,
-  대시보드와 알림은 구현하거나 생성하지 않았다.
+- 관리 포트의 내부 Prometheus 조회와 적용 전 경보 규칙만 제공한다. 외부 메트릭
+  전송, 외부 계정, 실제 대시보드와 알림 수신 경로는 구현하거나 생성하지 않았다.
 - BATON 콜백 사전 검사 뒤에만 토큰을 `configtree`로 주입해 전달을 켜는 선택적
   스테이징 이벤트 전달 오버레이가 준비되어 있다. 실제 콜백 전달은 검증하지 않았다.
 - Gradle·GitHub Actions·Docker 기본 이미지의 주간 Dependabot 점검을 활성화했다.
-  다단계 Dockerfile·Compose·Alpine 패키지·Trivy의 추가 갱신 범위는
+  다단계 Dockerfile·Compose·Alpine 패키지·Trivy·Prometheus 검사용 이미지의 갱신 범위는
   `renovate.json`에 준비했지만 외부 Renovate 서비스는 활성화하지 않았다.
 
 ## 유지되는 구현 기준
@@ -58,16 +47,27 @@
 
 ## 이번 변경의 검증 상태
 
-- 검증 대상 코드 리비전은 `6774ef7`이다. 이번 변경은 테스트·테스트 의존성과
-  인계 문서에 한정되며 운영 코드는 수정하지 않았다.
-- `./gradlew --no-daemon :adapter-out-persistence:test
-  --tests '*JdbcMonitoringSchemaIntegrationTest'`로 관련 DB 통합 테스트 7개를 통과했다.
-- `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
-  :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`로 전체 테스트 365개를
-  실패·오류·건너뜀 없이 통과했다. 6개 모듈의 테스트 작업을 모두 다시 실행했고,
-  실행 가능한 부트 JAR의 Apache-2.0 전문 검증도 통과했다.
-- Awaitility는 기존 관리 버전 `4.3.0`과 체크섬을 그대로 사용한다.
-  `gradle/verification-metadata.xml`의 변경은 없었다.
+- 이번 구현·CI 코드 리비전은 `93e08eb`이다. 완료한 변경을 부하 시험, 경보,
+  백업·복원, CI 연결로 나눠 커밋했다.
+- `./gradlew clean test :bootstrap:verifyBootJarLicense
+  :adapter-out-persistence:loadTest --no-daemon --no-build-cache`로 일반 테스트
+  368개와 기본 100개 모니터 부하·복구 사례 2개를 실패·오류·건너뜀 없이 통과했다.
+  6개 모듈의 테스트 작업을 다시 실행했고 부트 JAR의 Apache-2.0 전문 검증도 통과했다.
+- CI와 같은 `-PwatchLoadMonitors=25` 시험과 `ScheduledTaskObservationTest`도
+  구현·CI 커밋 뒤에 다시 실행해 통과했다.
+- 부하 시험은 지연 0ms·20ms 모두 DB 잠금 실패 후 점검 결과를 확정하고, 콜백
+  실패 전후 같은 페이로드를 유지하며 최종 백로그 0을 확인했다. 이 결과는 실제
+  네트워크·운영 폴링·Hikari 풀·프로세스 재시작의 부하 증거가 아니다.
+- DB 백업·복원 통합 테스트 3개에서 모니터·결과·재시도 중인 이벤트 복원,
+  `0600` 권한과 덮어쓰기 거부, 손상된 아카이브·백로그 불일치 거부, 실패한 덤프의
+  미완성 파일 정리를 확인했다. 임시 복원 컨테이너가 남지 않은 것도 확인했다.
+- `./ops/tests/prometheus-rules-test.sh`로 경보 8개의 문법과 지속 장애·복구,
+  비활성 전달·카운터 초기화·수집 대상 누락을 검사했다. 예약 실패 테스트는 실제
+  Prometheus 메트릭 이름과 레이블도 확인한다.
+- 전체 운영 셸의 Bash 구문과 ShellCheck, CI의 actionlint, 스테이징 Compose
+  정책 테스트, 시험용 값으로 렌더링한 기본 Compose와 복원 시험 Compose 검사를 통과했다.
+- 새 Gradle 의존성은 추가하지 않았다. `gradle/verification-metadata.xml`도
+  변경하지 않았다. Prometheus 검사용 이미지는 버전과 다이제스트를 고정했다.
 - 이전 운영 검증 이후의 Java/Spring 리팩터링을 반영한 배포 이미지 재빌드와
   운영 스모크는 수행하지 않았다. 아래 이전 기록을 현재 코드의 운영 검증 결과로
   사용하지 않는다.
@@ -97,6 +97,7 @@
 ## 공개 배포 차단 조건
 
 다음 항목이 모두 승인되고 증거가 남기 전에는 공개 배포하지 않는다.
+이번에 추가한 시험·경보·백업 도구만으로 아래 운영 조건이 해소되지는 않는다.
 
 - 공개 목적지만 허용하는 인프라 DNS·HTTP/HTTPS 이그레스 정책
 - 활성 모니터·동기화·이벤트 폭주 부하 시험과 지원 규모·SLO
@@ -110,9 +111,13 @@
 
 ## 다음 작업 진입점
 
-1. `main`의 최신 `Verify / verify`와 공급망 출처 증명 결과를 확인한다.
-2. 공개 배포를 추진한다면 위 차단 조건부터 별도 운영 승인으로 해소한다.
-3. 승인 뒤에만 [스테이징 배포 런북](docs/runbooks/staging-deployment.md)을 처음부터
+1. 현재 브랜치의 PR에서 `Verify / verify`를 확인하고, 병합 뒤 `main`의 공급망
+   출처 증명 결과를 확인한다. 이번 작업에서 PR 생성이나 병합은 수행하지 않았다.
+2. [부하·복구 시험](docs/runbooks/load-recovery-test.md),
+   [경보 적용 조건](docs/runbooks/monitoring-alerts.md), 배포 런북의 백업 절차를
+   운영 환경 검증의 시작점으로 사용한다.
+3. 공개 배포를 추진한다면 위 차단 조건부터 별도 운영 승인으로 해소한다.
+4. 승인 뒤에만 [스테이징 배포 런북](docs/runbooks/staging-deployment.md)을 처음부터
    실행하고 내부·외부 스모크와 로그 비식별화 증거를 보관한다.
-4. BATON 전달 검증은 스테이징 배포가 끝난 뒤
+5. BATON 전달 검증은 스테이징 배포가 끝난 뒤
    [공개 전달 런북](docs/runbooks/public-staging-event-delivery.md)으로 별도 수행한다.

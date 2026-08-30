@@ -17,6 +17,8 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 낮은 카디널리티의 점검·이벤트 전달 시도와 소요 시간 `outcome` 메트릭, 점유·완료 처리·만료 리스 회수 카운터, 현재 실행 중인 점검·전달 수, 최근 점검 배치의 최대 일정 지연, JVM과 PostgreSQL의 시계 편차, Spring 예약 실행 타이머, 이벤트 전달 백로그와 가장 오래된 미전달 이벤트의 경과 시간
 - 공식 IANA 주소 레지스트리 체크섬을 매월 비교하고 변경 시 주소 정책과 경계 테스트의 수동 검토를 요구하는 드리프트 검사
 - 헥사고날 구조의 Gradle 6개 모듈 구성
+- 격리 PostgreSQL 부하·장애 복구 시험, 기존 메트릭 경보 규칙과 `promtool` 검사,
+  `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구
 - 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
 운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 외부 메트릭 전송 경로와 외부 계정·대시보드·알림 자동 생성은 제공하지 않습니다. 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한과 R2 저장소는 현재 구성에 포함하지 않습니다. 인프라 이그레스 정책, 지원 규모·SLO, 비용 없는 요청 속도 제한 대안, 외부 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
@@ -37,7 +39,7 @@ bootstrap -> adapters -> application -> domain
 
 ## 빌드와 실행
 
-저장소에는 공식 SHA-256 체크섬과 함께 9.7.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
+저장소에는 공식 SHA-256 체크섬과 함께 9.7.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker와 Docker Compose가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
 
 HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는 최대 풀 이하여야 합니다. 연결·검증 제한은 각각 250~30000ms이며 검증 제한이 연결 제한보다 작아야 합니다. 유휴 10000~1800000ms와 생존 확인 30000~1800000ms를 허용하며, 가변 풀의 유휴 제한은 최대 수명 30000~3600000ms보다 1000ms 이상 짧고 생존 확인은 최대 수명보다 짧아야 합니다. 초기화 실패 제한은 1~30000ms입니다. pgJDBC의 연결·로그인·취소 제한은 1~30초, 소켓 제한은 1~120초며, `WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다. `SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 하며, 검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다. 환경 변수 이름과 로컬 기본값은 [.env.example](.env.example)을 참고하세요.
 
@@ -49,7 +51,17 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 ./gradlew clean test :bootstrap:verifyBootJarLicense --no-build-cache
 ~~~
 
-이 검증은 실행 가능한 부트 JAR의 `META-INF/LICENSE`가 저장소 `LICENSE`와
+일반 테스트는 실제 DB 백업·격리 복원도 확인합니다. 별도 부하·복구 시험과 경보
+규칙 검사는 다음 명령으로 실행합니다. 부하 시험은 기본 100개 모니터를 사용하며
+운영 처리량이나 SLO를 인증하지 않습니다. 경보 검사는 수집기나 외부 알림을
+활성화하지 않습니다.
+
+~~~bash
+./gradlew :adapter-out-persistence:loadTest --no-daemon
+./ops/tests/prometheus-rules-test.sh
+~~~
+
+전체 Gradle 검증은 실행 가능한 부트 JAR의 `META-INF/LICENSE`가 저장소 `LICENSE`와
 정확히 일치하는지도 확인합니다. Dockerfile의 데이터베이스 작업·마이그레이션·WATCH
 이미지는 같은 라이선스를 `/usr/share/licenses/baton-watch/LICENSE`에 포함하고
 `Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 세 이미지의
@@ -62,7 +74,7 @@ SBOM 네 개를 생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 �
 
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
 다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와
-Trivy 이미지의 추가 갱신 범위는 [renovate.json](renovate.json)에 준비해
+Trivy·Prometheus 검사용 이미지의 추가 갱신 범위는 [renovate.json](renovate.json)에 준비해
 두었습니다. Renovate 외부 서비스는 저장소 설정만으로 활성화되지 않으며 자동
 병합도 허용하지 않습니다.
 
@@ -123,5 +135,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [직접 HTTPS 이벤트 전달 ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
+- [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
+- [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)
