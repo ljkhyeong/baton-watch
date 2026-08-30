@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.DefaultTransactionDefinition;
@@ -281,7 +282,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                     """, String.class, lockedReference)).isEqualTo(lockedReference);
 
             JdbcMonitorPersistenceAdapter competingPersistence = new JdbcMonitorPersistenceAdapter(
-                    new JdbcTemplate(testDataSource), newTransactionOperations());
+                    JdbcClient.create(new JdbcTemplate(testDataSource)), newTransactionOperations());
             Instant markedAt = availableCompletedAt.plusSeconds(600);
             sweepFuture = executor.submit(() -> competingPersistence.markStaleUnknown(
                     availableCompletedAt, markedAt, 1));

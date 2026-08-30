@@ -24,7 +24,6 @@ import java.time.Instant;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -33,14 +32,14 @@ public class MonitoringConfiguration {
 
     @Bean
     JdbcMonitorPersistenceAdapter monitorPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
-        return new JdbcMonitorPersistenceAdapter(jdbcTemplate, transactions);
+            JdbcClient jdbcClient, TransactionOperations transactions) {
+        return new JdbcMonitorPersistenceAdapter(jdbcClient, transactions);
     }
 
     @Bean
     JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
-        return new JdbcCheckWorkPersistenceAdapter(jdbcTemplate, transactions);
+            JdbcClient jdbcClient, TransactionOperations transactions) {
+        return new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
     }
 
     @Bean
