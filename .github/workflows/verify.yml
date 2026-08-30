@@ -62,6 +62,9 @@ jobs:
       - name: 전체 Gradle 검증
         run: ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
 
+      - name: 별도 JVM 강제 종료와 리스 복구 검증
+        run: ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
+
       - name: PostgreSQL과 전체 조립 테스트 증거 확인
         run: |
           python3 - <<'PY'
@@ -75,12 +78,14 @@ jobs:
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringSchemaIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringProcessRecoveryTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresReadDeadlineIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperationsIntegrationTest",
               "com.personal.baton.watch.bootstrap.BatonWatchApplicationSmokeTest",
           }
           report_directories = (
               Path("adapter-out-persistence/build/test-results/test"),
+              Path("adapter-out-persistence/build/test-results/processRecoveryTest"),
               Path("bootstrap/build/test-results/test"),
           )
 
@@ -129,6 +134,8 @@ jobs:
           path: |
             adapter-out-persistence/build/reports/tests/loadTest
             adapter-out-persistence/build/test-results/loadTest/*.xml
+            adapter-out-persistence/build/reports/tests/processRecoveryTest
+            adapter-out-persistence/build/test-results/processRecoveryTest/*.xml
             adapter-out-persistence/build/test-results/test/TEST-*DatabaseBackupIntegrationTest.xml
           retention-days: 7
           if-no-files-found: warn

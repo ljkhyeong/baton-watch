@@ -15,7 +15,17 @@ dependencies {
 }
 
 tasks.named('test', Test) {
-    useJUnitPlatform { excludeTags 'load' }
+    useJUnitPlatform { excludeTags 'load', 'process-recovery' }
+}
+
+tasks.register('processRecoveryTest', Test) {
+    description = '격리 PostgreSQL과 별도 JVM에서 강제 종료 후 리스·이벤트 복구를 확인한다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'process-recovery' }
+    systemProperty 'watch.recovery.classpath', sourceSets.test.runtimeClasspath.asPath
+    outputs.upToDateWhen { false }
 }
 
 tasks.register('loadTest', Test) {
