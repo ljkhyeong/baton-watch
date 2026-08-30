@@ -12,8 +12,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
@@ -79,22 +82,99 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
         assertThat(failed).doesNotExist();
     }
 
-    private ToolResult runTool(String... arguments) throws Exception {
+    @ParameterizedTest(name = "{0} 실행 중 종료하면 CLI 하위 프로세스와 임시 파일 정리")
+    @ValueSource(strings = {"create", "verify"})
+    void terminatesBlockedCommandAndCleansTemporaryResources(String operation) throws Exception {
+        Path commands = Files.createDirectory(temporary.resolve("commands"));
+        Path work = Files.createDirectory(temporary.resolve("work"));
+        Path ready = temporary.resolve("ready");
+        Path cleaned = temporary.resolve("cleaned");
+        Path docker = commands.resolve("docker");
+        Files.writeString(docker, """
+                #!/usr/bin/env bash
+                set -eu
+                case " $* " in
+                    *" up "*) exit 0 ;;
+                    *" down "*) touch "$WATCH_TEST_CLEANED"; exit 0 ;;
+                    *" exec "*)
+                        sleep 300 &
+                        child=$!
+                        printf '부분 시험 출력\\n'
+                        printf '%s %s\\n' "$$" "$child" > "$WATCH_TEST_READY"
+                        wait "$child"
+                        ;;
+                    *) exit 1 ;;
+                esac
+                """);
+        Files.setPosixFilePermissions(docker, PosixFilePermissions.fromString("rwx------"));
+        Path archive = temporary.resolve("interrupted.dump");
+        if (operation.equals("verify")) {
+            Files.writeString(archive, "중단 시험용 입력");
+        }
+        Path output = temporary.resolve("interrupted.log");
+        ProcessBuilder builder = operation.equals("create")
+                ? toolCommand(output, operation, "test-source", archive.toString())
+                : toolCommand(output, operation, archive.toString());
+        builder.environment().put("PATH", commands + ":" + System.getenv("PATH"));
+        builder.environment().put("TMPDIR", work.toString());
+        builder.environment().put("WATCH_TEST_READY", ready.toString());
+        builder.environment().put("WATCH_TEST_CLEANED", cleaned.toString());
+        List<ProcessHandle> children = new ArrayList<>();
+        Process process = builder.start();
+        try {
+            Awaitility.await().atMost(Duration.ofSeconds(5))
+                    .until(() -> Files.exists(ready) && Files.size(ready) > 0);
+            for (String pid : Files.readString(ready).trim().split(" ")) {
+                children.add(ProcessHandle.of(Long.parseLong(pid)).orElseThrow());
+            }
+            process.destroy();
+            assertThat(process.waitFor(5, TimeUnit.SECONDS)).as("SIGTERM 뒤 정리 종료").isTrue();
+            assertThat(process.exitValue()).isEqualTo(143);
+            Awaitility.await().atMost(Duration.ofSeconds(5))
+                    .until(() -> children.stream().noneMatch(ProcessHandle::isAlive));
+            assertThat(work).isEmptyDirectory();
+            if (operation.equals("verify")) {
+                assertThat(cleaned).exists();
+                assertThat(archive).hasContent("중단 시험용 입력");
+            } else {
+                assertThat(cleaned).doesNotExist();
+                assertThat(archive).doesNotExist();
+                try (var files = Files.list(temporary)) {
+                    assertThat(files).noneMatch(path -> path.getFileName().toString().startsWith(".watch-backup."));
+                }
+            }
+        } finally {
+            stopTool(process);
+            children.forEach(ProcessHandle::destroyForcibly);
+        }
+    }
+
+    private ProcessBuilder toolCommand(Path output, String... arguments) {
         List<String> command = new ArrayList<>(List.of("bash", "../ops/staging-database-backup.sh"));
         command.addAll(List.of(arguments));
+        return new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(output.toFile());
+    }
+
+    private ToolResult runTool(String... arguments) throws Exception {
         Path output = Files.createTempFile(temporary, "backup-tool-", ".log");
-        Process process = new ProcessBuilder(command).redirectErrorStream(true)
-                .redirectOutput(output.toFile()).start();
+        Process process = toolCommand(output, arguments).start();
         try {
             assertThat(process.waitFor(90, TimeUnit.SECONDS)).as("백업 도구 종료").isTrue();
             return new ToolResult(process.exitValue(), Files.readString(output));
         } finally {
-            if (process.isAlive()) {
-                process.destroy();
-                if (!process.waitFor(10, TimeUnit.SECONDS)) {
-                    process.destroyForcibly();
-                }
-            }
+            stopTool(process);
+        }
+    }
+
+    private static void stopTool(Process process) throws InterruptedException {
+        if (!process.isAlive()) {
+            return;
+        }
+        process.destroy();
+        if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            process.descendants().toList().forEach(ProcessHandle::destroyForcibly);
+            process.destroyForcibly();
+            assertThat(process.waitFor(5, TimeUnit.SECONDS)).as("백업 도구 강제 종료").isTrue();
         }
     }
 

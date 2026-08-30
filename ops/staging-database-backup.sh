@@ -2,6 +2,8 @@
 
 set -euo pipefail
 set +x
+# Docker CLI와 플러그인을 같은 별도 프로세스 그룹으로 실행한다.
+set -m
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,22 +12,40 @@ TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR
 restore_project=
 archive_temp=
+active_pid=
 
 fail() {
     printf '[staging-database-backup] %s\n' "$1" >&2
     exit 1
 }
 
+run_command() {
+    local status=0
+    "$@" <&0 &
+    active_pid=$!
+    # 포그라운드 명령 대기와 달리 wait는 종료 신호를 받으면 trap을 즉시 실행한다.
+    wait "$active_pid" || status=$?
+    active_pid=
+    return "$status"
+}
+
 restore_compose() {
-    docker compose --project-name "$restore_project" \
+    run_command docker compose --project-name "$restore_project" \
         --file "$SCRIPT_DIR/compose.restore-test.yml" "$@"
 }
 
 cleanup() {
     local status=$?
     trap - EXIT
+    trap '' INT TERM HUP
+    if [[ -n "$active_pid" ]]; then
+        # 종료 요청 뒤에는 CLI 그룹을 중단하고, 복원 DB는 아래 down으로 별도 정리한다.
+        kill -KILL -- "-$active_pid" 2>/dev/null || true
+        wait "$active_pid" 2>/dev/null || true
+        active_pid=
+    fi
     if [[ -n "$restore_project" ]]; then
-        if ! restore_compose down --volumes >"$TEMP_DIR/cleanup.log" 2>&1; then
+        if ! restore_compose down --volumes --timeout 5 >"$TEMP_DIR/cleanup.log" 2>&1; then
             printf '[staging-database-backup] 임시 복원 환경 정리 실패: %s\n' "$restore_project" >&2
             status=1
         fi
@@ -46,7 +66,7 @@ create_backup() {
     [[ ! -e "$destination" && ! -L "$destination" ]] || fail '기존 백업 파일은 덮어쓰지 않습니다'
     archive_temp="$(mktemp "$(dirname "$destination")/.watch-backup.XXXXXX")"
     # shellcheck disable=SC2016
-    if ! docker exec -- "$source_container" sh -c \
+    if ! run_command docker exec -- "$source_container" sh -c \
         'exec pg_dump --format=custom --no-owner --no-privileges --lock-wait-timeout=5s --username="${POSTGRES_USER:?}" "${POSTGRES_DB:?}"' \
         >"$archive_temp" 2>"$TEMP_DIR/dump.log"; then
         fail '백업 실패: 원본 PostgreSQL 컨테이너와 DB 상태를 확인하세요'
@@ -61,6 +81,7 @@ verify_backup() {
     local archive="$1"
     [[ -f "$archive" && -s "$archive" ]] || fail '읽을 수 있는 백업 파일이 필요합니다'
     restore_project="watch-restore-$$-${RANDOM}"
+    printf '[staging-database-backup] 임시 복원 프로젝트: %s\n' "$restore_project" >&2
     if ! restore_compose up --detach --wait --wait-timeout 60 >"$TEMP_DIR/start.log" 2>&1; then
         fail '임시 PostgreSQL 시작 실패: Docker 자원과 이미지 다운로드 상태를 확인하세요'
     fi
