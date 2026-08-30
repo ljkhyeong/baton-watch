@@ -48,6 +48,11 @@ for value in \
     'https://09.09.09.09' \
     'https://99999999999.1' \
     'https://1.2.3.4.5' \
+    'http://watch.staging.example.com' \
+    'https://2130706433' \
+    'https://0177.0.0.1' \
+    'https://0x7f.0.0.1' \
+    'https://127.1' \
     ' https://watch.example.com' \
     $'https://watch.example.com\thealth' \
     $'https://watch.example.com\n'; do
@@ -58,5 +63,13 @@ assert_rejected event-delivery-endpoint \
     'https://baton.example.com:0443/api/v1/internal/resource-health-events'
 assert_rejected event-delivery-endpoint \
     'https://baton.example.com/api/v1/internal/resource-health-events?'
+assert_rejected event-delivery-endpoint \
+    'http://baton.staging.example.com/api/v1/internal/resource-health-events'
+assert_rejected event-delivery-endpoint \
+    'https://bad..example.com/api/v1/internal/resource-health-events'
+assert_rejected event-delivery-endpoint \
+    'https://-bad.example.com/api/v1/internal/resource-health-events'
+assert_rejected event-delivery-endpoint \
+    'https://0x7f.0.0.1/api/v1/internal/resource-health-events'
 
-printf '[staging-url-policy-test] 18개 원문 URL 경계 사례가 통과했습니다\n'
+printf '[staging-url-policy-test] 27개 원문 URL 경계 사례가 통과했습니다\n'
