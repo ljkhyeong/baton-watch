@@ -4,6 +4,9 @@
 
 ## 현재 인계 상태
 
+- 2026-08-30 예약 작업 관측 연결을 Spring Boot 자동 구성에 위임하고, 모니터·점검
+  영속성 어댑터를 `JdbcClient`로 통일했으며 실행기 테스트는 진단용 스레드 이름
+  접두사만 검증하도록 완화했다.
 - 2026-08-30 재시도와 시계 테스트 대역을 기존 라이브러리 API로 단순화하고, URL
   정책 사례를 공통 정책 테스트로 모았으며 데이터베이스 권한은 실제 PostgreSQL
   동작으로 검증하도록 정리했다.
@@ -50,6 +53,7 @@
 
 ## 이번 변경의 검증 상태
 
+- `./gradlew --no-daemon test`가 364개 테스트를 실패·건너뜀 없이 실행했다.
 - `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
   :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 Gradle 9.7.1에서
   364개 테스트를 실패·건너뜀 없이 실행했고, 실행 가능한 부트 JAR의 Apache-2.0
