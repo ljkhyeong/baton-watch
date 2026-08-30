@@ -66,6 +66,7 @@ jobs:
           from xml.etree import ElementTree as ET
 
           expected = {
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.DatabaseBackupIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapterIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
@@ -110,6 +111,24 @@ jobs:
 
       - name: 스테이징 배포 정책 검증
         run: ./ops/tests/staging-compose-policy-test.sh
+
+      - name: 격리 DB 부하와 장애 복구 스모크
+        run: ./gradlew :adapter-out-persistence:loadTest -PwatchLoadMonitors=25 --no-daemon
+
+      - name: Prometheus 경보 규칙 검증
+        run: ./ops/tests/prometheus-rules-test.sh
+
+      - name: 운영 시험 결과 보관
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: operations-tests-${{ github.sha }}
+          path: |
+            adapter-out-persistence/build/reports/tests/loadTest
+            adapter-out-persistence/build/test-results/loadTest/*.xml
+            adapter-out-persistence/build/test-results/test/TEST-*DatabaseBackupIntegrationTest.xml
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: 스테이징 이미지 보관 증거 검증
         run: ./ops/tests/staging-image-evidence-test.sh
