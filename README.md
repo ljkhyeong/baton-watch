@@ -17,7 +17,8 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 낮은 카디널리티의 점검·이벤트 전달 시도와 소요 시간 `outcome` 메트릭, 점유·완료 처리·만료 리스 회수 카운터, 현재 실행 중인 점검·전달 수, 최근 점검 배치의 최대 일정 지연, JVM과 PostgreSQL의 시계 편차, Spring 예약 실행 타이머, 이벤트 전달 백로그와 가장 오래된 미전달 이벤트의 경과 시간
 - 공식 IANA 주소 레지스트리 체크섬을 매월 비교하고 변경 시 주소 정책과 경계 테스트의 수동 검토를 요구하는 드리프트 검사
 - 헥사고날 구조의 Gradle 6개 모듈 구성
-- 격리 PostgreSQL 부하·장애 복구 시험, 기존 메트릭 경보 규칙과 `promtool` 검사,
+- 격리 PostgreSQL 부하·장애 복구 시험, 별도 JVM 강제 종료 후 리스·동일 이벤트 재전달 시험,
+  작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구
 - 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
@@ -58,8 +59,14 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 
 ~~~bash
 ./gradlew :adapter-out-persistence:loadTest --no-daemon
+./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
 ~~~
+
+프로세스 복구 시험은 점검 30초·전달 60초 리스의 자연 만료를 실제로 기다립니다.
+시험용 자식 JVM·콜백 대역을 사용하므로 운영 부트 JAR 재시작이나 공개 HTTPS 전달을
+검증한 것으로 해석하지 않습니다. 경보 규칙은 기본 예약 주기를 기준으로 하며,
+주기를 바꾸면 [조회 구간과 시작 유예](docs/runbooks/monitoring-alerts.md)도 검토해야 합니다.
 
 전체 Gradle 검증은 실행 가능한 부트 JAR의 `META-INF/LICENSE`가 저장소 `LICENSE`와
 정확히 일치하는지도 확인합니다. Dockerfile의 데이터베이스 작업·마이그레이션·WATCH
@@ -139,6 +146,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
+- [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)
