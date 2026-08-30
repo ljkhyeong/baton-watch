@@ -17,3 +17,4 @@ promtool() {
 
 promtool check rules watch-alerts.yml
 promtool test rules watch-alerts-test.yml
+promtool test rules watch-workers-test.yml

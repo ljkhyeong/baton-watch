@@ -1,4 +1,5 @@
 # 배포 예시다. 승인된 내부 수집 경로와 알림 수신자는 별도로 구성해야 한다.
+# 미실행 경보는 기본 폴링 1초·유지보수 1분을 기준으로 한다.
 groups:
   - name: baton-watch
     rules:
@@ -23,6 +24,60 @@ groups:
           severity: warning
         annotations:
           summary: WATCH 예약 작업 반복 실패
+      # up을 기준으로 빼므로 예약 타이머가 한 번도 생성되지 않은 경우도 감지한다.
+      - alert: WatchCheckWorkerStalled
+        expr: |
+          (
+            (up{job="baton-watch"} == 1)
+            and on (job, instance) (process_uptime_seconds{job="baton-watch"} > 600)
+          )
+          unless on (job, instance)
+          (
+            sum by (job, instance) (
+              increase(tasks_scheduled_execution_seconds_count{job="baton-watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="checkDueMonitors"}[5m])
+            ) > 0
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 점검 작업 미실행
+      - alert: WatchEventDeliveryWorkerStalled
+        expr: |
+          (
+            (up{job="baton-watch",event_delivery_enabled="true"} == 1)
+            and on (job, instance) (process_uptime_seconds{job="baton-watch"} > 600)
+          )
+          unless on (job, instance)
+          (
+            sum by (job, instance) (
+              increase(tasks_scheduled_execution_seconds_count{job="baton-watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryScheduler",code_function="deliverPendingEvents"}[5m])
+            ) > 0
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 이벤트 전달 작업 미실행
+      - alert: WatchMaintenanceStalled
+        expr: |
+          (
+            (up{job="baton-watch"} == 1)
+            and on (job, instance) (process_uptime_seconds{job="baton-watch"} > 600)
+          )
+          unless on (job, instance)
+          (
+            count by (job, instance) (
+              sum by (job, instance, code_namespace, code_function) (
+                increase(tasks_scheduled_execution_seconds_count{job="baton-watch",code_namespace=~"com[.]personal[.]baton[.]watch[.]bootstrap[.](MonitoringScheduler|EventDeliveryMaintenanceScheduler)",code_function=~"markStaleProjections|purgeAttemptHistory|updateDatabaseClockOffset|purgeDeliveredEventHistory|refreshEventDeliveryBacklog"}[5m])
+              ) > 0
+            ) == 5
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 유지보수 작업 미실행
       - alert: WatchFinalizationFailures
         # 이름이 사라진 두 카운터가 충돌하지 않도록 계산 중에만 작업 종류를 구분한다.
         expr: |

@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import java.net.URI;
@@ -137,7 +138,22 @@ class BatonWatchApplicationSmokeTest {
         assertThat(managementGet("/actuator/health").statusCode()).isEqualTo(200);
         HttpResponse<String> prometheus = managementGet("/actuator/prometheus");
         assertThat(prometheus.statusCode()).isEqualTo(200);
-        assertThat(prometheus.body()).contains("jvm_info");
+        assertThat(prometheus.body()).contains("jvm_info", "process_uptime_seconds");
+        // 빈 배치도 완료 횟수를 남겨 미실행과 유휴 상태를 구분할 수 있어야 한다.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            String scrape = managementGet("/actuator/prometheus").body();
+            for (String method : List.of(
+                    "checkDueMonitors", "deliverPendingEvents", "markStaleProjections",
+                    "purgeAttemptHistory", "updateDatabaseClockOffset",
+                    "purgeDeliveredEventHistory", "refreshEventDeliveryBacklog")) {
+                assertThat(scrape.lines().filter(line ->
+                        line.startsWith("tasks_scheduled_execution_seconds_count{")
+                                && line.contains("code_function=\"" + method + "\"")
+                                && line.contains("outcome=\"SUCCESS\"")))
+                        .as("예약 작업 완료 지표: %s", method)
+                        .anyMatch(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)) > 0);
+            }
+        });
         assertThat(managementGet("/actuator/scheduledtasks").statusCode()).isEqualTo(404);
 
         assertThat(meterRegistries).anyMatch(PrometheusMeterRegistry.class::isInstance);
