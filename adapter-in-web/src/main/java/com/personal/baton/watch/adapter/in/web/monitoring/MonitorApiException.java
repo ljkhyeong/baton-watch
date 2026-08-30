@@ -1,19 +1,17 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
-import java.net.URI;
+import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
 import org.springframework.http.HttpStatus;
 
 final class MonitorApiException extends RuntimeException {
 
     private final HttpStatus status;
-    private final URI type;
-    private final String code;
+    private final MonitorApiProblem problem;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
         super(title);
         this.status = status;
-        this.type = URI.create("urn:baton-watch:problem:" + slug);
-        this.code = code;
+        this.problem = MonitorApiProblem.of(slug, title, code);
     }
 
     static MonitorApiException invalidRequest() {
@@ -52,11 +50,7 @@ final class MonitorApiException extends RuntimeException {
         return status;
     }
 
-    URI type() {
-        return type;
-    }
-
-    String code() {
-        return code;
+    MonitorApiProblem problem() {
+        return problem;
     }
 }

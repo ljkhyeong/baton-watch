@@ -94,7 +94,11 @@ class ResourceMonitorControllerTest {
                                 """))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))
+                .andExpect(jsonPath("$.title").value("Invalid target URL"))
+                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INVALID_TARGET_URL"));
     }
 
