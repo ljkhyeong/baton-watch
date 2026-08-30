@@ -90,6 +90,20 @@ class MonitoringSchedulingTest {
                 .run(context -> assertThat(context).hasFailed());
     }
 
+    @ParameterizedTest(name = "점검 중지 중 전달 설정 {0}에서 예약 {1}개 유지")
+    @CsvSource({"on,6", "off,5"})
+    void appliesDeliverySettingIndependentlyOfDisabledChecks(String enabled, int expectedTaskCount) {
+        runner.withPropertyValues("watch.check-enabled=false", "watch.event-delivery.enabled=" + enabled)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).doesNotHaveBean(MonitoringScheduler.class)
+                            .hasSingleBean(MonitoringMaintenanceScheduler.class)
+                            .hasSingleBean(EventDeliveryMaintenanceScheduler.class);
+                    assertThat(context.getBean(ScheduledAnnotationBeanPostProcessor.class).getScheduledTasks())
+                            .hasSize(expectedTaskCount);
+                });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableScheduling
     @EnableConfigurationProperties(WatchProperties.class)

@@ -40,22 +40,6 @@ final class BootstrapTestFixtures {
                         1));
     }
 
-    static EventDeliveryProperties enabledEventDeliveryProperties() {
-        return enabledEventDeliveryProperties(
-                "a-separate-delivery-token-longer-than-32-characters");
-    }
-
-    static EventDeliveryProperties enabledEventDeliveryProperties(String token) {
-        return eventDeliveryProperties(
-                true,
-                URI.create("https://baton.example.com/api/v1/internal/resource-health-events"),
-                token);
-    }
-
-    static EventDeliveryProperties disabledEventDeliveryProperties() {
-        return eventDeliveryProperties(false, URI.create(""), "");
-    }
-
     static DatabaseRuntimeProperties databaseRuntimeProperties() {
         return new DatabaseRuntimeProperties(
                 4,
@@ -80,12 +64,11 @@ final class BootstrapTestFixtures {
                 Duration.ofSeconds(1));
     }
 
-    private static EventDeliveryProperties eventDeliveryProperties(
-            boolean enabled, URI endpoint, String token) {
+    static EventDeliveryProperties disabledEventDeliveryProperties() {
         return new EventDeliveryProperties(
-                enabled,
-                endpoint,
-                token,
+                false,
+                URI.create(""),
+                "",
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(60),
