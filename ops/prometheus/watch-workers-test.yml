@@ -100,11 +100,11 @@ tests:
         values: '1x20'
       - series: process_uptime_seconds{job="baton-watch",instance="watch"}
         values: '900+60x20'
-      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="markStaleProjections",outcome="SUCCESS"}
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="markStaleProjections",outcome="SUCCESS"}
         values: '0+1x20'
-      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="purgeAttemptHistory",outcome="SUCCESS"}
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="purgeAttemptHistory",outcome="SUCCESS"}
         values: '0+1x20'
-      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="updateDatabaseClockOffset",outcome="SUCCESS"}
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="updateDatabaseClockOffset",outcome="SUCCESS"}
         values: '0+1x20'
       - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryMaintenanceScheduler",code_function="purgeDeliveredEventHistory",outcome="SUCCESS"}
         values: '0+1x20'
@@ -124,3 +124,29 @@ tests:
       - eval_time: 13m
         alertname: WatchMaintenanceStalled
         exp_alerts: []
+  - name: 점검 비활성은 점검 경보만 제외하고 전달과 유지보수 경보 유지
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="paused",check_enabled="false",event_delivery_enabled="true"}
+        values: '1x15'
+      - series: process_uptime_seconds{job="baton-watch",instance="paused"}
+        values: '900+60x15'
+      - series: baton_watch_check_schedule_delay_seconds{job="baton-watch",instance="paused",check_enabled="false"}
+        values: '300x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WatchCheckScheduleDelayed
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WatchMaintenanceStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: paused, check_enabled: 'false', event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 유지보수 작업 미실행}
+      - eval_time: 10m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: paused, check_enabled: 'false', event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 이벤트 전달 작업 미실행}

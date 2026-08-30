@@ -11,12 +11,12 @@
 | `WatchScrapeFailed` | 수집 실패 | 2분 | WATCH 상태, 승인된 내부 수집 경로 |
 | `WatchScrapeTargetMissing` | `baton-watch` 수집 대상 전체 누락 | 5분 | 수집 대상 설정과 서비스 발견 |
 | `WatchScheduledFailures` | 예약 작업 오류가 최근 5분에 3회 이상 | 2분 | DB 연결·점유 실패, 유지보수 실패 |
-| `WatchCheckWorkerStalled` | 시작 후 10분이 지난 수집 정상 인스턴스에서 최근 5분간 점검 배치 완료 없음 | 2분 | 점검 스케줄러 정지·장시간 실행, 지표 누락 |
+| `WatchCheckWorkerStalled` | 시작 후 10분이 지난 수집 정상·점검 활성 인스턴스에서 최근 5분간 점검 배치 완료 없음 | 2분 | 점검 스케줄러 정지·장시간 실행, 지표 누락 |
 | `WatchEventDeliveryWorkerStalled` | 위 조건에서 전달 활성 인스턴스의 전달 배치 완료 없음 | 2분 | 전달 스케줄러와 콜백 대기 |
 | `WatchMaintenanceStalled` | 위 조건에서 유지보수 다섯 메서드 중 하나라도 실행 완료 없음 | 2분 | 유지보수 스케줄러, DB 대기, 백로그 지표 갱신 |
 | `WatchFinalizationFailures` | 점검·전달 완료 실패가 최근 5분에 합계 3회 이상 | 2분 | DB 잠금·연결 제한, 확정 트랜잭션 |
 | `WatchLeaseRecoveryBurst` | 만료 리스 회수가 최근 5분에 합계 3회 이상 | 2분 | 작업자 중단과 DB 지연 |
-| `WatchCheckScheduleDelayed` | 최근 점검 배치의 최대 일정 지연이 120초 초과 | 5분 | 대상 지연과 처리할 모니터 수 |
+| `WatchCheckScheduleDelayed` | 점검 활성 인스턴스에서 최근 점검 배치의 최대 일정 지연이 120초 초과 | 5분 | 대상 지연과 처리할 모니터 수 |
 | `WatchDatabaseClockOffset` | JVM과 DB 시계 편차 절댓값이 1초 초과 | 5분 | 호스트 시간 동기화와 DB 왕복 지연 |
 | `WatchEventDeliveryDelayed` | 전달 활성 환경의 미전달 이벤트가 있고 가장 오래된 이벤트가 900초 초과 | 5분 | 콜백 상태·인증과 재시도 백로그 |
 
@@ -47,6 +47,10 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 메서드별로 합산한 뒤 개수를 세므로 한 작업의 성공·오류 시계열이 다른 작업의
 중단을 가리지 않는다.
 
+앞의 세 유지보수 메서드는 `MonitoringMaintenanceScheduler`, 뒤의 두 메서드는
+`EventDeliveryMaintenanceScheduler`의 `code_namespace`로 구분한다. 점검 중지 중에도
+유지보수 다섯 메서드와 활성화된 이벤트 전달의 미실행 경보는 계속 평가한다.
+
 `up == 1`인 인스턴스를 기준으로 정상 실행 시계열을 제외하므로 타이머가 한 번도
 생성되지 않았거나 사라진 경우도 감지한다. 프로세스 가동 시간 지표는 필수이며,
 그 지표까지 없는 환경은 이 규칙의 시작 유예를 평가할 수 없다. 수집 실패는
@@ -56,6 +60,10 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 ## 적용 전 조건
 
 - Prometheus 수집 작업의 `job_name`을 `baton-watch`로 지정한다.
+- `WATCH_CHECK_ENABLED=false`로 재시작한 대상에는 수집 레이블
+  `check_enabled: "false"`를 붙인다. 이때만 점검 미실행·일정 지연 경보를 제외한다.
+  레이블이 없거나 `"true"`이면 점검 활성으로 취급한다. 이 레이블은 WATCH가
+  내보내는 설정값이 아니므로 중지·재개 때 배포 설정과 함께 변경한다.
 - 미실행 규칙은 기본 점검·전달 폴링 1초와 유지보수 1분을 기준으로 한다.
   예약 주기를 늘리면 `[5m]` 조회 구간을 실제 주기·실행 예산·수집 간격보다
   충분히 크게 늘리고 시작 유예 `600`초와 유지 시간도 함께 검토한다.
@@ -84,7 +92,7 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 고정된 공식 Prometheus 이미지의 `promtool`로 문법, 지속 장애 감지, 복구 해제,
 전달 비활성, 카운터 초기화와 수집 대상 누락을 검사한다.
 `watch-workers-test.yml`은 시작 유예, 타이머 누락, 유휴 배치, 다중 인스턴스,
-일부 유지보수 중단과 복구도 확인한다. 이미지가 없으면 최초
+일부 유지보수 중단과 복구, 점검 중지 중의 전달·유지보수 경보 유지도 확인한다. 이미지가 없으면 최초
 실행 시 내려받으며 검사 컨테이너는 `--network none`으로 실행한다. 이 검사는
 실제 메트릭 수집이나 외부 알림 도착을 증명하지 않는다.
 

@@ -98,11 +98,11 @@ class WorkerSchedulingConfigurationTest {
         Map<String, String> expectedSchedulers = Map.of(
                 "MonitoringScheduler#checkDueMonitors",
                 WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER,
-                "MonitoringScheduler#markStaleProjections",
+                "MonitoringMaintenanceScheduler#markStaleProjections",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
-                "MonitoringScheduler#purgeAttemptHistory",
+                "MonitoringMaintenanceScheduler#purgeAttemptHistory",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
-                "MonitoringScheduler#updateDatabaseClockOffset",
+                "MonitoringMaintenanceScheduler#updateDatabaseClockOffset",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
                 "EventDeliveryScheduler#deliverPendingEvents",
                 WorkerSchedulingConfiguration.EVENT_DELIVERY_TASK_SCHEDULER,
@@ -113,6 +113,7 @@ class WorkerSchedulingConfigurationTest {
 
         Map<String, String> actualSchedulers = List.of(
                         MonitoringScheduler.class,
+                        MonitoringMaintenanceScheduler.class,
                         EventDeliveryScheduler.class,
                         EventDeliveryMaintenanceScheduler.class)
                 .stream()

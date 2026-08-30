@@ -15,6 +15,7 @@ final class BootstrapTestFixtures {
     static WatchProperties watchProperties(String apiToken) {
         return new WatchProperties(
                 apiToken,
+                true,
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
                 Duration.ofSeconds(60),

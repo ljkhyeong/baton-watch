@@ -28,7 +28,7 @@ groups:
       - alert: WatchCheckWorkerStalled
         expr: |
           (
-            (up{job="baton-watch"} == 1)
+            (up{job="baton-watch",check_enabled!="false"} == 1)
             and on (job, instance) (process_uptime_seconds{job="baton-watch"} > 600)
           )
           unless on (job, instance)
@@ -69,7 +69,7 @@ groups:
           (
             count by (job, instance) (
               sum by (job, instance, code_namespace, code_function) (
-                increase(tasks_scheduled_execution_seconds_count{job="baton-watch",code_namespace=~"com[.]personal[.]baton[.]watch[.]bootstrap[.](MonitoringScheduler|EventDeliveryMaintenanceScheduler)",code_function=~"markStaleProjections|purgeAttemptHistory|updateDatabaseClockOffset|purgeDeliveredEventHistory|refreshEventDeliveryBacklog"}[5m])
+                increase(tasks_scheduled_execution_seconds_count{job="baton-watch",code_namespace=~"com[.]personal[.]baton[.]watch[.]bootstrap[.](MonitoringMaintenanceScheduler|EventDeliveryMaintenanceScheduler)",code_function=~"markStaleProjections|purgeAttemptHistory|updateDatabaseClockOffset|purgeDeliveredEventHistory|refreshEventDeliveryBacklog"}[5m])
               ) > 0
             ) == 5
           )
@@ -104,7 +104,7 @@ groups:
         annotations:
           summary: WATCH 만료 리스 반복 회수
       - alert: WatchCheckScheduleDelayed
-        expr: baton_watch_check_schedule_delay_seconds{job="baton-watch"} > 120
+        expr: baton_watch_check_schedule_delay_seconds{job="baton-watch",check_enabled!="false"} > 120
         for: 5m
         labels:
           severity: warning
