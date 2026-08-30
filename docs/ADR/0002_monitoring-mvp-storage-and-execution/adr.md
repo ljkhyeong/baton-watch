@@ -120,9 +120,10 @@ Spring 예약 기능은 bootstrap에 있으며 애플리케이션 유스케이�
 메서드다. 이를 통해 각 작업의 독립성을 유지하고 WATCH 자체 스케줄러 실패
 카운터 없이 제한된 프레임워크 메서드 식별자를 부여한다.
 
-`MonitoringScheduler`에는 점검 예약만 두고 Spring Boot
-`@ConditionalOnBooleanProperty`로 `watch.check-enabled`를 적용한다. 누락 시 기본은
-활성이며 별도 플래그 감시 스레드나 동적 제어 API를 만들지 않는다.
+`MonitoringScheduler`에는 점검 예약만 두고 Spring `Condition`에서
+`Environment.getProperty`의 `Boolean` 변환으로 `watch.check-enabled`를 읽는다.
+설정 바인딩과 같은 불리언 표현을 허용하며, 사용자 설정 빈을 조건 평가 중 미리
+초기화하지 않는다. 누락 시 기본은 활성이며 별도 플래그 감시 스레드나 동적 제어 API를 만들지 않는다.
 `MonitoringMaintenanceScheduler`는 오래된 상태·시도 보존·시계 편차 측정을 담당해
 점검 비활성 상태에서도 등록된다. 기존 전달 및 전달 유지보수 등록 조건은 유지한다.
 이 설정은 인스턴스 시작 시 적용하며 DB에 있는 모니터 상태와 일정을 변경하지 않는다.
@@ -153,6 +154,10 @@ CLI로 제공한다. 기존 리소스별 인덱스와 한 SELECT의 스냅샷으
 점검·전달 이력을 조회한다. 각 이력은 최대 100건이며 URL·호스트·리스 토큰은
 선택하지 않는다. 읽기 전용 트랜잭션, SQL·잠금·트랜잭션 시간 제한은 PostgreSQL
 기능을 사용한다. 스키마·런타임 의존성·DB 쓰기 권한은 추가하지 않는다.
+`psql`의 `\bind`로 조회 값을 SQL 본문과 분리하고, 진단 트랜잭션에서
+`log_parameter_max_length`와 `log_parameter_max_length_on_error`를 `0`으로
+설정한다. 따라서 기본 오류 로그와 상세 SQL 로그를 유지하면서 리소스 참조를
+제외한다. 로그 보호 설정 권한이 없으면 조회 전에 실패하며 권한을 자동 부여하지 않는다.
 
 Prometheus 조회 경로만 유지하고 관리 서버는 컨테이너 루프백에 바인딩한다.
 WATCH가 외부 관측 서비스로 메트릭을 직접 전송하는 기능은 제공하지 않는다. 외부

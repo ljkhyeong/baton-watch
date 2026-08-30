@@ -7,6 +7,10 @@
 
 `WATCH_CHECK_ENABLED`는 기본 `true`이며 인스턴스 시작 시 적용한다. `false`이면
 대상 점검 예약만 등록하지 않는다. 실시간 제어 API는 제공하지 않는다.
+설정 바인딩과 예약 조건은 Spring의 같은 불리언 변환을 사용한다.
+`on`·`yes`·`1`은 활성, `off`·`no`·`0`은 비활성으로 해석하며 대소문자와 앞뒤
+공백을 허용한다. 운영 설정에는 `true`·`false`를 사용하고, 그 밖의 해석할 수 없는
+값으로 시작에 실패하면 설정을 바로잡는다.
 
 - 모니터의 `ACTIVE`/`INACTIVE`, 원본 리비전, 일정과 리스를 바꾸지 않는다.
 - API와 DB 연결은 유지하며 오래된 상태 처리, 이력 정리, 시계 편차 측정은 계속한다.
@@ -88,5 +92,12 @@ SQL과 커밋이 모두 성공한 경우에만 JSON을 출력한다. 실패하�
 노출하지 않고 고정 오류 문구와 0이 아닌 종료 코드를 반환한다. Docker 데몬 자체의
 응답 시간은 이 DB 제한의 대상이 아니다.
 
+조회 값은 `psql`의 `\bind`로 SQL 본문과 분리한다. 진단 트랜잭션에서만
+`log_parameter_max_length=0`과 `log_parameter_max_length_on_error=0`을 적용하므로,
+PostgreSQL 표준 SQL·오류 로그는 유지하면서 리소스 참조는 기록하지 않는다.
+접속 역할에 `log_parameter_max_length` 설정 권한이 없으면 조회 전에 실패한다.
+도구가 권한을 추가하거나 서버 전체·다른 연결의 로그 설정을 변경하지는 않는다.
+
 이 제한은 PostgreSQL의 [클라이언트 연결 설정](https://www.postgresql.org/docs/18/runtime-config-client.html)을
-사용한다. 자동 재시도·스케줄 등록·대상 재점검·이벤트 재전달은 하지 않는다.
+사용한다. 로그 보호는 [매개변수 로그 설정](https://www.postgresql.org/docs/18/runtime-config-logging.html#GUC-LOG-PARAMETER-MAX-LENGTH)을
+따른다. 자동 재시도·스케줄 등록·대상 재점검·이벤트 재전달은 하지 않는다.
