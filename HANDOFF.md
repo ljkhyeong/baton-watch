@@ -4,6 +4,18 @@
 
 ## 현재 인계 상태
 
+- 2026-08-30 `WATCH_CHECK_ENABLED`를 추가했다. 기본 `true`이며 `false`로 시작한
+  인스턴스는 점검 예약만 등록하지 않는다. API·유지보수·활성 이벤트 전달과
+  모니터 상태·일정·리스는 유지한다. 실시간 제어 API는 추가하지 않았다.
+- 점검과 유지보수 예약 클래스를 분리했다. Prometheus의 `check_enabled: "false"`
+  수집 레이블은 점검 미실행·일정 지연 경보만 제외하며 전달·유지보수 경보는 유지한다.
+- `ops/staging-monitor-diagnostics.sh`는 기존 PostgreSQL에서 리소스별 현재 상태와
+  최근 점검·전달 정보를 읽기 전용으로 조회한다. 각 이력은 기본 50건·최대 100건이고
+  SQL 5초·잠금 1초·트랜잭션 10초 상한을 적용한다. URL·호스트·본문·리스 토큰과
+  원본 접속 오류는 출력하지 않는다. 운영 DB 조회는 수행하지 않았다.
+- [점검 중지·진단 런북](docs/runbooks/check-control-and-diagnostics.md)에 인스턴스별
+  중지·재개, Compose 재생성, 경보 레이블과 진단 결과의 해석 범위를 기록했다.
+  무료 NGINX 요청 속도 제한과 공개 배포 준비는 이번 변경에 포함하지 않았다.
 - 2026-08-30 토큰 검증 테스트는 기존 `BootstrapTestFixtures.watchProperties`를
   재사용하도록 바꾸고 중복 설정 생성 코드를 제거했다.
 - 점검·전달 관측값은 각각 HTTP 상태 분류를 한 곳에서 수행한다. 생성자 검증은
@@ -39,8 +51,8 @@
 - CI는 DB 백업·복원 통합 테스트, 별도 JVM 복구, 부하·복구 스모크와 경보 규칙을 검사하고 시험
   보고서를 7일 보관하도록 구성했다. 이 변경의 원격 CI 결과는 아직 확인하지 않았다.
 - 이전 Java/Spring 정리에서 적용한 `JdbcClient`, Spring 예약 관측 자동 구성,
-  Awaitility와 AssertJ 재사용을 유지한다. 이번 리팩터링은 내부 구현만 정리하며
-  HTTP 응답 계약·DB 스키마·런타임 기본 설정·의존성을 바꾸지 않는다.
+  Awaitility와 AssertJ 재사용을 유지한다. 이번 운영 기능은 HTTP 응답 계약·DB 스키마와
+  런타임 의존성을 바꾸지 않는다. 기존 Jackson을 진단 통합 테스트 의존성으로만 추가했다.
 - Java 21 / Spring Boot 4.1.1 기반 모니터링 MVP와 하나의 BATON HTTPS 상태 변경
   콜백 전달이 구현되어 있다.
 - 운영 배포, Cloudflare Tunnel 연결, 외부 알림, 프런트엔드, 메시지 브로커는
@@ -71,23 +83,34 @@
 
 ## 이번 변경의 검증 상태
 
-- `./gradlew :application:test --tests '*ApplicationModelTest' :bootstrap:test
-  --tests '*WatchPropertiesTest' --offline --no-daemon`이 통과했다. HTTP 상태
-  구간의 시작·끝과 생성자 불일치 거부, 기존 토큰 검증을 확인했다.
-- `./gradlew :adapter-in-web:test :bootstrap:test
-  --tests '*MonitorApiSecurityIntegrationTest' --offline --no-daemon`이 통과했다.
-  MVC·보안 오류의 필드·상태·헤더와 인증 우선순위, 이미 전송된 응답의 처리를 확인했다.
-- `./gradlew test :bootstrap:verifyBootJarLicense --offline --no-daemon
-  --no-build-cache`가 통과했다. 일반 JUnit 보고서는 386개 모두 성공이며
-  실패·오류·건너뜀은 없다. application·외부 어댑터·영속성·bootstrap 테스트를
-  실행했고 domain과 앞서 검증한 웹 어댑터는 Gradle의 최신 결과를 재사용했다.
-- `git diff --check`가 통과했다. HTTP 응답 필드 계약 설명을 PRD-0002에 보완했다.
-  DB 스키마·Compose·의존성과 아웃바운드 안전성 검증은 바꾸지 않았다.
-- 별도 JVM 복구·부하 시험과 경보 규칙 검사는 이번 리팩터링에서 반복하지 않았다.
+- 예약 등록·실행로 분리·설정 바인딩 관련 테스트 9개가 통과했다. 기본값·명시적
+  활성·비활성 설정에서 점검 예약만 달라지고 전달·유지보수 예약은 유지됨을 확인했다.
+- 실제 PostgreSQL 진단 통합 테스트 8개가 통과했다. 조회 전후 DB 불변,
+  기본·최대 건수와 최신순, 미완료 결과, 재시도 정보, 없는 리소스·잘못된 입력,
+  접속 실패와 잠금 대기 제한을 확인했다.
+- `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test
+  :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache --max-workers=2
+  --no-parallel`이 통과했다. 모듈 전체를 새로 컴파일·실행했고 일반 JUnit은
+  60개 스위트·397개 테스트 모두 성공이며 실패·오류·건너뜀은 없다.
+  부트 JAR의 Apache-2.0 라이선스를 확인했고 기존 의존성 체크섬 변경은 없었다.
+- 전체 검증 뒤 Jackson의 현재 문자열 API로 정리한 진단 테스트 8개를 좁은
+  범위로 다시 실행해 통과했다. 마지막 실행은 해당 모듈의 보고서를 이 8개로 갱신했다.
+- `promtool`은 경보 규칙 11개와 시나리오 그룹 9개를 통과했다. 점검 중지 중에도
+  전달·유지보수 미실행 경보를 유지하는 사례를 포함한다.
+- 스테이징 Compose 정책 검사와 로컬·스테이징의 `WATCH_CHECK_ENABLED=false`
+  렌더링을 확인했다. Bash 구문·ShellCheck·`actionlint`·`git diff --check`도 통과했다.
+- 별도 JVM 강제 종료 복구·부하 시험은 이번 변경에서 반복하지 않았다.
   아래 이전 결과를 이번 코드의 재실행 결과로 사용하지 않는다.
 - 원격 CI, 배포 이미지 빌드, 실제 공개 스테이징 배포, 외부 HTTPS 스모크와
   외부 로그 감사는 이번 작업에서 수행하거나 성공을 확인하지 않았다.
 - PR은 최신 HEAD에서 `Verify / verify`가 성공해야 병합할 수 있다.
+
+### 직전 리팩터링의 검증 기록
+
+`e7b3db7`까지의 리팩터링에서는 HTTP 상태 경계, 토큰·MVC·보안 오류 계약을
+검증했다. 당시 일반 JUnit 386개와 부트 JAR 라이선스 검사가 통과했고
+실패·오류·건너뜀은 없었다. 이 수치는 이번 운영 기능 추가 이전의 결과이며,
+아래 경보·복구 작업의 검증 기록과도 별도로 구분한다.
 
 ### 직전 경보·복구 시험 작업의 검증 기록
 

@@ -486,6 +486,14 @@ staging_compose config
 `WATCH_EVENT_DELIVERY_ENABLED: "false"`, 선택했다면 `"true"`와
 `watch.event-delivery.bearer-token` 비밀 대상이 렌더링되어야 합니다.
 
+## 점검 중지와 장애 진단
+
+API·유지보수를 유지하면서 점검만 중지하려면 `WATCH_CHECK_ENABLED`를 변경하고
+WATCH 컨테이너만 재생성합니다. 개별 리소스의 점검·전달 실패는 기존 PostgreSQL을
+읽는 CLI로 조회할 수 있습니다. 설정의 인스턴스 범위, 경보 레이블과 조회 제한은
+[점검 중지·진단 절차](check-control-and-diagnostics.md)를 따릅니다.
+이 절차는 공개 배포 승인이나 실제 외부 연동 검증을 대신하지 않습니다.
+
 ## 업데이트 전 백업
 
 최초 빈 배포에는 백업할 내용이 없습니다. 이후 모든 업데이트 전에는 기존
