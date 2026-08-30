@@ -11,6 +11,8 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class MonitoringApplicationModelTest {
 
@@ -35,20 +37,34 @@ class MonitoringApplicationModelTest {
                 () -> SynchronizeMonitorCommand.active(REFERENCE, REVISION, historicalTarget));
     }
 
+    @ParameterizedTest
+    @CsvSource({
+        "200, SUCCESS",
+        "299, SUCCESS",
+        "300, SUCCESS",
+        "399, SUCCESS",
+        "400, HTTP_CLIENT_ERROR",
+        "499, HTTP_CLIENT_ERROR",
+        "500, HTTP_SERVER_ERROR",
+        "599, HTTP_SERVER_ERROR"
+    })
+    void mapsFinalHttpStatusBoundaries(int status, CheckOutcome expected) {
+        assertEquals(
+                expected, CheckObservation.forHttpStatus(status, Duration.ZERO, 0, 0).outcome());
+    }
+
     @Test
     void boundsHttpObservationsToThePersistedTaxonomy() {
-        assertEquals(CheckOutcome.SUCCESS, CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0).outcome());
-        assertEquals(
-                CheckOutcome.HTTP_CLIENT_ERROR,
-                CheckObservation.forHttpStatus(404, Duration.ZERO, 0, 0).outcome());
-        assertEquals(
-                CheckOutcome.HTTP_SERVER_ERROR,
-                CheckObservation.forHttpStatus(503, Duration.ZERO, 0, 0).outcome());
         assertThrows(
                 IllegalArgumentException.class,
                 () -> CheckObservation.forHttpStatus(199, Duration.ZERO, 0, 0));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> CheckObservation.forHttpStatus(600, Duration.ZERO, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new CheckObservation(
                 CheckOutcome.SUCCESS, null, Duration.ZERO, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> new CheckObservation(
+                CheckOutcome.SUCCESS, 400, Duration.ZERO, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> new CheckObservation(
                 CheckOutcome.DNS_FAILURE, 500, Duration.ZERO, 0, 0));
         assertThrows(IllegalArgumentException.class, () -> CheckObservation.failure(

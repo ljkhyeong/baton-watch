@@ -10,25 +10,36 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class EventDeliveryApplicationModelTest {
 
+    @ParameterizedTest
+    @CsvSource({
+        "200, DELIVERED",
+        "299, DELIVERED",
+        "300, HTTP_CLIENT_ERROR",
+        "399, HTTP_CLIENT_ERROR",
+        "400, HTTP_CLIENT_ERROR",
+        "499, HTTP_CLIENT_ERROR",
+        "500, HTTP_SERVER_ERROR",
+        "599, HTTP_SERVER_ERROR"
+    })
+    void mapsFinalHttpStatusBoundaries(int status, EventDeliveryOutcome expected) {
+        assertEquals(expected, EventDeliveryObservation.forHttpStatus(status).outcome());
+    }
+
     @Test
-    void mapsOnlyTwoHundredsToDeliveredAndBoundsOtherHttpOutcomes() {
-        assertEquals(EventDeliveryOutcome.DELIVERED, EventDeliveryObservation.forHttpStatus(204).outcome());
-        assertEquals(
-                EventDeliveryOutcome.HTTP_CLIENT_ERROR,
-                EventDeliveryObservation.forHttpStatus(302).outcome());
-        assertEquals(
-                EventDeliveryOutcome.HTTP_CLIENT_ERROR,
-                EventDeliveryObservation.forHttpStatus(429).outcome());
-        assertEquals(
-                EventDeliveryOutcome.HTTP_SERVER_ERROR,
-                EventDeliveryObservation.forHttpStatus(503).outcome());
+    void rejectsUnsupportedStatusesAndMismatchedOutcomes() {
         assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(199));
+        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(600));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 199));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 302));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> EventDeliveryObservation.failure(EventDeliveryOutcome.DELIVERED));

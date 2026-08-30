@@ -10,16 +10,11 @@ public record EventDeliveryObservation(EventDeliveryOutcome outcome, Integer htt
     }
 
     public static EventDeliveryObservation forHttpStatus(int httpStatusCode) {
-        if (httpStatusCode >= 200 && httpStatusCode <= 299) {
-            return new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, httpStatusCode);
+        EventDeliveryOutcome outcome = httpOutcome(httpStatusCode);
+        if (outcome == null) {
+            throw new IllegalArgumentException("unsupported final HTTP status");
         }
-        if (httpStatusCode >= 300 && httpStatusCode <= 499) {
-            return new EventDeliveryObservation(EventDeliveryOutcome.HTTP_CLIENT_ERROR, httpStatusCode);
-        }
-        if (httpStatusCode >= 500 && httpStatusCode <= 599) {
-            return new EventDeliveryObservation(EventDeliveryOutcome.HTTP_SERVER_ERROR, httpStatusCode);
-        }
-        throw new IllegalArgumentException("unsupported final HTTP status");
+        return new EventDeliveryObservation(outcome, httpStatusCode);
     }
 
     public static EventDeliveryObservation failure(EventDeliveryOutcome outcome) {
@@ -32,13 +27,21 @@ public record EventDeliveryObservation(EventDeliveryOutcome outcome, Integer htt
 
     private static void validateHttpStatus(EventDeliveryOutcome outcome, Integer httpStatusCode) {
         boolean valid = switch (outcome) {
-            case DELIVERED -> httpStatusCode != null && httpStatusCode >= 200 && httpStatusCode <= 299;
-            case HTTP_CLIENT_ERROR -> httpStatusCode != null && httpStatusCode >= 300 && httpStatusCode <= 499;
-            case HTTP_SERVER_ERROR -> httpStatusCode != null && httpStatusCode >= 500 && httpStatusCode <= 599;
+            case DELIVERED, HTTP_CLIENT_ERROR, HTTP_SERVER_ERROR ->
+                    httpStatusCode != null && httpOutcome(httpStatusCode) == outcome;
             default -> httpStatusCode == null;
         };
         if (!valid) {
             throw new IllegalArgumentException("HTTP status does not match delivery outcome");
         }
+    }
+
+    private static EventDeliveryOutcome httpOutcome(int status) {
+        return switch (status / 100) {
+            case 2 -> EventDeliveryOutcome.DELIVERED;
+            case 3, 4 -> EventDeliveryOutcome.HTTP_CLIENT_ERROR;
+            case 5 -> EventDeliveryOutcome.HTTP_SERVER_ERROR;
+            default -> null;
+        };
     }
 }
