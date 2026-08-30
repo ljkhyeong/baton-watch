@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -101,17 +103,45 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         assertThat(missing.output()).contains("진단 조회 실패").doesNotContain(REFERENCE, "Error response");
     }
 
-    @Test
-    void boundsLockWaitAndDoesNotPrintPartialReport() throws Exception {
-        try (var connection = testDataSource.getConnection(); var statement = connection.createStatement()) {
-            connection.setAutoCommit(false);
-            statement.execute("LOCK TABLE watch_attempt IN ACCESS EXCLUSIVE MODE");
-            try {
-                var result = runTool(POSTGRES.getContainerId(), REFERENCE);
+    @ParameterizedTest(name = "서버 상세 로그 {0}에서 정상·잠금 실패 조회의 식별자 제외")
+    @ValueSource(booleans = {false, true})
+    void boundsLockWaitWithoutLeakingReferencesToClientOrServerLogs(boolean verbose) throws Exception {
+        String reference = "diagnostics-log-" + UUID.randomUUID();
+        List<String> loggingSettings = List.of(
+                "log_statement", "log_min_duration_statement",
+                "log_parameter_max_length", "log_parameter_max_length_on_error");
+        int logStart = POSTGRES.getLogs().length();
+        try {
+            if (verbose) {
+                jdbc.execute("ALTER ROLE CURRENT_USER SET log_statement = 'all'");
+                jdbc.execute("ALTER ROLE CURRENT_USER SET log_min_duration_statement = 0");
+                jdbc.execute("ALTER ROLE CURRENT_USER SET log_parameter_max_length = -1");
+                jdbc.execute("ALTER ROLE CURRENT_USER SET log_parameter_max_length_on_error = -1");
+            }
+            try (var connection = testDataSource.getConnection(); var statement = connection.createStatement()) {
+                connection.setAutoCommit(false);
+                statement.execute("LOCK TABLE watch_attempt IN ACCESS EXCLUSIVE MODE");
+                var result = runTool(POSTGRES.getContainerId(), reference);
                 assertThat(result.status()).isNotZero();
-                assertThat(result.output()).contains("진단 조회 실패").doesNotContain("observedAt", REFERENCE);
-            } finally {
+                assertThat(result.output()).contains("진단 조회 실패").doesNotContain("observedAt", reference);
                 connection.rollback();
+            }
+            var successful = runTool(POSTGRES.getContainerId(), reference);
+            assertThat(successful.status()).as(successful.output()).isZero();
+            assertThat(successful.output()).doesNotContain(reference);
+            await().atMost(Duration.ofSeconds(5)).untilAsserted(() -> {
+                String logs = POSTGRES.getLogs().substring(logStart);
+                assertThat(logs).contains("canceling statement due to lock timeout")
+                        .doesNotContain(reference);
+                if (verbose) {
+                    assertThat(logs).contains("execute <unnamed>:", "duration:", "statement: COMMIT");
+                }
+            });
+        } finally {
+            if (verbose) {
+                for (String setting : loggingSettings) {
+                    jdbc.execute("ALTER ROLE CURRENT_USER RESET " + setting);
+                }
             }
         }
     }

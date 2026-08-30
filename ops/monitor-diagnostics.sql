@@ -5,6 +5,9 @@ SET LOCAL transaction_timeout = '10s';
 SET LOCAL idle_in_transaction_session_timeout = '5s';
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL search_path = pg_catalog, public;
+-- SQL 본문과 서버의 정상·오류 로그에 리소스 참조를 남기지 않는다.
+SET LOCAL log_parameter_max_length = 0;
+SET LOCAL log_parameter_max_length_on_error = 0;
 
 -- 한 SELECT의 스냅샷에서 현재 상태와 최근 이력을 읽는다. URL과 리스 토큰은 선택하지 않는다.
 SELECT json_build_object(
@@ -18,7 +21,7 @@ SELECT json_build_object(
                    last_outcome AS "lastOutcome", last_checked_at AS "lastCheckedAt",
                    last_conclusive_at AS "lastConclusiveAt", next_check_at AS "nextCheckAt"
             FROM public.watch_monitor
-            WHERE resource_reference = :'resource_reference'
+            WHERE resource_reference = $1
         ) monitor
     ),
     'checks', (
@@ -31,9 +34,9 @@ SELECT json_build_object(
                    result.response_bytes AS "responseBytes", result.redirect_count AS "redirectCount"
             FROM public.watch_attempt attempt
             LEFT JOIN public.watch_result result USING (attempt_id)
-            WHERE attempt.resource_reference = :'resource_reference'
+            WHERE attempt.resource_reference = $1
             ORDER BY attempt.claimed_at DESC, attempt.attempt_id DESC
-            LIMIT :'row_limit'::integer
+            LIMIT $2::integer
         ) checks
     ),
     'deliveries', (
@@ -46,10 +49,12 @@ SELECT json_build_object(
                    last_http_status_code AS "lastHttpStatusCode",
                    next_attempt_at AS "nextAttemptAt", delivered_at AS "deliveredAt"
             FROM public.watch_health_change_event
-            WHERE resource_reference = :'resource_reference'
+            WHERE resource_reference = $1
             ORDER BY changed_at DESC, event_id DESC
-            LIMIT :'row_limit'::integer
+            LIMIT $2::integer
         ) delivery
     )
-);
+)
+\bind :resource_reference :row_limit
+\g
 COMMIT;
