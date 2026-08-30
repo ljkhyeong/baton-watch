@@ -2,6 +2,34 @@ rule_files:
   - watch-alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: 두 카운터가 함께 존재하고 합계만 임계치를 넘는 경우
+    interval: 2m
+    input_series:
+      - series: up{job="baton-watch",instance="watch"}
+        values: '1x10'
+      - series: baton_watch_check_finalizations_total{job="baton-watch",instance="watch",status="failure"}
+        values: '0+1x5 0x5'
+      - series: baton_watch_event_delivery_finalizations_total{job="baton-watch",instance="watch",status="failure"}
+        values: '0+1x5 0x5'
+      - series: baton_watch_check_lease_recoveries_total{job="baton-watch",instance="watch"}
+        values: '0+1x5 0x5'
+      - series: baton_watch_event_delivery_lease_recoveries_total{job="baton-watch",instance="watch"}
+        values: '0+1x5 0x5'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WatchFinalizationFailures
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 완료 처리 반복 실패}
+      - eval_time: 10m
+        alertname: WatchLeaseRecoveryBurst
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 만료 리스 반복 회수}
+    promql_expr_test:
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 20m
+        exp_samples: []
   - name: 지속 장애 감지와 복구
     interval: 1m
     input_series:

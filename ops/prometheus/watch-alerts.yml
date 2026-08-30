@@ -24,14 +24,25 @@ groups:
         annotations:
           summary: WATCH 예약 작업 반복 실패
       - alert: WatchFinalizationFailures
-        expr: sum by (job, instance) (increase({__name__=~"baton_watch_(check|event_delivery)_finalizations_total",job="baton-watch",status="failure"}[5m])) >= 3
+        # 이름이 사라진 두 카운터가 충돌하지 않도록 계산 중에만 작업 종류를 구분한다.
+        expr: |
+          sum by (job, instance) (
+            label_replace(increase(baton_watch_check_finalizations_total{job="baton-watch",status="failure"}[5m]), "watch_worker", "check", "", "")
+            or
+            label_replace(increase(baton_watch_event_delivery_finalizations_total{job="baton-watch",status="failure"}[5m]), "watch_worker", "delivery", "", "")
+          ) >= 3
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: WATCH 완료 처리 반복 실패
       - alert: WatchLeaseRecoveryBurst
-        expr: sum by (job, instance) (increase({__name__=~"baton_watch_(check|event_delivery)_lease_recoveries_total",job="baton-watch"}[5m])) >= 3
+        expr: |
+          sum by (job, instance) (
+            label_replace(increase(baton_watch_check_lease_recoveries_total{job="baton-watch"}[5m]), "watch_worker", "check", "", "")
+            or
+            label_replace(increase(baton_watch_event_delivery_lease_recoveries_total{job="baton-watch"}[5m]), "watch_worker", "delivery", "", "")
+          ) >= 3
         for: 2m
         labels:
           severity: warning
