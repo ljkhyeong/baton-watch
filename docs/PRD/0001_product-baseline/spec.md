@@ -24,6 +24,9 @@ PRD-0003의 모니터링 MVP는 구현되어 있다. WATCH는 리비전이 있�
 스테이징 터널에는 NGINX의 경로별 요청 속도 제한을 제공하고, Compose는 Spring Boot의
 기본 준비 상태와 DB 상태를 확인한다. 기존 메트릭용 Grafana JSON 템플릿도 제공한다.
 이 산출물은 공개 배포·실제 수집기·대시보드 서버·외부 알림이 가동 중이라는 의미가 아니다.
+별도의 Blackbox Exporter 모듈과 Prometheus 수집·경보 템플릿으로 내부 프록시 및
+공개 HTTPS 요청 경로를 확인할 수 있다. WATCH 자체의 고정 상태 경로만 대상으로
+하며 RoleResource 검사나 BATON 콜백 전달을 대체하지 않는다. 실제 적용은 운영 승인 후다.
 
 ## 소유 범위
 

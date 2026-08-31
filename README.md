@@ -22,11 +22,12 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 스테이징 터널의 NGINX 경로별 요청 속도 제한과 비공개 네트워크 분리
 - Spring Boot 기본 liveness와 DB를 포함한 readiness를 사용하는 Compose 준비 상태 확인
 - 기존 메트릭을 조회하는 Grafana 운영 대시보드 JSON과 실제 PromQL 검사
+- 내부 프록시·공개 HTTPS 상태 경로용 Blackbox Exporter 모듈과 선택적 Prometheus 수집·경보 템플릿
 - 격리 PostgreSQL 부하·장애 복구 시험, 별도 JVM 강제 종료 후 리스·동일 이벤트 재전달 시험,
   작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구,
   URL·비밀값을 제외한 리소스별 최근 점검·전달 상태의 읽기 전용 진단 도구
-- 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
+- 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 자체 배포 이미지 세 개·NGINX 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
 운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 외부 메트릭 전송 경로와 외부 계정·대시보드 서버·알림 자동 생성은 제공하지 않습니다. 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한과 R2 저장소는 현재 구성에 포함하지 않습니다. 인프라 이그레스 정책, 지원 규모·SLO, NGINX 제한값과 공개 HTTPS 429 검증, 실제 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
 
@@ -79,8 +80,9 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 python3 ops/tests/gateway-test.py
 ~~~
 
-NGINX 검사는 실제 프록시와 HTTP 대역만 사용하는 임시 Compose 프로젝트에서
-실행합니다. Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 Grafana 서버를
+NGINX 검사는 실제 프록시·Blackbox Exporter와 HTTP 대역을 사용하는 임시 Compose
+프로젝트에서 실행합니다. 요청 실패·복구와 자체 생존 확인의 차이도 확인합니다.
+Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 Grafana 서버를
 배포하지 않습니다. 관리 프로브는 컨테이너 루프백의
 `/actuator/health/liveness`와 `/actuator/health/readiness`를 사용합니다.
 readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Docker unhealthy만으로
@@ -95,15 +97,21 @@ readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Doc
 정확히 일치하는지도 확인합니다. Dockerfile의 데이터베이스 작업·마이그레이션·WATCH
 이미지는 같은 라이선스를 `/usr/share/licenses/baton-watch/LICENSE`에 포함하고
 `Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 세 이미지의
-레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR과 세 이미지의 CycloneDX
-SBOM 네 개를 생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다.
+레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 세 개와
+Compose에 고정된 공식 NGINX 이미지의 CycloneDX SBOM 다섯 개를 생성하고 수정 가능한
+`HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. NGINX의 원래 라이선스는 유지됩니다.
 부트 JAR SBOM은 Trivy 표준 라이선스 스캐너와 명시적 허용 목록도 통과해야 합니다.
 허용 라이선스가 없는 의존성은 차단하며, 라이선스 정보 누락·이중 라이선스 예외는
 승인된 패키지와 버전에만 적용합니다. CI와 같은 정책 회귀 검사는
 `python3 ops/tests/runtime-license-policy-test.py`로 실행합니다.
-`main` 푸시의 전체 검증이 성공하면 JAR·SBOM 네 개·체크섬 공급망 산출물에 GitHub
+`main` 푸시의 전체 검증이 성공하면 JAR·SBOM 다섯 개·체크섬 공급망 산출물에 GitHub
 출처 증명을 추가합니다. 이 산출물은 14일 동안 보관하며 컨테이너 이미지 자체는
 현재 출처 증명 대상이 아닙니다.
+
+현재 고정된 NGINX 이미지의 실제 스캔에서는 OpenSSL `3.5.7-r0`에 대한
+`CVE-2026-14456`이 Trivy의 `HIGH` 기준으로 검출되어 이 검사가 차단됩니다.
+수정 버전 `3.5.8-r0` 이상을 포함한 이미지 검증 전에는 배포 준비가 완료된 것으로
+보지 않습니다. 검사 예외는 추가하지 않았으며 현재 진행 상태는 [HANDOFF.md](HANDOFF.md)를 참고하세요.
 
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
 다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와
@@ -177,6 +185,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
 - [NGINX 요청 속도 제한과 공개 검증](docs/runbooks/request-rate-limit.md)
+- [인바운드 HTTP 점검·경보 적용 조건](docs/runbooks/ingress-monitoring.md)
 - [점검 중지·재개와 읽기 전용 장애 진단](docs/runbooks/check-control-and-diagnostics.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)

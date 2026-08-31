@@ -39,6 +39,15 @@ NGINX는 인증·본문 검증을 구현하지 않는다. 요청·응답 버퍼�
 아니라 같은 리비전의 설정·네트워크·원격 인그레스를 함께 검토한다. 실제 배포,
 공개 HTTPS 429 관찰, 지원 용량과 이그레스 승인은 저장소 검사와 별개다.
 
+CI는 Compose의 게이트웨이 이미지 참조를 읽어 기존 Trivy 이미지 검사와 CycloneDX
+SBOM 생성에 포함한다. 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 차단한다.
+공식 이미지의 원래 라이선스를 WATCH의 Apache-2.0으로 변경하지 않는다.
+
+프록시 생존 확인은 유지하면서 실제 요청 경로는 Blackbox Exporter 표준 HTTP
+모듈과 선택적 Prometheus 경보 템플릿으로 따로 확인한다. 임의 목적지를 받는 Exporter는
+비공개 수집 경로와 제한된 이그레스가 승인된 뒤에만 적용한다. WATCH Java에 별도
+점검기·감시 스레드·외부 메트릭 전송을 추가하지 않는다.
+
 구현 근거는 NGINX 공식 [요청 제한](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html),
 [백엔드 DNS 갱신](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#resolve),
 [요청 버퍼링](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_request_buffering) 문서다.
