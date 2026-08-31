@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import unittest
+from urllib.parse import urlencode
 import uuid
 
 
@@ -28,11 +29,35 @@ class GatewayTest(unittest.TestCase):
     def compose(cls, *args):
         return subprocess.check_output(cls.command + list(args), env=cls.environment, text=True)
 
-    def request(self, path, method="GET", body=None, headers=None):
-        with closing(http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)) as client:
+    def request(self, path, method="GET", body=None, headers=None, *, port=None, timeout=5):
+        with closing(http.client.HTTPConnection("127.0.0.1", port or self.port, timeout=timeout)) as client:
             client.request(method, path, body=body, headers=headers or {})
             response = client.getresponse()
             return response.status, dict(response.getheaders()), response.read().decode()
+
+    def test_blackbox_detects_request_failure_independently_of_liveness(self):
+        port = int(self.compose("port", "blackbox-exporter", "9115").strip().rsplit(":", 1)[1])
+
+        def probe(path="/api/v1/system/status", module="watch_gateway"):
+            query = urlencode({"target": "http://watch-gateway:8080" + path, "module": module})
+            status, _, body = self.request("/probe?" + query, port=port, timeout=8)
+            self.assertEqual(status, 200)
+            return body
+
+        self.assertRegex(probe(), r"(?m)^probe_success 1$")
+        self.assertRegex(probe(module="watch_public"), r"(?m)^probe_success 0$")
+        redirected = probe("/api/v1/probe-fixture/redirect")
+        self.assertRegex(redirected, r"(?m)^probe_success 0$")
+        self.assertRegex(redirected, r"(?m)^probe_http_status_code 302$")
+        self.assertRegex(probe("/api/v1/probe-fixture/invalid-body"), r"(?m)^probe_success 0$")
+        try:
+            self.compose("stop", "--timeout", "2", "watch")
+            self.compose("exec", "-T", "watch-gateway", "wget", "-q", "-O", "/dev/null",
+                         "http://127.0.0.1:8082/health")
+            self.assertRegex(probe(), r"(?m)^probe_success 0$")
+        finally:
+            self.compose("up", "--detach", "--no-deps", "--wait", "--wait-timeout", "30", "watch")
+        self.assertRegex(probe(), r"(?m)^probe_success 1$")
 
     def test_gateway_contract(self):
         # 인증 헤더와 인증 전 큰 본문 요청은 프록시의 별도 검증 없이 전달한다.
