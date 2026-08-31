@@ -186,7 +186,7 @@ services:
       - watch-db
       - watch-edge
     healthcheck:
-      test: ["CMD", "su-exec", "10001:10001", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      test: ["CMD", "su-exec", "10001:10001", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health/readiness"]
       interval: 10s
       timeout: 3s
       retries: 12

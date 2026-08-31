@@ -75,3 +75,8 @@ watch:
 management:
   server:
     port: 8081
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db

@@ -19,6 +19,13 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.availability.AvailabilityChangeEvent;
+import org.springframework.boot.availability.ReadinessState;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthContributor;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.registry.HealthContributorRegistry;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -73,6 +80,8 @@ class BatonWatchApplicationSmokeTest {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final List<MeterRegistry> meterRegistries;
+    private final HealthContributorRegistry healthContributors;
+    private final ApplicationContext applicationContext;
 
     @LocalServerPort
     private int serverPort;
@@ -85,11 +94,15 @@ class BatonWatchApplicationSmokeTest {
             Environment environment,
             JdbcTemplate jdbc,
             ObjectMapper objectMapper,
-            List<MeterRegistry> meterRegistries) {
+            List<MeterRegistry> meterRegistries,
+            HealthContributorRegistry healthContributors,
+            ApplicationContext applicationContext) {
         this.environment = environment;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.meterRegistries = meterRegistries;
+        this.healthContributors = healthContributors;
+        this.applicationContext = applicationContext;
     }
 
     @Test
@@ -157,6 +170,41 @@ class BatonWatchApplicationSmokeTest {
         assertThat(managementGet("/actuator/scheduledtasks").statusCode()).isEqualTo(404);
 
         assertThat(meterRegistries).anyMatch(PrometheusMeterRegistry.class::isInstance);
+    }
+
+    @Test
+    void readinessIncludesDatabaseAndLifecycleButLivenessDoesNot() throws Exception {
+        assertProbe("readiness", 200, "UP");
+        assertProbe("liveness", 200, "UP");
+        // DB 네트워크 장애 재현이 아니라 실제 조립의 상태 그룹 연결을 검증한다.
+        HealthContributor database = healthContributors.unregisterContributor("db");
+        assertThat(database).isNotNull();
+        try {
+            healthContributors.registerContributor("db", (HealthIndicator) () ->
+                    Health.down().withDetail("private", "노출하면 안 되는 DB 정보").build());
+            assertProbe("readiness", 503, "DOWN");
+            assertProbe("liveness", 200, "UP");
+        } finally {
+            healthContributors.unregisterContributor("db");
+            healthContributors.registerContributor("db", database);
+        }
+        assertProbe("readiness", 200, "UP");
+        try {
+            AvailabilityChangeEvent.publish(applicationContext, ReadinessState.REFUSING_TRAFFIC);
+            assertProbe("readiness", 503, "OUT_OF_SERVICE");
+            assertProbe("liveness", 200, "UP");
+        } finally {
+            AvailabilityChangeEvent.publish(applicationContext, ReadinessState.ACCEPTING_TRAFFIC);
+        }
+        assertProbe("readiness", 200, "UP");
+        assertThat(get("/actuator/health/readiness", null).statusCode()).isEqualTo(404);
+    }
+
+    private void assertProbe(String group, int expectedCode, String expectedStatus) throws Exception {
+        HttpResponse<String> response = managementGet("/actuator/health/" + group);
+        assertThat(response.statusCode()).isEqualTo(expectedCode);
+        assertThat(objectMapper.readTree(response.body()))
+                .isEqualTo(objectMapper.readTree("{\"status\":\"" + expectedStatus + "\"}"));
     }
 
     private HttpResponse<String> managementGet(String path) throws Exception {

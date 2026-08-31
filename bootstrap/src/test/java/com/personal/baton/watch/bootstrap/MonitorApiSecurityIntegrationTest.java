@@ -53,6 +53,8 @@ import tools.jackson.databind.ObjectMapper;
         properties = {
             "server.servlet.context-path=/watch",
             "management.server.port=-1",
+            // DB를 제외한 보안 전용 조립이므로 기본 준비 상태만 사용한다.
+            "management.endpoint.health.group.readiness.include=readinessState",
             "server.max-http-request-header-size=64KB",
             "server.tomcat.max-http-response-header-size=64KB",
             "server.tomcat.max-connections=4096",

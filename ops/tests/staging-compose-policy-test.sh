@@ -407,9 +407,9 @@ require(
         "-q",
         "-O",
         "/dev/null",
-        "http://127.0.0.1:8081/actuator/health",
+        "http://127.0.0.1:8081/actuator/health/readiness",
     ],
-    "WATCH healthcheck must include database health",
+    "WATCH 준비 상태 확인에는 DB 상태가 포함되어야 합니다",
 )
 require(watch.get("stop_grace_period") == "1m50s", "WATCH shutdown budget changed")
 require(
