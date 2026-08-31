@@ -2,6 +2,41 @@ rule_files:
   - watch-ingress-alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: 요청 실패·수집 실패·지표 누락이 바뀌어도 주 경보 유지 후 정상 응답에서 해제
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
+        values: '1 0 1 0 1 0 1 0 1 0 1 1 1 1 1'
+      - series: probe_success{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
+        values: '0 stale _ stale 0 stale _ stale 0 stale 0 1 0 1 1'
+      - series: up{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x14'
+      - series: probe_success{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x14'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WatchIngressRequestFailed
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: WatchIngressRequestFailed
+        exp_alerts:
+          - exp_labels: {job: baton-watch-ingress, instance: watch-gateway, route: gateway, severity: critical}
+            exp_annotations: {summary: WATCH 인바운드 정상 응답 확인 실패}
+    promql_expr_test:
+      - expr: sum(count_over_time(ALERTS{alertname="WatchIngressRequestFailed",alertstate="firing"}[9m]))
+        eval_time: 10m
+        exp_samples:
+          - labels: '{}'
+            value: 9
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 11m
+        exp_samples: []
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 12m
+        exp_samples: []
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 14m
+        exp_samples: []
   - name: WATCH 수집과 프록시 생존이 정상이어도 요청 실패를 감지하고 복구하면 해제
     interval: 1m
     input_series:
@@ -23,18 +58,19 @@ tests:
         alertname: WatchIngressRequestFailed
         exp_alerts:
           - exp_labels: {job: baton-watch-ingress, instance: watch-gateway, route: gateway, severity: critical}
-            exp_annotations: {summary: WATCH 인바운드 요청 경로 실패}
+            exp_annotations: {summary: WATCH 인바운드 정상 응답 확인 실패}
     promql_expr_test:
       - expr: ALERTS{alertstate="firing"}
         eval_time: 10m
         exp_samples: []
-  - name: Exporter 수집 실패와 성공 지표 누락을 요청 실패와 구분
+  - name: Exporter 수집 실패와 성공 지표 누락을 주 경보와 수집 실패 보조 경보에서 확인
     interval: 1m
     input_series:
       - series: up{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
         values: '0x10'
       - series: probe_success{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
-        values: '0x10'
+        # 이전 성공값이 남아 있어도 수집 실패를 정상으로 판정하지 않는다.
+        values: '1x10'
       - series: up{job="baton-watch-ingress",instance="watch-public",route="public"}
         values: '1x10'
     alert_rule_test:
@@ -47,7 +83,11 @@ tests:
             exp_annotations: {summary: WATCH 인바운드 점검 결과 수집 실패}
       - eval_time: 2m
         alertname: WatchIngressRequestFailed
-        exp_alerts: []
+        exp_alerts:
+          - exp_labels: {job: baton-watch-ingress, instance: watch-gateway, route: gateway, severity: critical}
+            exp_annotations: {summary: WATCH 인바운드 정상 응답 확인 실패}
+          - exp_labels: {job: baton-watch-ingress, instance: watch-public, route: public, severity: critical}
+            exp_annotations: {summary: WATCH 인바운드 정상 응답 확인 실패}
   - name: 다른 경로가 정상이어도 공개 경로 설정 누락 감지
     interval: 1m
     input_series:
