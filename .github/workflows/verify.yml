@@ -239,6 +239,14 @@ jobs:
             "baton-watch-migrations:${GITHUB_SHA}"
           docker save --output "${inputs_dir}/images/runtime.tar" \
             "baton-watch:${GITHUB_SHA}"
+          # 이미지 참조는 오버레이에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
+          gateway_image="$(
+            WATCH_TUNNEL_TOKEN_FILE=/dev/null docker compose --file compose.staging-tunnel.yml \
+              config --no-consistency --format json \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
+          )"
+          docker pull "${gateway_image}"
+          docker save --output "${inputs_dir}/images/gateway.tar" "${gateway_image}"
 
           trivy_image="docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
           scan_rootfs() {
@@ -282,6 +290,7 @@ jobs:
           scan_image_archive database-operations.tar database-operations.cdx.json
           scan_image_archive migrations.tar migrations.cdx.json
           scan_image_archive runtime.tar runtime.cdx.json
+          scan_image_archive gateway.tar gateway.cdx.json
 
           ignored_licenses="$(python3 ops/check-runtime-licenses.py "${reports_dir}")"
 
