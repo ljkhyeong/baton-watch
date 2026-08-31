@@ -53,7 +53,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int alreadyFinalized = 0;
         int staleClaims = 0;
         Duration maximumScheduleDelay = Duration.ZERO;
-        while (claimed < batchSize) {
+        while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
             Optional<ClaimedCheck> nextClaim = persistence.claimDueCheck(leaseDuration);
             if (nextClaim.isEmpty()) {
                 break;

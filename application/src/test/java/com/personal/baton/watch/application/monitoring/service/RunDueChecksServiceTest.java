@@ -1,6 +1,7 @@
 package com.personal.baton.watch.application.monitoring.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RunDueChecksServiceTest {
 
@@ -59,6 +61,41 @@ class RunDueChecksServiceTest {
         assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void preservesInterruptionAndStopsClaimingMoreChecks(boolean interruptedBeforeStart) {
+        List<String> calls = new ArrayList<>();
+        RecordingWorkPersistence persistence = new RecordingWorkPersistence(calls);
+        RunDueChecksService service = new RunDueChecksService(
+                persistence,
+                target -> {
+                    calls.add("check");
+                    Thread.currentThread().interrupt();
+                    return CheckObservation.internalFailure();
+                },
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                LEASE,
+                INTERVAL,
+                INTERNAL_RETRY,
+                2);
+
+        try {
+            if (interruptedBeforeStart) {
+                Thread.currentThread().interrupt();
+            }
+
+            DueCheckBatchResult result = service.runDueChecks();
+
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), calls);
+            int completed = interruptedBeforeStart ? 0 : 1;
+            Duration delay = interruptedBeforeStart ? Duration.ZERO : Duration.ofSeconds(12);
+            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, delay), result);
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
