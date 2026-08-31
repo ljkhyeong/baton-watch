@@ -63,14 +63,22 @@ BATON 콜백 전달까지 검증하지 않는다. 429도 요청 실패로 처리
 
 | 경보 | 조건·유지 시간 | 우선 확인 |
 | --- | --- | --- |
-| `WatchIngressRequestFailed` | 결과 수집은 성공했지만 HTTP 점검이 2분간 실패 | 경로별 DNS·TLS·터널·NGINX·WATCH 응답 |
+| `WatchIngressRequestFailed` | 수집 대상이 있지만 정상 응답을 2분간 확인하지 못함 | 수집 실패 보조 경보와 경로별 DNS·TLS·터널·NGINX·WATCH 응답 |
 | `WatchIngressProbeUnavailable` | Exporter 수집 실패 또는 성공 지표 누락이 2분간 지속 | Exporter·수집 주소·모듈·허용 지표 설정 |
 | `WatchIngressTargetMissing` | 내부 또는 공개 수집 대상 자체가 5분간 없음 | 수집 작업·고정 경로 레이블 |
 
-경보의 시각에는 수집·평가 간격이 추가된다. 공개 경로만 실패하면 공개 DNS·TLS·
-터널을, 두 경로가 함께 실패하면 NGINX와 WATCH 연결을 우선 확인한다. 이는 조사
-순서이며 원인 확정은 아니다. 생존 확인을 DB나 공개 네트워크 상태에 종속시키거나
-실패를 우회하려고 관리 포트를 공개하지 않는다.
+주 경보는 같은 대상의 `up == 1`과 `probe_success == 1`이 함께 확인된 경우만
+정상으로 제외한다. `up`의 고정 레이블을 사용하므로 요청 실패·수집 실패·성공 지표
+누락이 교차해도 2분 대기 시간이 초기화되지 않는다. 정상 응답이 확인되면 해제되고,
+이후 새 실패에는 다시 2분을 기다린다. `up` 자체가 사라지면 주 경보가 아니라
+대상 누락 경보의 5분 조건으로 확인한다.
+
+수집 실패 보조 경보가 주 경보와 함께 발생하면 Exporter·수집 설정부터 확인한다.
+주 경보만으로 WATCH의 장애가 확정되는 것은 아니다. 수집이 정상인데 공개 경로만
+실패하면 공개 DNS·TLS·터널을, 두 경로가 함께 실패하면 NGINX와 WATCH 연결을
+우선 확인한다. 이는 조사 순서이며 원인 확정은 아니다. 경보의 시각에는 수집·평가
+간격이 추가된다. 생존 확인을 DB나 공개 네트워크 상태에 종속시키거나 실패를
+우회하려고 관리 포트를 공개하지 않는다.
 
 ## 검증과 원복
 
@@ -80,6 +88,8 @@ python3 -B ops/tests/gateway-test.py
 ```
 
 첫 명령은 Prometheus 설정 문법과 장애·복구·수집 실패·대상 누락 경보를 검사한다.
+실패 종류가 교차해도 주 경보가 유지되는지, 정상 응답 후 해제되는지, 복구 직후의
+짧은 오류에는 다시 경보가 발생하지 않는지도 확인한다.
 두 번째는 실제 NGINX·Blackbox Exporter와 HTTP 대역만 격리 실행한다. 정상 요청,
 공개 모듈의 평문 거부, 리다이렉트 비추적, 잘못된 본문, 백엔드 중단·복구와 프록시
 생존 확인의 차이를 확인하고 시험 환경을 제거한다. 실제 WATCH·공개 TLS·Cloudflare·
@@ -92,3 +102,6 @@ config`를 통과시킨다. 승인된 장애·복구 시험으로 수신·해제
 
 모듈과 실행 옵션은 공식 [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter/tree/v0.28.0),
 [HTTP 모듈 설정](https://github.com/prometheus/blackbox_exporter/blob/v0.28.0/CONFIGURATION.md)을 따른다.
+주 경보의 시계열 유지·제외 조건은 Prometheus의
+[경보 규칙](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)과
+[집합 연산자](https://prometheus.io/docs/prometheus/latest/querying/operators/#logical-set-binary-operators)를 따른다.

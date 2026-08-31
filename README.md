@@ -82,7 +82,8 @@ python3 ops/tests/gateway-test.py
 
 NGINX 검사는 실제 프록시·Blackbox Exporter와 HTTP 대역을 사용하는 임시 Compose
 프로젝트에서 실행합니다. 요청 실패·복구와 자체 생존 확인의 차이도 확인합니다.
-Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 Grafana 서버를
+Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 요청 실패·수집 실패·지표
+누락이 교차할 때도 인바운드 주 경보가 유지되는지 확인합니다. Grafana 서버를
 배포하지 않습니다. 관리 프로브는 컨테이너 루프백의
 `/actuator/health/liveness`와 `/actuator/health/readiness`를 사용합니다.
 readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Docker unhealthy만으로
