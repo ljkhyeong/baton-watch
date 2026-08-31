@@ -121,6 +121,9 @@ jobs:
       - name: 스테이징 배포 정책 검증
         run: ./ops/tests/staging-compose-policy-test.sh
 
+      - name: NGINX 요청 속도 제한과 프록시 경계 검증
+        run: python3 ops/tests/gateway-test.py
+
       - name: 격리 DB 부하와 장애 복구 스모크
         run: ./gradlew :adapter-out-persistence:loadTest -PwatchLoadMonitors=25 --no-daemon
 

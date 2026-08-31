@@ -1,0 +1,24 @@
+services:
+  watch:
+    extends:
+      file: ../../compose.staging-tunnel.yml
+      service: watch-gateway
+    depends_on: !reset {}
+    volumes: !override
+      - ./nginx-upstream.conf:/etc/nginx/nginx.conf:ro
+    networks: !override
+      - watch-edge
+
+  watch-gateway:
+    extends:
+      file: ../../compose.staging-tunnel.yml
+      service: watch-gateway
+    ports:
+      - "127.0.0.1::8080"
+
+networks:
+  watch-edge:
+    internal: true
+  watch-ingress:
+    # 호스트 루프백의 시험 클라이언트가 임시 공개 포트로 접근하는 네트워크다.
+    internal: false

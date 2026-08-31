@@ -123,12 +123,12 @@ require(
 )
 require(
     set(tunnel["services"])
-    == {"postgres", "database-role-init", "migrate", "watch", "cloudflared"},
+    == {"postgres", "database-role-init", "migrate", "watch", "watch-gateway", "cloudflared"},
     "tunnel services changed",
 )
 require(
     set(event_delivery["services"])
-    == {"postgres", "database-role-init", "migrate", "watch", "cloudflared"},
+    == {"postgres", "database-role-init", "migrate", "watch", "watch-gateway", "cloudflared"},
     "event delivery overlay services changed",
 )
 assert_no_host_ports(base, "base")
@@ -146,7 +146,8 @@ expected_networks = {
     "database-role-init": {"watch-db"},
     "migrate": {"watch-db"},
     "watch": {"watch-db", "watch-edge"},
-    "cloudflared": {"watch-edge"},
+    "watch-gateway": {"watch-edge", "watch-ingress"},
+    "cloudflared": {"watch-ingress"},
 }
 for service_name, expected in expected_networks.items():
     actual = set(tunnel["services"][service_name].get("networks", {}))
@@ -157,6 +158,19 @@ database_role_init = tunnel["services"]["database-role-init"]
 migrate = tunnel["services"]["migrate"]
 watch = tunnel["services"]["watch"]
 cloudflared = tunnel["services"]["cloudflared"]
+gateway = tunnel["services"]["watch-gateway"]
+assert_digest_pinned(gateway["image"], "nginx", "watch-gateway")
+require(gateway["user"] == "101:101", "NGINX는 비루트 사용자로 실행해야 합니다")
+require(not gateway.get("cap_add"), "NGINX에 추가 capability를 허용하지 않습니다")
+require(
+    gateway["depends_on"]["watch"]["condition"] == "service_healthy",
+    "NGINX는 WATCH 준비 상태를 기다려야 합니다",
+)
+require(
+    gateway["volumes"][0]["read_only"] is True
+    and gateway["volumes"][0]["target"] == "/etc/nginx/nginx.conf",
+    "NGINX 설정은 읽기 전용으로 마운트해야 합니다",
+)
 event_delivery_watch = event_delivery["services"]["watch"]
 
 require(watch.get("build") is None, "staging WATCH must use a prebuilt image")
@@ -356,6 +370,7 @@ expected_resource_limits = {
     "migrate": {"cpus": 0.5, "memory": "402653184", "pids": 128},
     "watch": {"cpus": 1, "memory": "805306368", "pids": 256},
     "cloudflared": {"cpus": 0.5, "memory": "268435456", "pids": 128},
+    "watch-gateway": {"cpus": 0.25, "memory": "67108864", "pids": 32},
 }
 for service_name, service in tunnel["services"].items():
     require(service.get("read_only") is True, f"{service_name} root filesystem must be read-only")
@@ -387,7 +402,7 @@ for service_name, service in tunnel["services"].items():
         f"{service_name} log rotation limits changed",
     )
 
-for service_name in ("postgres", "watch", "cloudflared"):
+for service_name in ("postgres", "watch", "watch-gateway", "cloudflared"):
     service = tunnel["services"][service_name]
     require(service.get("healthcheck"), f"{service_name} healthcheck is required")
     require(service.get("restart") == "unless-stopped", f"{service_name} restart policy changed")
@@ -498,8 +513,8 @@ require(
     "WATCH must wait for successful schema migration",
 )
 require(
-    cloudflared.get("depends_on", {}).get("watch", {}).get("condition") == "service_healthy",
-    "cloudflared must wait for healthy WATCH",
+    cloudflared.get("depends_on", {}).get("watch-gateway", {}).get("condition") == "service_healthy",
+    "cloudflared는 준비된 NGINX를 기다려야 합니다",
 )
 cloudflared_command = cloudflared.get("command", [])
 require(
