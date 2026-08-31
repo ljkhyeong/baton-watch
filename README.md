@@ -19,13 +19,16 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 낮은 카디널리티의 점검·이벤트 전달 시도와 소요 시간 `outcome` 메트릭, 점유·완료 처리·만료 리스 회수 카운터, 현재 실행 중인 점검·전달 수, 최근 점검 배치의 최대 일정 지연, JVM과 PostgreSQL의 시계 편차, Spring 예약 실행 타이머, 이벤트 전달 백로그와 가장 오래된 미전달 이벤트의 경과 시간
 - 공식 IANA 주소 레지스트리 체크섬을 매월 비교하고 변경 시 주소 정책과 경계 테스트의 수동 검토를 요구하는 드리프트 검사
 - 헥사고날 구조의 Gradle 6개 모듈 구성
+- 스테이징 터널의 NGINX 경로별 요청 속도 제한과 비공개 네트워크 분리
+- Spring Boot 기본 liveness와 DB를 포함한 readiness를 사용하는 Compose 준비 상태 확인
+- 기존 메트릭을 조회하는 Grafana 운영 대시보드 JSON과 실제 PromQL 검사
 - 격리 PostgreSQL 부하·장애 복구 시험, 별도 JVM 강제 종료 후 리스·동일 이벤트 재전달 시험,
   작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구,
   URL·비밀값을 제외한 리소스별 최근 점검·전달 상태의 읽기 전용 진단 도구
 - 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 세 배포 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
-운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 외부 메트릭 전송 경로와 외부 계정·대시보드·알림 자동 생성은 제공하지 않습니다. 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한과 R2 저장소는 현재 구성에 포함하지 않습니다. 인프라 이그레스 정책, 지원 규모·SLO, 비용 없는 요청 속도 제한 대안, 외부 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
+운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 외부 메트릭 전송 경로와 외부 계정·대시보드 서버·알림 자동 생성은 제공하지 않습니다. 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한과 R2 저장소는 현재 구성에 포함하지 않습니다. 인프라 이그레스 정책, 지원 규모·SLO, NGINX 제한값과 공개 HTTPS 429 검증, 실제 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
 
 ## 기술과 모듈
 
@@ -73,7 +76,15 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 ./gradlew :adapter-out-persistence:loadTest --no-daemon
 ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
+python3 ops/tests/gateway-test.py
 ~~~
+
+NGINX 검사는 실제 프록시와 HTTP 대역만 사용하는 임시 Compose 프로젝트에서
+실행합니다. Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 Grafana 서버를
+배포하지 않습니다. 관리 프로브는 컨테이너 루프백의
+`/actuator/health/liveness`와 `/actuator/health/readiness`를 사용합니다.
+readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Docker unhealthy만으로
+자동 재시작이나 실행 중 트래픽 차단이 보장되지는 않습니다.
 
 프로세스 복구 시험은 점검 30초·전달 60초 리스의 자연 만료를 실제로 기다립니다.
 시험용 자식 JVM·콜백 대역을 사용하므로 운영 부트 JAR 재시작이나 공개 HTTPS 전달을
@@ -159,11 +170,13 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [마이크로서비스 경계 ADR](docs/ADR/0001_microservice-boundary/adr.md)
 - [MVP 저장소 및 실행 ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
 - [직접 HTTPS 이벤트 전달 ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
+- [NGINX 요청 속도 제한 ADR](docs/ADR/0004_ingress-rate-limit/adr.md)
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
 - [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
+- [NGINX 요청 속도 제한과 공개 검증](docs/runbooks/request-rate-limit.md)
 - [점검 중지·재개와 읽기 전용 장애 진단](docs/runbooks/check-control-and-diagnostics.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)

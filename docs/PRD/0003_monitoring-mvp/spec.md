@@ -204,6 +204,14 @@ HTTP 요청 스레드 4개를 초과할 수 없다. 검사 선점은 100개, 유
 
 ## 운영자 장애 진단
 
+- Compose의 시작 준비 확인은 `/actuator/health/readiness`를 사용한다. Spring Boot의
+  기본 `readinessState`와 `db`를 포함하며, DB 사용 불가 또는 요청 수락 거부 상태는
+  HTTP 503을 반환한다. `/actuator/health/liveness`는 DB 상태를 포함하지 않는다.
+  두 프로브는 관리 포트에만 두고 상세 상태와 추가 공개 경로는 제공하지 않는다.
+- `ops/grafana/watch-overview.json`은 기존 메트릭용 운영 대시보드 템플릿이다.
+  DB 적체를 인스턴스 간 합산하거나 수집 누락을 0으로 대체하지 않는다.
+  수집기·외부 계정·대시보드 서버·알림 수신 경로를 자동 생성하지 않는다.
+
 - `ops/staging-monitor-diagnostics.sh`는 지정한 PostgreSQL 컨테이너의 로컬 소켓에
   접속해 한 리소스의 현재 상태와 최근 점검·전달 이력을 JSON으로 출력한다.
   Docker·DB 운영 권한을 이미 가진 운영자용이며 새 HTTP 경로나 권한 체계를 만들지 않는다.

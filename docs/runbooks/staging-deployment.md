@@ -2,13 +2,13 @@
 
 상태: 운영자용 실행 절차서이며, 저장소 산출물은 실제 배포의 증거가 아님
 
-최종 수정일: 2026-08-30
+최종 수정일: 2026-08-31
 
 ## 목적과 현재 경계
 
 이 실행 절차서는 현재 Mac을 `https://watch-staging.b4ton.com`의 단일 스테이징
 오리진으로 준비합니다. 의도한 엣지 경로는 원격 관리형 Cloudflare Tunnel에서
-Docker `watch-edge` 네트워크로 연결됩니다. 터널 오버레이를 사용하면 오리진은
+Docker `watch-ingress`의 NGINX를 거쳐 `watch-edge`의 WATCH로 연결됩니다. 터널 오버레이를 사용하면 오리진은
 호스트 포트를 공개하지 않습니다.
 
 저장소에는 스테이징 Compose 정의와 이 절차가 들어 있지만, 아직 오리진에서
@@ -20,7 +20,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 배포에는 다음 항목을 사용합니다.
 
 - PostgreSQL과 WATCH용 [compose.staging.yml](../../compose.staging.yml)
-- 호스트 포트를 공개하지 않는 경계를 유지하면서 `cloudflared`를 추가하는
+- 호스트 포트를 공개하지 않고 NGINX 요청 제한과 `cloudflared`를 추가하는
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
 - 호환 BATON 콜백의 사전 검사가 끝난 경우에만 전달을 활성화하는 선택적
   [compose.staging-event-delivery.yml](../../compose.staging-event-delivery.yml)
@@ -76,8 +76,11 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
 - 관리 서버는 WATCH 컨테이너 내부의 `127.0.0.1:8081`에 계속 바인딩되며,
   터널을 통해 접근할 수 없습니다.
-- `cloudflared`는 `watch-edge`에만 참여하고 호스트 포트를 공개하지 않으며,
-  `http://watch:8080`으로 WATCH에 접근합니다. 공식 이미지의 UID/GID `65532`가
+- `watch-gateway`는 `watch-ingress`와 `watch-edge`에만 참여하며 NGINX에서
+  상태·모니터 요청량을 분리해 제한합니다. `cloudflared`는 `watch-ingress`에만
+  참여하므로 WATCH·DB에 직접 연결하지 못합니다. 호스트 포트는 공개하지 않습니다.
+- `cloudflared`의 원격 인그레스는 `http://watch-gateway:8080`으로 향해야 합니다.
+  기존 `http://watch:8080` 주소를 그대로 쓰면 연결에 실패합니다. 공식 이미지의 UID/GID `65532`가
   file-source bind mount를 읽을 수 있도록 터널 토큰만 `0444`로 두되, 호스트의
   상위 비밀 디렉터리는 운영자 소유 `0700`으로 유지합니다.
 - Mac에는 인바운드 방화벽이나 라우터 포트 포워딩이 필요하지 않습니다. QUIC용
@@ -105,8 +108,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 
    | 순서 | 호스트 이름 | 경로 | 서비스 |
    | --- | --- | --- | --- |
-   | 1 | `watch-staging.b4ton.com` | `^/api/v1/system/status$` | `http://watch:8080` |
-   | 2 | `watch-staging.b4ton.com` | `^/api/v1/resource-monitors/.*$` | `http://watch:8080` |
+   | 1 | `watch-staging.b4ton.com` | `^/api/v1/system/status$` | `http://watch-gateway:8080` |
+   | 2 | `watch-staging.b4ton.com` | `^/api/v1/resource-monitors/.*$` | `http://watch-gateway:8080` |
    | 3 | 기타 모든 요청 | 기타 모든 요청 | `http_status:404` |
 
    기타 모든 요청을 처리하는 규칙은 마지막에 두세요. `/actuator`, 관리 포트
@@ -168,14 +171,16 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 
 또한 대상 점검의 DNS·공개 HTTP/HTTPS 이그레스만 허용하고 사설·메타데이터·
 플랫폼 예약 목적지를 네트워크 계층에서도 차단하는 인프라 정책이 승인되지
-않았습니다. 이그레스 정책, 지원 규모와 SLO, Cloudflare 요청 속도 제한,
+않았습니다. 이그레스 정책, 지원 규모와 SLO, NGINX 요청 속도 제한,
 외부 대시보드·알림 전달 경로와 임계치가 모두 승인되고 장애 주입으로 검증되기
 전에는 이 문서의 공개 Cloudflare 배포 단계를 실행하지 마세요.
 
 상태 경로와 인증된 모니터 경로에는 서로 다른 요청 속도 제한이 필요하지만,
 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한은 이 구성에 포함하지
-않습니다. 두 경로를 독립적으로 제한하고 `429`를 검증할 수 있는 비용 없는 대안이
-승인되기 전까지 공개 배포 차단 조건으로 남깁니다. WATCH의 인증과 16 KiB 본문
+않습니다. NGINX의 초기 제한은 상태 초당 10건·버스트 20건, 나머지 API 초당
+5건·버스트 10건입니다. [요청 제한 런북](request-rate-limit.md)의 격리 검사와
+외부 HTTPS `429` 확인, 용량 승인을 마치기 전까지 공개 배포 차단 조건으로 남깁니다.
+WATCH의 인증과 16 KiB 본문
 제한, Tomcat 연결·대기열·워커 상한은 요청별 계약과 오리진 자원 경계일 뿐 요청
 빈도 제한을 대신하지 않습니다.
 
@@ -394,7 +399,7 @@ VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
 ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
-staging_compose pull postgres cloudflared
+staging_compose pull postgres watch-gateway cloudflared
 docker build --pull --target database-operations \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_DATABASE_OPERATIONS_IMAGE" \
@@ -478,7 +483,7 @@ staging_compose config --quiet
 staging_compose config
 ~~~
 
-렌더링된 `postgres`, `database-role-init`, `migrate`, `watch`, `cloudflared`
+렌더링된 `postgres`, `database-role-init`, `migrate`, `watch`, `watch-gateway`, `cloudflared`
 서비스를 검사합니다. 어느 서비스에도
 `ports` 항목이 있어서는 안 됩니다. 렌더링된 WATCH 환경은
 `SPRING_FLYWAY_ENABLED: "false"`를 유지해야 하며 비밀값 내용이 나타나서는 안
@@ -487,6 +492,13 @@ staging_compose config
 `watch.event-delivery.bearer-token` 비밀 대상이 렌더링되어야 합니다.
 
 ## 점검 중지와 장애 진단
+
+WATCH의 Compose healthcheck는 `/actuator/health/readiness`로 준비 상태와 DB 상태를
+확인합니다. `/actuator/health/liveness`는 프로세스 상태만 확인하고 DB는 제외합니다.
+두 경로는 관리 포트의 컨테이너 루프백에서만 사용합니다. Docker unhealthy는
+자동 재시작이나 실행 중인 터널의 자동 트래픽 차단을 뜻하지 않습니다.
+NGINX의 `127.0.0.1:8082/health`는 프록시 생존 확인만 담당합니다.
+프로브와 DB 포함 기준은 [Spring Boot 공식 문서](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes)를 참고하세요.
 
 API·유지보수를 유지하면서 점검만 중지하려면 `WATCH_CHECK_ENABLED`를 변경하고
 WATCH 컨테이너만 재생성합니다. 개별 리소스의 점검·전달 실패는 기존 PostgreSQL을
@@ -568,8 +580,8 @@ PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미
 
 ~~~bash
 ./ops/staging-image-evidence.sh verify
-staging_compose stop watch cloudflared
-test -z "$(staging_compose ps --status running --services watch cloudflared)"
+staging_compose stop cloudflared watch-gateway watch
+test -z "$(staging_compose ps --status running --services watch cloudflared watch-gateway)"
 staging_compose up -d --no-build --wait --wait-timeout 180
 staging_compose ps -a
 ~~~
@@ -584,7 +596,7 @@ WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합�
 
 ~~~bash
 staging_compose exec --user 10001:10001 -T watch \
-  wget -q -O - http://127.0.0.1:8081/actuator/health
+  wget -q -O - http://127.0.0.1:8081/actuator/health/readiness
 staging_compose exec --user 10001:10001 -T watch sh -c \
   'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
 MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
@@ -653,7 +665,7 @@ mv "$NEW_DATABASE_SECRET" \
 chmod 0600 "$STAGING_CONFIG_DIR/secrets/postgres-runtime-password"
 staging_compose up -d --no-deps --force-recreate --wait watch
 staging_compose exec --user 10001:10001 -T watch \
-  wget -q -O - http://127.0.0.1:8081/actuator/health
+  wget -q -O - http://127.0.0.1:8081/actuator/health/readiness
 ~~~
 
 소유자 비밀번호는 WATCH를 정지하지 않고 같은 방식으로 교체할 수 있습니다.
@@ -711,6 +723,9 @@ Cloudflare에서 처리되고 캐시되지 않았다는 HTTP 증거이며, 의�
 Compose는 기본적으로 각 JSON 로그를 10 MiB 파일 세 개로 제한합니다.
 `cloudflared` 로그 수준은 `info`로 유지하세요. 디버그 또는 요청 헤더 로깅은
 허용하지 않습니다.
+NGINX 접근 로그는 상태·처리 시간·제한 결과만 기록합니다. 요청 경로를 포함할 수
+있는 오류 로그는 꺼져 있으므로, 연결 문제는 프록시 상태·접근 상태 코드·WATCH의
+상태와 설정 검사로 진단합니다. 임시로 원본 요청 로그를 켜지 마세요.
 
 권한 모드 `0700` 임시 디렉터리와 권한 모드 `0600` 로그 파일에 짧은 감사 스냅샷을
 수집합니다. 정확한 비밀값 네 개, `Authorization`, Bearer 값, 대상 URL,
@@ -758,6 +773,12 @@ unset AUDIT_DIR
 데이터베이스 작업·마이그레이션·WATCH 이미지 세 개를 모두 사용합니다. 다른 작업 트리에서 이전
 태그를 다시 빌드하지 마세요.
 
+NGINX 이미지 다이제스트와 `ops/nginx/watch-gateway.conf`도 배포 커밋 기준으로
+함께 보관하고 복원해야 합니다. 이 설정은 세 애플리케이션 이미지 보관 도구의
+대상이 아닙니다. NGINX 도입 전 리비전으로 롤백할 때는
+[요청 제한 롤백 절차](request-rate-limit.md#롤백)에 따라 터널을 먼저 중지하고,
+요청 제한 대안 없이 공개 서비스를 재개하지 마세요.
+
 ~~~bash
 export PREVIOUS_SHA=replace-with-previous-verified-40-character-sha
 test "$(printf '%s' "$PREVIOUS_SHA" | wc -c | tr -d ' ')" = 40
@@ -788,8 +809,8 @@ test "$ROLLBACK_MIGRATION_IMAGE_REVISION" = "$PREVIOUS_SHA"
 로그 감사를 반복하세요.
 
 ~~~bash
-staging_compose stop watch cloudflared
-test -z "$(staging_compose ps --status running --services watch cloudflared)"
+staging_compose stop cloudflared watch-gateway watch
+test -z "$(staging_compose ps --status running --services watch cloudflared watch-gateway)"
 staging_compose up -d --no-build --wait --wait-timeout 180
 staging_compose ps -a
 ~~~

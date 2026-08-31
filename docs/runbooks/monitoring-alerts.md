@@ -1,5 +1,26 @@
 # WATCH 경보 규칙
 
+## 대시보드 템플릿
+
+[watch-overview.json](../../ops/grafana/watch-overview.json)은 기존 Prometheus를
+조회하는 Grafana 대시보드다. [Grafana 가져오기](https://grafana.com/docs/grafana/latest/visualizations/dashboards/build-dashboards/import-dashboards/)에서
+JSON 파일을 올리고 Prometheus 데이터 소스와 인스턴스를 선택한다. 별도 플러그인은
+필요하지 않으며 이 저장소는 Grafana·수집기·외부 계정을 배포하지 않는다.
+
+12개 패널은 수집 상태, 일정 지연, 미전달 이벤트 수·경과 시간, 결과별 시도율,
+평균 HTTP 소요 시간, 완료 실패, 리스 회수, 예약 완료 횟수, 시계 편차, DB 연결 풀,
+진행 중인 외부 요청을 보여준다. 임계치는 운영 승인 없이 자동 알림으로 설정하지 않는다.
+
+- 같은 DB의 이벤트 적체를 인스턴스 수만큼 합산하지 않는다.
+- 평균 HTTP 시간은 타이머 합계/횟수이며 p95·p99가 아니다.
+- 존재하지 않는 카운터·수집 누락·시도 없는 평균은 데이터 없음으로 남긴다.
+- 점검·전달 비활성 상태에서도 이력·게이지를 표시할 수 있다. 장애 판단에는 아래
+  수집 레이블과 경보의 활성 조건을 함께 적용한다.
+- 데이터 소스의 `job_name`은 `baton-watch`여야 한다. 관리 포트 공개나 WATCH의
+  외부 메트릭 전송 기능을 추가하지 말고 승인된 내부 수집 경로를 사용한다.
+
+## 경보 범위
+
 `ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다. 외부
 메트릭 전송, 수집기 배포, Alertmanager 연결, 외부 알림 수신자 설정은 포함하지
 않는다. 아래 임계치는 운영 승인을 받기 전의 시작값이며 SLO가 아니다.
@@ -95,6 +116,10 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 일부 유지보수 중단과 복구, 점검 중지 중의 전달·유지보수 경보 유지도 확인한다. 이미지가 없으면 최초
 실행 시 내려받으며 검사 컨테이너는 `--network none`으로 실행한다. 이 검사는
 실제 메트릭 수집이나 외부 알림 도착을 증명하지 않는다.
+
+같은 명령은 대시보드 JSON에서 실제 쿼리를 읽어 `promtool`로 평가한다. 두
+인스턴스의 시계열 유지, DB 적체 중복 합산 방지와 수집 누락 시 빈 결과를 확인한다.
+Grafana 서버 배포나 실제 데이터 소스 연결을 검증한 것은 아니다.
 
 규칙 문법과 검사 형식은 Prometheus 공식
 [경보 규칙](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)과
