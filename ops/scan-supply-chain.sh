@@ -9,6 +9,8 @@ readonly PREFIX="[scan-supply-chain]"
 SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 readonly SCRIPT_DIR
 readonly TRIVY_IMAGE="docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
+CONTAINER_USER="$(id -u):$(id -g)"
+readonly CONTAINER_USER
 
 fail() {
     printf '%s %s\n' "$PREFIX" "$1" >&2
@@ -94,11 +96,12 @@ chmod 0700 "$WORK_OUTPUT_DIR"
 
 scan_rootfs() {
     docker run --rm \
+        --user "$CONTAINER_USER" \
         --volume "$WORK_OUTPUT_DIR:/reports" \
         --volume "$JAR_DIR:/inputs:ro" \
-        --volume "$CACHE_DIR:/root/.cache/trivy" \
+        --volume "$CACHE_DIR:/trivy-cache" \
         "$TRIVY_IMAGE" rootfs \
-        --cache-dir /root/.cache/trivy \
+        --cache-dir /trivy-cache \
         --format cyclonedx \
         --output /reports/baton-watch.cdx.json \
         --scanners vuln \
@@ -114,11 +117,12 @@ scan_image_archive() {
     archive="$1"
     report="$2"
     docker run --rm \
+        --user "$CONTAINER_USER" \
         --volume "$WORK_OUTPUT_DIR:/reports" \
         --volume "$archive:/inputs/image.tar:ro" \
-        --volume "$CACHE_DIR:/root/.cache/trivy" \
+        --volume "$CACHE_DIR:/trivy-cache" \
         "$TRIVY_IMAGE" image \
-        --cache-dir /root/.cache/trivy \
+        --cache-dir /trivy-cache \
         --format cyclonedx \
         --output "/reports/$report" \
         --scanners vuln \
@@ -150,8 +154,11 @@ run_scan "cloudflared 이미지 취약점" scan_image_archive "$IMAGE_DIR/cloudf
 
 if ignored_licenses="$(python3 "$SCRIPT_DIR/check-runtime-licenses.py" "$WORK_OUTPUT_DIR")"; then
     run_scan "부트 JAR 라이선스" docker run --rm \
+        --user "$CONTAINER_USER" \
         --volume "$WORK_OUTPUT_DIR:/reports:ro" \
+        --volume "$CACHE_DIR:/trivy-cache" \
         "$TRIVY_IMAGE" sbom \
+        --cache-dir /trivy-cache \
         --scanners license \
         --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
         --exit-code 1 \

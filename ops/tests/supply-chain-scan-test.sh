@@ -113,6 +113,13 @@ fi
 if [ "$(grep -c '^run --rm ' "$TEMP_DIR/docker-calls")" -ne 8 ]; then
     fail "취약점 검사 일곱 개와 라이선스 검사 한 개를 실행하지 않았습니다"
 fi
+container_user="$(id -u):$(id -g)"
+if [ "$(grep -c -- "--user $container_user" "$TEMP_DIR/docker-calls")" -ne 8 ]; then
+    fail "Trivy 컨테이너를 호스트 사용자로 실행하지 않았습니다"
+fi
+if [ "$(grep -c -- '--cache-dir /trivy-cache' "$TEMP_DIR/docker-calls")" -ne 8 ]; then
+    fail "Trivy 캐시를 호스트 사용자가 정리할 수 있는 경로에 두지 않았습니다"
+fi
 if ! grep -Fq -- '--ignored-licenses Apache-2.0' "$TEMP_DIR/docker-calls"; then
     fail "검증된 라이선스 제외 목록을 Trivy에 전달하지 않았습니다"
 fi
