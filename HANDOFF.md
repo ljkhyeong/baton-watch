@@ -405,8 +405,10 @@ Bearer·멱등성 헤더, 리다이렉트 금지와 응답 크기 제한도 확�
 
 ## 다음 작업 진입점
 
-1. 현재 브랜치의 PR에서 `Verify / verify`를 확인하고, 병합 뒤 `main`의 공급망
-   출처 증명 결과를 확인한다. 이번 작업에서 PR 생성이나 병합은 수행하지 않았다.
+1. [초안 PR #32](https://github.com/ljkhyeong/baton-watch/pull/32)는 공식 이미지
+   취약점 때문에 `Verify / verify`가 공급망 검사에서 차단된 상태다. 수정된 공식
+   이미지 다이제스트로 전체 검사를 통과한 뒤 PR을 준비 상태로 바꾸고 병합하며,
+   `main`의 공급망 출처 증명 결과까지 확인한다.
 2. [부하·복구 시험](docs/runbooks/load-recovery-test.md),
    [별도 JVM 복구 시험](docs/runbooks/process-recovery-test.md),
    [경보·대시보드 적용 조건](docs/runbooks/monitoring-alerts.md),
