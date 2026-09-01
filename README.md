@@ -22,7 +22,7 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 스테이징 터널의 NGINX 경로별 요청 속도 제한과 비공개 네트워크 분리
 - Spring Boot 기본 liveness와 DB를 포함한 readiness를 사용하는 Compose 준비 상태 확인
 - 기존 메트릭을 조회하는 Grafana 운영 대시보드 JSON과 실제 PromQL 검사
-- 내부 프록시·공개 HTTPS 상태 경로용 Blackbox Exporter 모듈과 선택적 Prometheus 수집·경보 템플릿
+- 내부 프록시·공개 HTTPS 상태 경로에서 WATCH 서비스 이름과 `UP` 상태를 함께 확인하는 Blackbox Exporter 모듈과 선택적 Prometheus 수집·경보 템플릿
 - 격리 PostgreSQL 부하·장애 복구 시험, 별도 JVM 강제 종료 후 리스·동일 이벤트 재전달 시험,
   작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구,
@@ -101,6 +101,8 @@ readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Doc
 레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 세 개와
 Compose에 고정된 공식 NGINX 이미지의 CycloneDX SBOM 다섯 개를 생성하고 수정 가능한
 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. NGINX의 원래 라이선스는 유지됩니다.
+CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 사용하므로 배포
+호스트에서 다시 빌드한 플랫폼별 이미지도 보관 전에 같은 기준으로 검사합니다.
 부트 JAR SBOM은 Trivy 표준 라이선스 스캐너와 명시적 허용 목록도 통과해야 합니다.
 허용 라이선스가 없는 의존성은 차단하며, 라이선스 정보 누락·이중 라이선스 예외는
 승인된 패키지와 버전에만 적용합니다. CI와 같은 정책 회귀 검사는

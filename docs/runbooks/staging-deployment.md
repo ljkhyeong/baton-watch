@@ -434,6 +434,19 @@ for BUILT_IMAGE in \
   test "$BUILT_LICENSE_DIGEST" = "$EXPECTED_LICENSE_DIGEST"
 done
 unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
+WATCH_GATEWAY_IMAGE="$(
+  staging_compose config --format json \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
+)"
+WATCH_SUPPLY_CHAIN_REPORT_DIR="${STAGING_CONFIG_DIR}/supply-chain/${DEPLOY_SHA}"
+./ops/scan-supply-chain.sh \
+  "$WATCH_SUPPLY_CHAIN_REPORT_DIR" \
+  bootstrap/build/libs/baton-watch.jar \
+  "$WATCH_DATABASE_OPERATIONS_IMAGE" \
+  "$WATCH_MIGRATION_IMAGE" \
+  "$WATCH_IMAGE" \
+  "$WATCH_GATEWAY_IMAGE"
+unset WATCH_GATEWAY_IMAGE WATCH_SUPPLY_CHAIN_REPORT_DIR
 ./ops/tests/staging-database-operation-postgres-test.sh
 ./ops/staging-image-evidence.sh archive
 ./ops/staging-image-evidence.sh verify
@@ -450,19 +463,23 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `staging-event-delivery-preflight-test.sh`, `staging-public-smoke-test.sh`,
 `staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
-레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. Trivy는 독립 부트 JAR과
-세 이미지의 CycloneDX SBOM 네 개를 만들고 부트 JAR의 라이선스를 명시적 허용
+레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. 공용 공급망 검사 스크립트는
+독립 부트 JAR, 세 자체 이미지와 NGINX 이미지의 CycloneDX SBOM 다섯 개를 만들고
+부트 JAR의 라이선스를 명시적 허용
 목록으로 검사하며, 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다.
 `ops/check-runtime-licenses.py`는 허용 라이선스가 없는 의존성을 먼저 차단하고,
 라이선스 정보 누락·대체 라이선스를 승인된 패키지와 버전에 대조한 뒤에만 Trivy
 제외 목록을 출력합니다. 예외 목록의 라이선스를 가진 다른 패키지가 함께 허용되는
 것은 아닙니다. CI는 `python3 ops/tests/runtime-license-policy-test.py`로 이 경계도
-검사합니다. 검증 산출물은 실행 가능한 JAR, SBOM 네 개와
+검사합니다. 검증 산출물은 실행 가능한 JAR, SBOM 다섯 개와
 체크섬 목록이며 14일 동안 보관합니다. `main` 푸시에서는 이 파일 묶음에 GitHub
 출처 증명을 추가합니다. 현재 워크플로는 컨테이너 이미지 자체를 출처 증명 대상으로
 삼지 않으므로 이미지 증명으로 해석하지 마세요. 호스트 Gradle 실행은 전체 테스트와
 부트 JAR 라이선스 검증을 소유하고, 최종 WATCH Docker 이미지 빌드는 이미지에 포함할
-실행 가능한 부트 JAR 생성을 소유합니다.
+실행 가능한 부트 JAR 생성을 소유합니다. 배포 호스트에서는 다시 빌드한 현재 플랫폼의
+이미지 아카이브를 같은 공용 스크립트로 검사한 뒤에만 보관합니다. 보고서 디렉터리가
+이미 있으면 덮어쓰지 않으며, `SHA256SUMS`가 생성된 경우에만 모든 검사가 완료된
+증거로 사용합니다.
 로컬 실제 PostgreSQL 스모크는 Flyway V1~V4, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
