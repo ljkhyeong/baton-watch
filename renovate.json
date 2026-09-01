@@ -107,10 +107,10 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^\\.github/workflows/verify\\.yml$/"
+        "/^ops/scan-supply-chain\\.sh$/"
       ],
       "matchStrings": [
-        "trivy_image=\\\"docker\\.io/aquasec/trivy:(?<currentValue>[^@\\\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\\\""
+        "TRIVY_IMAGE=\\\"docker\\.io/aquasec/trivy:(?<currentValue>[^@\\\"]+)@(?<currentDigest>sha256:[0-9a-f]{64})\\\""
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "aquasec/trivy",

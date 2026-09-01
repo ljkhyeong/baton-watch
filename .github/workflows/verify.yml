@@ -57,7 +57,9 @@ jobs:
         run: shellcheck ops/*.sh ops/tests/*.sh
 
       - name: 런타임 라이선스 정책 회귀 검사
-        run: python3 ops/tests/runtime-license-policy-test.py
+        run: |
+          python3 ops/tests/runtime-license-policy-test.py
+          ./ops/tests/supply-chain-scan-test.sh
 
       - name: 전체 Gradle 검증
         run: ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
@@ -228,17 +230,6 @@ jobs:
 
       - name: 배포 산출물 SBOM 생성과 취약점·라이선스 검사
         run: |
-          reports_dir="${PWD}/build/supply-chain"
-          inputs_dir="${RUNNER_TEMP}/supply-chain-input"
-          cache_dir="${RUNNER_TEMP}/trivy-cache"
-          mkdir -p "${reports_dir}" "${inputs_dir}/jar" "${inputs_dir}/images" "${cache_dir}"
-          cp bootstrap/build/libs/baton-watch.jar "${inputs_dir}/jar/baton-watch.jar"
-          docker save --output "${inputs_dir}/images/database-operations.tar" \
-            "baton-watch-database-operations:${GITHUB_SHA}"
-          docker save --output "${inputs_dir}/images/migrations.tar" \
-            "baton-watch-migrations:${GITHUB_SHA}"
-          docker save --output "${inputs_dir}/images/runtime.tar" \
-            "baton-watch:${GITHUB_SHA}"
           # 이미지 참조는 오버레이에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
           gateway_image="$(
             WATCH_TUNNEL_TOKEN_FILE=/dev/null docker compose --file compose.staging-tunnel.yml \
@@ -246,70 +237,13 @@ jobs:
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
           )"
           docker pull "${gateway_image}"
-          docker save --output "${inputs_dir}/images/gateway.tar" "${gateway_image}"
-
-          trivy_image="docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
-          scan_rootfs() {
-            docker run --rm \
-              --volume "${reports_dir}:/reports" \
-              --volume "${inputs_dir}/jar:/inputs:ro" \
-              --volume "${cache_dir}:/root/.cache/trivy" \
-              "${trivy_image}" rootfs \
-              --cache-dir /root/.cache/trivy \
-              --format cyclonedx \
-              --output /reports/baton-watch.cdx.json \
-              --scanners vuln \
-              --severity HIGH,CRITICAL \
-              --ignore-unfixed \
-              --exit-code 1 \
-              --skip-version-check \
-              --no-progress \
-              /inputs
-          }
-          scan_image_archive() {
-            archive="$1"
-            report="$2"
-            docker run --rm \
-              --volume "${reports_dir}:/reports" \
-              --volume "${inputs_dir}/images:/inputs:ro" \
-              --volume "${cache_dir}:/root/.cache/trivy" \
-              "${trivy_image}" image \
-              --cache-dir /root/.cache/trivy \
-              --format cyclonedx \
-              --output "/reports/${report}" \
-              --scanners vuln \
-              --severity HIGH,CRITICAL \
-              --ignore-unfixed \
-              --exit-code 1 \
-              --skip-version-check \
-              --no-progress \
-              --input "/inputs/${archive}"
-          }
-
-          scan_rootfs
-          scan_image_archive database-operations.tar database-operations.cdx.json
-          scan_image_archive migrations.tar migrations.cdx.json
-          scan_image_archive runtime.tar runtime.cdx.json
-          scan_image_archive gateway.tar gateway.cdx.json
-
-          ignored_licenses="$(python3 ops/check-runtime-licenses.py "${reports_dir}")"
-
-          docker run --rm \
-            --volume "${reports_dir}:/reports:ro" \
-            "${trivy_image}" sbom \
-            --scanners license \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            --exit-code 1 \
-            --ignored-licenses "${ignored_licenses}" \
-            --skip-version-check \
-            --no-progress \
-            /reports/baton-watch.cdx.json
-
-          cp "${inputs_dir}/jar/baton-watch.jar" "${reports_dir}/baton-watch.jar"
-          (
-            cd build/supply-chain
-            sha256sum baton-watch.jar ./*.cdx.json > SHA256SUMS
-          )
+          ./ops/scan-supply-chain.sh \
+            build/supply-chain \
+            bootstrap/build/libs/baton-watch.jar \
+            "baton-watch-database-operations:${GITHUB_SHA}" \
+            "baton-watch-migrations:${GITHUB_SHA}" \
+            "baton-watch:${GITHUB_SHA}" \
+            "${gateway_image}"
 
       - name: 공급망 산출물 보관
         if: ${{ !cancelled() && hashFiles('build/supply-chain/*') != '' }}
