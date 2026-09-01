@@ -49,6 +49,8 @@ class GatewayTest(unittest.TestCase):
         redirected = probe("/api/v1/probe-fixture/redirect")
         self.assertRegex(redirected, r"(?m)^probe_success 0$")
         self.assertRegex(redirected, r"(?m)^probe_http_status_code 302$")
+        self.assertRegex(probe("/api/v1/probe-fixture/wrong-service"), r"(?m)^probe_success 0$")
+        self.assertRegex(probe("/api/v1/probe-fixture/missing-service"), r"(?m)^probe_success 0$")
         self.assertRegex(probe("/api/v1/probe-fixture/invalid-body"), r"(?m)^probe_success 0$")
         try:
             self.compose("stop", "--timeout", "2", "watch")

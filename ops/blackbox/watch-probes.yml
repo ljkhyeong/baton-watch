@@ -8,7 +8,7 @@ modules:
       valid_status_codes: [200]
       follow_redirects: false
       body_size_limit: 16KiB
-      fail_if_body_json_not_matches_cel: 'body.status == "UP"'
+      fail_if_body_json_not_matches_cel: 'body.service == "baton-watch" && body.status == "UP"'
       preferred_ip_protocol: ip4
       ip_protocol_fallback: false
   watch_public:
