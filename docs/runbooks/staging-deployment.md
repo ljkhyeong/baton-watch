@@ -434,6 +434,8 @@ for BUILT_IMAGE in \
   test "$BUILT_LICENSE_DIGEST" = "$EXPECTED_LICENSE_DIGEST"
 done
 unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
+./ops/tests/staging-database-operation-postgres-test.sh
+./ops/staging-image-evidence.sh archive
 WATCH_GATEWAY_IMAGE="$(
   staging_compose config --format json \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
@@ -442,13 +444,11 @@ WATCH_SUPPLY_CHAIN_REPORT_DIR="${STAGING_CONFIG_DIR}/supply-chain/${DEPLOY_SHA}"
 ./ops/scan-supply-chain.sh \
   "$WATCH_SUPPLY_CHAIN_REPORT_DIR" \
   bootstrap/build/libs/baton-watch.jar \
-  "$WATCH_DATABASE_OPERATIONS_IMAGE" \
-  "$WATCH_MIGRATION_IMAGE" \
-  "$WATCH_IMAGE" \
+  "${WATCH_IMAGE_ARCHIVE_DIR}/database-operations.tar" \
+  "${WATCH_IMAGE_ARCHIVE_DIR}/migrations.tar" \
+  "${WATCH_IMAGE_ARCHIVE_DIR}/runtime.tar" \
   "$WATCH_GATEWAY_IMAGE"
 unset WATCH_GATEWAY_IMAGE WATCH_SUPPLY_CHAIN_REPORT_DIR
-./ops/tests/staging-database-operation-postgres-test.sh
-./ops/staging-image-evidence.sh archive
 ./ops/staging-image-evidence.sh verify
 ~~~
 
@@ -477,9 +477,13 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 삼지 않으므로 이미지 증명으로 해석하지 마세요. 호스트 Gradle 실행은 전체 테스트와
 부트 JAR 라이선스 검증을 소유하고, 최종 WATCH Docker 이미지 빌드는 이미지에 포함할
 실행 가능한 부트 JAR 생성을 소유합니다. 배포 호스트에서는 다시 빌드한 현재 플랫폼의
-이미지 아카이브를 같은 공용 스크립트로 검사한 뒤에만 보관합니다. 보고서 디렉터리가
-이미 있으면 덮어쓰지 않으며, `SHA256SUMS`가 생성된 경우에만 모든 검사가 완료된
-증거로 사용합니다.
+이미지 ID·OCI 리비전·아카이브 체크섬을 먼저 보관 증거로 확정하고, 그 아카이브를
+공용 스크립트가 직접 검사합니다. 한 산출물의 취약점 검사가 실패해도 나머지 이미지와
+부트 JAR 라이선스 검사를 끝까지 수행한 뒤 전체 결과를 실패로 처리합니다. 실제
+PostgreSQL 검증과 CodeQL은 공급망 검사보다 먼저 실행해 취약점 차단이 다른 검증
+결과를 가리지 않게 합니다. 보고서 디렉터리가 이미 있으면 덮어쓰지 않으며, 입력
+아카이브를 확인하지 못하면 최종 보고서 경로를 만들지 않습니다. `SHA256SUMS`가 생성된
+경우에만 모든 검사가 완료된 증거로 사용합니다.
 로컬 실제 PostgreSQL 스모크는 Flyway V1~V4, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
