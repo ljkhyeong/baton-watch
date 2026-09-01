@@ -436,10 +436,20 @@ done
 unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
 ./ops/tests/staging-database-operation-postgres-test.sh
 ./ops/staging-image-evidence.sh archive
+WATCH_RENDERED_CONFIG="$(staging_compose config --format json)"
+WATCH_POSTGRES_IMAGE="$(
+  printf '%s' "$WATCH_RENDERED_CONFIG" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["postgres"]["image"])'
+)"
 WATCH_GATEWAY_IMAGE="$(
-  staging_compose config --format json \
+  printf '%s' "$WATCH_RENDERED_CONFIG" \
     | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
 )"
+WATCH_CLOUDFLARED_IMAGE="$(
+  printf '%s' "$WATCH_RENDERED_CONFIG" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["cloudflared"]["image"])'
+)"
+unset WATCH_RENDERED_CONFIG
 WATCH_SUPPLY_CHAIN_REPORT_DIR="${STAGING_CONFIG_DIR}/supply-chain/${DEPLOY_SHA}"
 ./ops/scan-supply-chain.sh \
   "$WATCH_SUPPLY_CHAIN_REPORT_DIR" \
@@ -447,8 +457,11 @@ WATCH_SUPPLY_CHAIN_REPORT_DIR="${STAGING_CONFIG_DIR}/supply-chain/${DEPLOY_SHA}"
   "${WATCH_IMAGE_ARCHIVE_DIR}/database-operations.tar" \
   "${WATCH_IMAGE_ARCHIVE_DIR}/migrations.tar" \
   "${WATCH_IMAGE_ARCHIVE_DIR}/runtime.tar" \
-  "$WATCH_GATEWAY_IMAGE"
-unset WATCH_GATEWAY_IMAGE WATCH_SUPPLY_CHAIN_REPORT_DIR
+  "$WATCH_POSTGRES_IMAGE" \
+  "$WATCH_GATEWAY_IMAGE" \
+  "$WATCH_CLOUDFLARED_IMAGE"
+unset WATCH_POSTGRES_IMAGE WATCH_GATEWAY_IMAGE WATCH_CLOUDFLARED_IMAGE \
+  WATCH_SUPPLY_CHAIN_REPORT_DIR
 ./ops/staging-image-evidence.sh verify
 ~~~
 
@@ -464,14 +477,15 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
 비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. 공용 공급망 검사 스크립트는
-독립 부트 JAR, 세 자체 이미지와 NGINX 이미지의 CycloneDX SBOM 다섯 개를 만들고
+독립 부트 JAR, 세 자체 이미지와 Compose에 고정된 공식 PostgreSQL·NGINX·cloudflared
+이미지의 CycloneDX SBOM 일곱 개를 만들고
 부트 JAR의 라이선스를 명시적 허용
 목록으로 검사하며, 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다.
 `ops/check-runtime-licenses.py`는 허용 라이선스가 없는 의존성을 먼저 차단하고,
 라이선스 정보 누락·대체 라이선스를 승인된 패키지와 버전에 대조한 뒤에만 Trivy
 제외 목록을 출력합니다. 예외 목록의 라이선스를 가진 다른 패키지가 함께 허용되는
 것은 아닙니다. CI는 `python3 ops/tests/runtime-license-policy-test.py`로 이 경계도
-검사합니다. 검증 산출물은 실행 가능한 JAR, SBOM 다섯 개와
+검사합니다. 검증 산출물은 실행 가능한 JAR, SBOM 일곱 개와
 체크섬 목록이며 14일 동안 보관합니다. `main` 푸시에서는 이 파일 묶음에 GitHub
 출처 증명을 추가합니다. 현재 워크플로는 컨테이너 이미지 자체를 출처 증명 대상으로
 삼지 않으므로 이미지 증명으로 해석하지 마세요. 호스트 Gradle 실행은 전체 테스트와

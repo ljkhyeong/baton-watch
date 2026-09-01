@@ -27,7 +27,7 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
   작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구,
   URL·비밀값을 제외한 리소스별 최근 점검·전달 상태의 읽기 전용 진단 도구
-- 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 자체 배포 이미지 세 개·NGINX 이미지, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
+- 도메인, 애플리케이션, HTTP, 아웃바운드 정책, PostgreSQL 통합 테스트와 자체 배포 이미지 세 개·공식 배포 이미지 세 개, Gradle 의존성 체크섬, 허용 라이선스를 적용한 변경 의존성 검토, CodeQL, ShellCheck, JAR·이미지 CycloneDX SBOM과 심각도별 취약점 차단을 실패 폐쇄 방식으로 검증하는 GitHub Actions 검사
 
 운영자가 콜백과 별도의 서비스 토큰을 제공하기 전까지 전달은 비활성화됩니다. 전달이 비활성화되어 있거나 콜백을 사용할 수 없는 동안에도 대기 이벤트는 내구성 있게 유지됩니다. WATCH에는 프런트엔드나 브로커가 없으며, 저장소 산출물은 운영 배포나 외부 알림이 존재한다는 증거가 아닙니다. 외부 메트릭 전송 경로와 외부 계정·대시보드 서버·알림 자동 생성은 제공하지 않습니다. 비용이 발생할 수 있는 Cloudflare 유료 요청 속도 제한과 R2 저장소는 현재 구성에 포함하지 않습니다. 인프라 이그레스 정책, 지원 규모·SLO, NGINX 제한값과 공개 HTTPS 429 검증, 실제 대시보드·알림이 승인되기 전에는 공개 배포하지 않습니다.
 
@@ -99,8 +99,9 @@ readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Doc
 이미지는 같은 라이선스를 `/usr/share/licenses/baton-watch/LICENSE`에 포함하고
 `Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 세 이미지의
 레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 세 개와
-Compose에 고정된 공식 NGINX 이미지의 CycloneDX SBOM 다섯 개를 생성하고 수정 가능한
-`HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. NGINX의 원래 라이선스는 유지됩니다.
+Compose에 고정된 공식 PostgreSQL·NGINX·cloudflared 이미지의 CycloneDX SBOM 일곱 개를
+생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. 공식 이미지의
+원래 라이선스는 유지됩니다.
 CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 사용하므로 배포
 호스트에서 다시 빌드한 플랫폼별 이미지도 보관 증거로 만든 정확한 아카이브를 같은
 기준으로 검사합니다. 한 산출물에서 취약점이 발견되어도 나머지 취약점·라이선스
@@ -109,16 +110,18 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 허용 라이선스가 없는 의존성은 차단하며, 라이선스 정보 누락·이중 라이선스 예외는
 승인된 패키지와 버전에만 적용합니다. CI와 같은 정책 회귀 검사는
 `python3 ops/tests/runtime-license-policy-test.py`로 실행합니다.
-`main` 푸시의 전체 검증이 성공하면 JAR·SBOM 다섯 개·체크섬 공급망 산출물에 GitHub
+`main` 푸시의 전체 검증이 성공하면 JAR·SBOM 일곱 개·체크섬 공급망 산출물에 GitHub
 출처 증명을 추가합니다. 이 산출물은 14일 동안 보관하며 컨테이너 이미지 자체는
 현재 출처 증명 대상이 아닙니다.
 
-현재 고정된 NGINX 이미지의 실제 스캔에서는 OpenSSL `3.5.7-r0`에 대한
-`CVE-2026-14456`이 Trivy의 `HIGH` 기준으로 검출되어 이 검사가 차단됩니다.
-수정 버전 `3.5.8-r0` 이상을 포함한 이미지 검증 전에는 배포 준비가 완료된 것으로
-보지 않습니다. 현재 소스의 부트 JAR와 자체 이미지 세 개는 최신 보관 증거를 사용한
-실제 검사에서 수정 가능한 `HIGH`·`CRITICAL` 항목이 없었습니다. 검사 예외는 추가하지
-않았으며 현재 진행 상태는 [HANDOFF.md](HANDOFF.md)를 참고하세요.
+2026-09-01 ARM64 실제 검사에서는 현재 고정된 PostgreSQL 이미지 23건, NGINX 이미지
+1건, cloudflared 이미지 12건의 수정 가능한 `HIGH`·`CRITICAL` 취약점이 검출되어
+검사가 차단됩니다. 같은 날 확인한 공식 최신 후보도 PostgreSQL 23건, NGINX 1건,
+cloudflared 11건으로 기준을 통과하지 못해 버전만 올리지 않았습니다. 현재 소스의
+부트 JAR와 자체 이미지 세 개는 최신 보관 증거를 사용한 실제 검사에서 수정 가능한
+`HIGH`·`CRITICAL` 항목이 없었습니다. 검사 예외는 추가하지 않았으며 공식 이미지의
+수정 릴리스 검증 전에는 배포 준비가 완료된 것으로 보지 않습니다. 상세 결과는
+[HANDOFF.md](HANDOFF.md)를 참고하세요.
 
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
 다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와
