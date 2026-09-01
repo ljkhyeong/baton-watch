@@ -116,7 +116,9 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 현재 고정된 NGINX 이미지의 실제 스캔에서는 OpenSSL `3.5.7-r0`에 대한
 `CVE-2026-14456`이 Trivy의 `HIGH` 기준으로 검출되어 이 검사가 차단됩니다.
 수정 버전 `3.5.8-r0` 이상을 포함한 이미지 검증 전에는 배포 준비가 완료된 것으로
-보지 않습니다. 검사 예외는 추가하지 않았으며 현재 진행 상태는 [HANDOFF.md](HANDOFF.md)를 참고하세요.
+보지 않습니다. 현재 소스의 부트 JAR와 자체 이미지 세 개는 최신 보관 증거를 사용한
+실제 검사에서 수정 가능한 `HIGH`·`CRITICAL` 항목이 없었습니다. 검사 예외는 추가하지
+않았으며 현재 진행 상태는 [HANDOFF.md](HANDOFF.md)를 참고하세요.
 
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
 다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와
