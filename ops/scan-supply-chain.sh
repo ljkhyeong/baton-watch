@@ -38,16 +38,18 @@ OUTPUT_PARENT="$(CDPATH='' cd -- "$(dirname -- "$OUTPUT_ARGUMENT")" && pwd)"
 readonly OUTPUT_PARENT
 OUTPUT_DIR="$OUTPUT_PARENT/$(basename -- "$OUTPUT_ARGUMENT")"
 readonly OUTPUT_DIR
-mkdir "$OUTPUT_DIR"
-chmod 0700 "$OUTPUT_DIR"
 
 INPUT_DIR="$(mktemp -d)"
 readonly INPUT_DIR
 readonly JAR_DIR="$INPUT_DIR/jar"
 readonly IMAGE_DIR="$INPUT_DIR/images"
 readonly CACHE_DIR="$INPUT_DIR/cache"
+WORK_OUTPUT_DIR=""
 cleanup() {
     rm -rf "$INPUT_DIR"
+    if [ -n "$WORK_OUTPUT_DIR" ]; then
+        rm -rf "$WORK_OUTPUT_DIR"
+    fi
 }
 trap cleanup EXIT
 trap 'exit 129' HUP
@@ -68,9 +70,12 @@ save_image "$MIGRATIONS_IMAGE" migrations.tar
 save_image "$RUNTIME_IMAGE" runtime.tar
 save_image "$GATEWAY_IMAGE" gateway.tar
 
+WORK_OUTPUT_DIR="$(mktemp -d "${OUTPUT_DIR}.tmp.XXXXXX")"
+chmod 0700 "$WORK_OUTPUT_DIR"
+
 scan_rootfs() {
     docker run --rm \
-        --volume "$OUTPUT_DIR:/reports" \
+        --volume "$WORK_OUTPUT_DIR:/reports" \
         --volume "$JAR_DIR:/inputs:ro" \
         --volume "$CACHE_DIR:/root/.cache/trivy" \
         "$TRIVY_IMAGE" rootfs \
@@ -90,7 +95,7 @@ scan_image_archive() {
     archive="$1"
     report="$2"
     docker run --rm \
-        --volume "$OUTPUT_DIR:/reports" \
+        --volume "$WORK_OUTPUT_DIR:/reports" \
         --volume "$IMAGE_DIR:/inputs:ro" \
         --volume "$CACHE_DIR:/root/.cache/trivy" \
         "$TRIVY_IMAGE" image \
@@ -106,28 +111,52 @@ scan_image_archive() {
         --input "/inputs/$archive"
 }
 
-scan_rootfs
-scan_image_archive database-operations.tar database-operations.cdx.json
-scan_image_archive migrations.tar migrations.cdx.json
-scan_image_archive runtime.tar runtime.cdx.json
-scan_image_archive gateway.tar gateway.cdx.json
+scan_failed=false
+run_scan() {
+    label="$1"
+    shift
+    if ! "$@"; then
+        printf '%s %s 검사에 실패했습니다\n' "$PREFIX" "$label" >&2
+        scan_failed=true
+    fi
+}
 
-ignored_licenses="$(python3 "$SCRIPT_DIR/check-runtime-licenses.py" "$OUTPUT_DIR")"
-readonly ignored_licenses
-docker run --rm \
-    --volume "$OUTPUT_DIR:/reports:ro" \
-    "$TRIVY_IMAGE" sbom \
-    --scanners license \
-    --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-    --exit-code 1 \
-    --ignored-licenses "$ignored_licenses" \
-    --skip-version-check \
-    --no-progress \
-    /reports/baton-watch.cdx.json
+run_scan "부트 JAR 취약점" scan_rootfs
+run_scan "데이터베이스 작업 이미지 취약점" scan_image_archive database-operations.tar database-operations.cdx.json
+run_scan "마이그레이션 이미지 취약점" scan_image_archive migrations.tar migrations.cdx.json
+run_scan "WATCH 이미지 취약점" scan_image_archive runtime.tar runtime.cdx.json
+run_scan "NGINX 이미지 취약점" scan_image_archive gateway.tar gateway.cdx.json
 
-cp "$JAR_DIR/baton-watch.jar" "$OUTPUT_DIR/baton-watch.jar"
+if ignored_licenses="$(python3 "$SCRIPT_DIR/check-runtime-licenses.py" "$WORK_OUTPUT_DIR")"; then
+    run_scan "부트 JAR 라이선스" docker run --rm \
+        --volume "$WORK_OUTPUT_DIR:/reports:ro" \
+        "$TRIVY_IMAGE" sbom \
+        --scanners license \
+        --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+        --exit-code 1 \
+        --ignored-licenses "$ignored_licenses" \
+        --skip-version-check \
+        --no-progress \
+        /reports/baton-watch.cdx.json
+else
+    printf '%s 부트 JAR 라이선스 정책 검사에 실패했습니다\n' "$PREFIX" >&2
+    scan_failed=true
+fi
+
+if [ "$scan_failed" = "true" ]; then
+    for artifact in "$WORK_OUTPUT_DIR"/*; do
+        if [ -f "$artifact" ]; then
+            chmod 0600 "$artifact"
+        fi
+    done
+    mv "$WORK_OUTPUT_DIR" "$OUTPUT_DIR"
+    WORK_OUTPUT_DIR=""
+    fail "취약점·라이선스 검사에 실패했습니다. 보고서: $OUTPUT_DIR"
+fi
+
+cp "$JAR_DIR/baton-watch.jar" "$WORK_OUTPUT_DIR/baton-watch.jar"
 (
-    cd "$OUTPUT_DIR"
+    cd "$WORK_OUTPUT_DIR"
     if command -v sha256sum >/dev/null 2>&1; then
         sha256sum baton-watch.jar ./*.cdx.json >SHA256SUMS
     elif command -v shasum >/dev/null 2>&1; then
@@ -136,5 +165,7 @@ cp "$JAR_DIR/baton-watch.jar" "$OUTPUT_DIR/baton-watch.jar"
         fail "SHA-256 계산 도구가 없습니다"
     fi
 )
-chmod 0600 "$OUTPUT_DIR"/*
+chmod 0600 "$WORK_OUTPUT_DIR"/*
+mv "$WORK_OUTPUT_DIR" "$OUTPUT_DIR"
+WORK_OUTPUT_DIR=""
 printf '%s 취약점·라이선스 검사와 SBOM 생성을 완료했습니다: %s\n' "$PREFIX" "$OUTPUT_DIR"

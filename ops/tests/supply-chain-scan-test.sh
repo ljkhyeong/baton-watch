@@ -38,8 +38,14 @@ case "$1 $2" in
         ;;
     "run --rm")
         report=""
+        reports=""
         previous=""
         for argument in "$@"; do
+            case "$argument" in
+                *:/reports|*:/reports:ro)
+                    reports="${argument%%:/reports*}"
+                    ;;
+            esac
             if [ "$previous" = "--output" ]; then
                 report="$(basename "$argument")"
                 break
@@ -47,7 +53,7 @@ case "$1 $2" in
             previous="$argument"
         done
         if [ -n "$report" ]; then
-            printf '%s\n' '{"bomFormat":"CycloneDX","components":[{"purl":"pkg:maven/example/test@1.0","licenses":[{"license":{"id":"Apache-2.0"}}]}]}' >"$WATCH_TEST_REPORTS/$report"
+            printf '%s\n' '{"bomFormat":"CycloneDX","components":[{"purl":"pkg:maven/example/test@1.0","licenses":[{"license":{"id":"Apache-2.0"}}]}]}' >"$reports/$report"
             if [ "${WATCH_TEST_FAIL_REPORT-}" = "$report" ]; then
                 exit 1
             fi
@@ -129,6 +135,14 @@ if PATH="$TEMP_DIR/bin:$PATH" \
 fi
 if [ ! -s "$failure_reports/migrations.cdx.json" ] || [ -e "$failure_reports/SHA256SUMS" ]; then
     fail "실패 보고서를 보존하지 않았거나 완료 체크섬을 잘못 생성했습니다"
+fi
+for report in baton-watch.cdx.json database-operations.cdx.json migrations.cdx.json runtime.cdx.json gateway.cdx.json; do
+    if [ ! -s "$failure_reports/$report" ]; then
+        fail "앞선 취약점 실패 뒤의 보고서가 없습니다: $report"
+    fi
+done
+if [ "$(grep -c '^run --rm ' "$TEMP_DIR/failure-docker-calls")" -ne 6 ]; then
+    fail "취약점 실패 뒤에도 나머지 취약점·라이선스 검사를 모두 실행하지 않았습니다"
 fi
 
 printf '[supply-chain-scan-test] 공용 취약점·라이선스 검사 계약이 통과했습니다\n'
