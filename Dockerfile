@@ -55,7 +55,7 @@ LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
 RUN apk add --no-cache \
         "bash=5.3.9-r1" \
         "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.3-r0" \
+        "libexpat=2.8.4-r0" \
         "libssl3=3.5.8-r0" \
         "openssl=3.5.8-r0" \
         "p11-kit=0.26.2-r0" \
@@ -85,6 +85,7 @@ LABEL org.opencontainers.image.title="BATON WATCH" \
 RUN command -v wget >/dev/null \
     && apk add --no-cache \
         "libcrypto3=3.5.8-r0" \
+        "libexpat=2.8.4-r0" \
         "libssl3=3.5.8-r0" \
         "su-exec=0.3-r0"
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
