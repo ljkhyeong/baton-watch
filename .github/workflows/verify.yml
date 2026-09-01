@@ -242,13 +242,31 @@ jobs:
 
       - name: 배포 산출물 SBOM 생성과 취약점·라이선스 검사
         run: |
-          # 이미지 참조는 오버레이에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
+          # 이미지 참조는 렌더링된 스테이징 구성에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
+          staging_config="$(
+            WATCH_IMAGE_REVISION="${GITHUB_SHA}" \
+            WATCH_POSTGRES_VOLUME_NAME="baton-watch-ci-${GITHUB_RUN_ID}" \
+              docker compose \
+                --env-file ops/staging.env.example \
+                --file compose.staging.yml \
+                --file compose.staging-tunnel.yml \
+                config --no-consistency --format json
+          )"
+          postgres_image="$(
+            printf '%s\n' "${staging_config}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["postgres"]["image"])'
+          )"
           gateway_image="$(
-            WATCH_TUNNEL_TOKEN_FILE=/dev/null docker compose --file compose.staging-tunnel.yml \
-              config --no-consistency --format json \
+            printf '%s\n' "${staging_config}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
           )"
-          docker pull "${gateway_image}"
+          cloudflared_image="$(
+            printf '%s\n' "${staging_config}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["cloudflared"]["image"])'
+          )"
+          for external_image in "${postgres_image}" "${gateway_image}" "${cloudflared_image}"; do
+            docker pull "${external_image}"
+          done
           image_archive_dir="build/image-evidence/${GITHUB_SHA}"
           ./ops/scan-supply-chain.sh \
             build/supply-chain \
@@ -256,7 +274,9 @@ jobs:
             "${image_archive_dir}/database-operations.tar" \
             "${image_archive_dir}/migrations.tar" \
             "${image_archive_dir}/runtime.tar" \
-            "${gateway_image}"
+            "${postgres_image}" \
+            "${gateway_image}" \
+            "${cloudflared_image}"
 
       - name: 공급망 산출물 보관
         if: ${{ !cancelled() && hashFiles('build/supply-chain/*') != '' }}

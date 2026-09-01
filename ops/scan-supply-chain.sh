@@ -15,8 +15,8 @@ fail() {
     exit 1
 }
 
-if [ "$#" -ne 6 ]; then
-    fail "사용법: $0 <보고서 디렉터리> <부트 JAR> <데이터베이스 작업 이미지 아카이브> <마이그레이션 이미지 아카이브> <WATCH 이미지 아카이브> <NGINX 이미지>"
+if [ "$#" -ne 8 ]; then
+    fail "사용법: $0 <보고서 디렉터리> <부트 JAR> <데이터베이스 작업 이미지 아카이브> <마이그레이션 이미지 아카이브> <WATCH 이미지 아카이브> <PostgreSQL 이미지> <NGINX 이미지> <cloudflared 이미지>"
 fi
 
 readonly OUTPUT_ARGUMENT="$1"
@@ -24,7 +24,9 @@ readonly JAR_ARGUMENT="$2"
 readonly DATABASE_OPERATIONS_ARCHIVE_ARGUMENT="$3"
 readonly MIGRATIONS_ARCHIVE_ARGUMENT="$4"
 readonly RUNTIME_ARCHIVE_ARGUMENT="$5"
-readonly GATEWAY_IMAGE="$6"
+readonly POSTGRES_IMAGE="$6"
+readonly GATEWAY_IMAGE="$7"
+readonly CLOUDFLARED_IMAGE="$8"
 
 if [ ! -f "$JAR_ARGUMENT" ]; then
     fail "부트 JAR를 찾을 수 없습니다: $JAR_ARGUMENT"
@@ -76,8 +78,16 @@ readonly MIGRATIONS_ARCHIVE
 RUNTIME_ARCHIVE="$(absolute_file "$RUNTIME_ARCHIVE_ARGUMENT")"
 readonly RUNTIME_ARCHIVE
 
-docker image inspect "$GATEWAY_IMAGE" >/dev/null
-docker image save --output "$IMAGE_DIR/gateway.tar" "$GATEWAY_IMAGE"
+save_image() {
+    image="$1"
+    archive="$2"
+    docker image inspect "$image" >/dev/null
+    docker image save --output "$IMAGE_DIR/$archive" "$image"
+}
+
+save_image "$POSTGRES_IMAGE" postgres.tar
+save_image "$GATEWAY_IMAGE" gateway.tar
+save_image "$CLOUDFLARED_IMAGE" cloudflared.tar
 
 WORK_OUTPUT_DIR="$(mktemp -d "${OUTPUT_DIR}.tmp.XXXXXX")"
 chmod 0700 "$WORK_OUTPUT_DIR"
@@ -134,7 +144,9 @@ run_scan "부트 JAR 취약점" scan_rootfs
 run_scan "데이터베이스 작업 이미지 취약점" scan_image_archive "$DATABASE_OPERATIONS_ARCHIVE" database-operations.cdx.json
 run_scan "마이그레이션 이미지 취약점" scan_image_archive "$MIGRATIONS_ARCHIVE" migrations.cdx.json
 run_scan "WATCH 이미지 취약점" scan_image_archive "$RUNTIME_ARCHIVE" runtime.cdx.json
+run_scan "PostgreSQL 이미지 취약점" scan_image_archive "$IMAGE_DIR/postgres.tar" postgres.cdx.json
 run_scan "NGINX 이미지 취약점" scan_image_archive "$IMAGE_DIR/gateway.tar" gateway.cdx.json
+run_scan "cloudflared 이미지 취약점" scan_image_archive "$IMAGE_DIR/cloudflared.tar" cloudflared.cdx.json
 
 if ignored_licenses="$(python3 "$SCRIPT_DIR/check-runtime-licenses.py" "$WORK_OUTPUT_DIR")"; then
     run_scan "부트 JAR 라이선스" docker run --rm \
