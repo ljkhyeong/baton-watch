@@ -16,19 +16,24 @@ fail() {
 }
 
 if [ "$#" -ne 6 ]; then
-    fail "사용법: $0 <보고서 디렉터리> <부트 JAR> <데이터베이스 작업 이미지> <마이그레이션 이미지> <WATCH 이미지> <NGINX 이미지>"
+    fail "사용법: $0 <보고서 디렉터리> <부트 JAR> <데이터베이스 작업 이미지 아카이브> <마이그레이션 이미지 아카이브> <WATCH 이미지 아카이브> <NGINX 이미지>"
 fi
 
 readonly OUTPUT_ARGUMENT="$1"
 readonly JAR_ARGUMENT="$2"
-readonly DATABASE_OPERATIONS_IMAGE="$3"
-readonly MIGRATIONS_IMAGE="$4"
-readonly RUNTIME_IMAGE="$5"
+readonly DATABASE_OPERATIONS_ARCHIVE_ARGUMENT="$3"
+readonly MIGRATIONS_ARCHIVE_ARGUMENT="$4"
+readonly RUNTIME_ARCHIVE_ARGUMENT="$5"
 readonly GATEWAY_IMAGE="$6"
 
 if [ ! -f "$JAR_ARGUMENT" ]; then
     fail "부트 JAR를 찾을 수 없습니다: $JAR_ARGUMENT"
 fi
+for archive in "$DATABASE_OPERATIONS_ARCHIVE_ARGUMENT" "$MIGRATIONS_ARCHIVE_ARGUMENT" "$RUNTIME_ARCHIVE_ARGUMENT"; do
+    if [ ! -f "$archive" ]; then
+        fail "배포 이미지 아카이브를 찾을 수 없습니다: $archive"
+    fi
+done
 if [ -e "$OUTPUT_ARGUMENT" ]; then
     fail "보고서 디렉터리가 이미 존재합니다: $OUTPUT_ARGUMENT"
 fi
@@ -58,17 +63,21 @@ trap 'exit 143' TERM
 mkdir "$JAR_DIR" "$IMAGE_DIR" "$CACHE_DIR"
 cp "$JAR_ARGUMENT" "$JAR_DIR/baton-watch.jar"
 
-save_image() {
-    image="$1"
-    archive="$2"
-    docker image inspect "$image" >/dev/null
-    docker image save --output "$IMAGE_DIR/$archive" "$image"
+absolute_file() {
+    file="$1"
+    directory="$(CDPATH='' cd -- "$(dirname -- "$file")" && pwd)"
+    printf '%s/%s\n' "$directory" "$(basename -- "$file")"
 }
 
-save_image "$DATABASE_OPERATIONS_IMAGE" database-operations.tar
-save_image "$MIGRATIONS_IMAGE" migrations.tar
-save_image "$RUNTIME_IMAGE" runtime.tar
-save_image "$GATEWAY_IMAGE" gateway.tar
+DATABASE_OPERATIONS_ARCHIVE="$(absolute_file "$DATABASE_OPERATIONS_ARCHIVE_ARGUMENT")"
+readonly DATABASE_OPERATIONS_ARCHIVE
+MIGRATIONS_ARCHIVE="$(absolute_file "$MIGRATIONS_ARCHIVE_ARGUMENT")"
+readonly MIGRATIONS_ARCHIVE
+RUNTIME_ARCHIVE="$(absolute_file "$RUNTIME_ARCHIVE_ARGUMENT")"
+readonly RUNTIME_ARCHIVE
+
+docker image inspect "$GATEWAY_IMAGE" >/dev/null
+docker image save --output "$IMAGE_DIR/gateway.tar" "$GATEWAY_IMAGE"
 
 WORK_OUTPUT_DIR="$(mktemp -d "${OUTPUT_DIR}.tmp.XXXXXX")"
 chmod 0700 "$WORK_OUTPUT_DIR"
@@ -96,7 +105,7 @@ scan_image_archive() {
     report="$2"
     docker run --rm \
         --volume "$WORK_OUTPUT_DIR:/reports" \
-        --volume "$IMAGE_DIR:/inputs:ro" \
+        --volume "$archive:/inputs/image.tar:ro" \
         --volume "$CACHE_DIR:/root/.cache/trivy" \
         "$TRIVY_IMAGE" image \
         --cache-dir /root/.cache/trivy \
@@ -108,7 +117,7 @@ scan_image_archive() {
         --exit-code 1 \
         --skip-version-check \
         --no-progress \
-        --input "/inputs/$archive"
+        --input /inputs/image.tar
 }
 
 scan_failed=false
@@ -122,10 +131,10 @@ run_scan() {
 }
 
 run_scan "부트 JAR 취약점" scan_rootfs
-run_scan "데이터베이스 작업 이미지 취약점" scan_image_archive database-operations.tar database-operations.cdx.json
-run_scan "마이그레이션 이미지 취약점" scan_image_archive migrations.tar migrations.cdx.json
-run_scan "WATCH 이미지 취약점" scan_image_archive runtime.tar runtime.cdx.json
-run_scan "NGINX 이미지 취약점" scan_image_archive gateway.tar gateway.cdx.json
+run_scan "데이터베이스 작업 이미지 취약점" scan_image_archive "$DATABASE_OPERATIONS_ARCHIVE" database-operations.cdx.json
+run_scan "마이그레이션 이미지 취약점" scan_image_archive "$MIGRATIONS_ARCHIVE" migrations.cdx.json
+run_scan "WATCH 이미지 취약점" scan_image_archive "$RUNTIME_ARCHIVE" runtime.cdx.json
+run_scan "NGINX 이미지 취약점" scan_image_archive "$IMAGE_DIR/gateway.tar" gateway.cdx.json
 
 if ignored_licenses="$(python3 "$SCRIPT_DIR/check-runtime-licenses.py" "$WORK_OUTPUT_DIR")"; then
     run_scan "부트 JAR 라이선스" docker run --rm \

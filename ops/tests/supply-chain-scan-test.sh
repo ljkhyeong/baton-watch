@@ -24,6 +24,9 @@ fail() {
 
 mkdir "$TEMP_DIR/bin"
 printf 'test-jar' >"$TEMP_DIR/baton-watch.jar"
+printf 'database-operations' >"$TEMP_DIR/database-operations.tar"
+printf 'migrations' >"$TEMP_DIR/migrations.tar"
+printf 'runtime' >"$TEMP_DIR/runtime.tar"
 cat >"$TEMP_DIR/bin/docker" <<'SH'
 #!/bin/sh
 set -eu
@@ -84,12 +87,14 @@ readonly REAL_PYTHON3
 
 PATH="$TEMP_DIR/bin:$PATH" \
 WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/docker-calls" \
-WATCH_TEST_REPORTS="$REPORTS_DIR" \
 WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
     "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
     "$REPORTS_DIR" \
     "$TEMP_DIR/baton-watch.jar" \
-    database-operations:test migrations:test runtime:test gateway:test >/dev/null
+    "$TEMP_DIR/database-operations.tar" \
+    "$TEMP_DIR/migrations.tar" \
+    "$TEMP_DIR/runtime.tar" \
+    gateway:test >/dev/null
 
 for report in \
     baton-watch.cdx.json database-operations.cdx.json migrations.cdx.json \
@@ -98,11 +103,11 @@ for report in \
         fail "필수 산출물이 없습니다: $report"
     fi
 done
-if [ "$(grep -c '^image inspect ' "$TEMP_DIR/docker-calls")" -ne 4 ]; then
-    fail "정확한 로컬 이미지 네 개를 검사하지 않았습니다"
+if [ "$(grep -c '^image inspect ' "$TEMP_DIR/docker-calls")" -ne 1 ]; then
+    fail "고정된 NGINX 이미지 하나만 확인하지 않았습니다"
 fi
-if [ "$(grep -c '^image save --output ' "$TEMP_DIR/docker-calls")" -ne 4 ]; then
-    fail "이미지 아카이브 네 개를 만들지 않았습니다"
+if [ "$(grep -c '^image save --output ' "$TEMP_DIR/docker-calls")" -ne 1 ]; then
+    fail "고정된 NGINX 이미지 아카이브 하나만 만들지 않았습니다"
 fi
 if [ "$(grep -c '^run --rm ' "$TEMP_DIR/docker-calls")" -ne 6 ]; then
     fail "취약점 검사 다섯 개와 라이선스 검사 한 개를 실행하지 않았습니다"
@@ -112,11 +117,11 @@ if ! grep -Fq -- '--ignored-licenses Apache-2.0' "$TEMP_DIR/docker-calls"; then
 fi
 if PATH="$TEMP_DIR/bin:$PATH" \
     WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/docker-calls" \
-    WATCH_TEST_REPORTS="$REPORTS_DIR" \
     WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
     "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
     "$REPORTS_DIR" "$TEMP_DIR/baton-watch.jar" \
-    database-operations:test migrations:test runtime:test gateway:test \
+    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
+    "$TEMP_DIR/runtime.tar" gateway:test \
     >"$TEMP_DIR/retry-output" 2>&1; then
     fail "기존 검사 보고서를 덮어썼습니다"
 fi
@@ -124,12 +129,12 @@ fi
 failure_reports="$TEMP_DIR/failure-reports"
 if PATH="$TEMP_DIR/bin:$PATH" \
     WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/failure-docker-calls" \
-    WATCH_TEST_REPORTS="$failure_reports" \
     WATCH_TEST_FAIL_REPORT="migrations.cdx.json" \
     WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
     "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
     "$failure_reports" "$TEMP_DIR/baton-watch.jar" \
-    database-operations:test migrations:test runtime:test gateway:test \
+    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
+    "$TEMP_DIR/runtime.tar" gateway:test \
     >"$TEMP_DIR/failure-output" 2>&1; then
     fail "취약점 검사 실패를 허용했습니다"
 fi
@@ -143,6 +148,21 @@ for report in baton-watch.cdx.json database-operations.cdx.json migrations.cdx.j
 done
 if [ "$(grep -c '^run --rm ' "$TEMP_DIR/failure-docker-calls")" -ne 6 ]; then
     fail "취약점 실패 뒤에도 나머지 취약점·라이선스 검사를 모두 실행하지 않았습니다"
+fi
+
+missing_archive_reports="$TEMP_DIR/missing-archive-reports"
+if PATH="$TEMP_DIR/bin:$PATH" \
+    WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/missing-archive-docker-calls" \
+    WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
+    "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
+    "$missing_archive_reports" "$TEMP_DIR/baton-watch.jar" \
+    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/missing.tar" \
+    "$TEMP_DIR/runtime.tar" gateway:test \
+    >"$TEMP_DIR/missing-archive-output" 2>&1; then
+    fail "없는 배포 이미지 아카이브를 허용했습니다"
+fi
+if [ -e "$missing_archive_reports" ]; then
+    fail "입력 아카이브 확인 실패가 최종 보고서 경로를 남겼습니다"
 fi
 
 printf '[supply-chain-scan-test] 공용 취약점·라이선스 검사 계약이 통과했습니다\n'

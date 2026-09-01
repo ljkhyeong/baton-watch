@@ -228,6 +228,18 @@ jobs:
             fi
           done
 
+      - name: 실제 PostgreSQL 데이터베이스 작업 검증
+        run: ./ops/tests/staging-database-operation-postgres-test.sh
+
+      - name: CodeQL 분석
+        uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
+
+      - name: 검사할 배포 이미지 보관
+        env:
+          WATCH_IMAGE_REVISION: ${{ github.sha }}
+          WATCH_IMAGE_ARCHIVE_DIR: build/image-evidence/${{ github.sha }}
+        run: ./ops/staging-image-evidence.sh archive
+
       - name: 배포 산출물 SBOM 생성과 취약점·라이선스 검사
         run: |
           # 이미지 참조는 오버레이에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
@@ -237,12 +249,13 @@ jobs:
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
           )"
           docker pull "${gateway_image}"
+          image_archive_dir="build/image-evidence/${GITHUB_SHA}"
           ./ops/scan-supply-chain.sh \
             build/supply-chain \
             bootstrap/build/libs/baton-watch.jar \
-            "baton-watch-database-operations:${GITHUB_SHA}" \
-            "baton-watch-migrations:${GITHUB_SHA}" \
-            "baton-watch:${GITHUB_SHA}" \
+            "${image_archive_dir}/database-operations.tar" \
+            "${image_archive_dir}/migrations.tar" \
+            "${image_archive_dir}/runtime.tar" \
             "${gateway_image}"
 
       - name: 공급망 산출물 보관
@@ -253,12 +266,6 @@ jobs:
           path: build/supply-chain
           if-no-files-found: error
           retention-days: 14
-
-      - name: 실제 PostgreSQL 데이터베이스 작업 검증
-        run: ./ops/tests/staging-database-operation-postgres-test.sh
-
-      - name: CodeQL 분석
-        uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
 
   attest:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
