@@ -8,6 +8,7 @@ readonly PROMETHEUS_IMAGE='prom/prometheus:v3.13.1-distroless@sha256:214f8427c8f
 dashboard_test_dir="$(mktemp -d)"
 trap 'rm -rf "$dashboard_test_dir"' EXIT
 python3 "$TEST_DIR/grafana-dashboard-test.py" >"$dashboard_test_dir/queries.json"
+chmod 0444 "$dashboard_test_dir/queries.json"
 
 promtool() {
     docker run --rm --network none --read-only --cap-drop ALL \
@@ -15,7 +16,7 @@ promtool() {
         --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m \
         --entrypoint /bin/promtool \
         --volume "$TEST_DIR/../prometheus:/rules:ro" --workdir /rules \
-        --volume "$dashboard_test_dir:/dashboard-tests:ro" \
+        --volume "$dashboard_test_dir/queries.json:/dashboard-tests/queries.json:ro" \
         "$PROMETHEUS_IMAGE" "$@"
 }
 
