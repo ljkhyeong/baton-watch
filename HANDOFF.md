@@ -1,8 +1,17 @@
 # BATON WATCH 인계 문서
 
-최종 수정일: 2026-09-01
+최종 수정일: 2026-09-02
 
 ## 현재 인계 상태
+
+- 2026-09-02 `baton.watch.check.schedule.delay`를 최근 선점 배치의 최댓값에서
+  현재 가장 오래된 선점 가능 점검의 DB 기준 지연으로 바꿨다. 점검 실행이 멈춰도
+  독립 유지보수 레인이 값을 갱신하며 활성 리스와 아직 도래하지 않은 일정은 제외한다.
+- 점검 실행 서비스의 수동 최댓값 계산과 `DueCheckBatchResult`의 지연 필드를
+  제거했다. 새 집계 테이블이나 전체 적체 건수 조회 없이 기존
+  `watch_monitor(next_check_at, resource_reference)` 부분 인덱스에서 첫 행만 읽는다.
+  기존 메트릭 이름과 120초 경보는 유지하며 대시보드·경보·런북을 같은 의미로 맞췄다.
+  런타임 의존성, DB 스키마, 메트릭 레이블, 외부 서비스와 유료 기능은 추가하지 않았다.
 
 - 2026-09-01 인바운드 상태 점검은 HTTP 200과 `status: UP`뿐 아니라
   `service: baton-watch`도 함께 요구한다. 다른 서비스의 `UP` 응답이나 서비스 이름이
@@ -186,6 +195,15 @@
   교체·원복 절차를 제공한다.
 
 ## 이번 변경의 검증 상태
+
+- `./gradlew clean test :adapter-out-persistence:loadTest
+  :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 통과했다. 일반 테스트
+  431개와 기본 100개 모니터 부하·복구 2개가 실패·오류·건너뜀 없이 완료됐다.
+- 부하·복구 시험은 DB에서 읽은 실제 적체 지연을 기록했고 0ms 대상 사례의 최댓값은
+  3초, 20ms 대상 사례는 5초였다. 최종 이벤트 백로그는 두 사례 모두 0이었다.
+- `./ops/tests/prometheus-rules-test.sh`가 통과했다. 기존 WATCH 경보 11개와
+  인바운드 경보 3개, 유지보수 여섯 작업의 미실행·복구, Grafana 12개 패널의 실제
+  PromQL을 검증했다. 실제 수집기·Grafana 서버·외부 알림 연결은 수행하지 않았다.
 
 - 서비스 이름이 다른 응답과 이름이 없는 응답을 추가한 격리 Blackbox 회귀 시험은
   수정 전 두 응답을 모두 `probe_success=1`로 처리해 실패했고 CEL 수정 후 통과했다.
