@@ -90,6 +90,11 @@ class MonitoringMaintenanceServicesTest {
         }
 
         @Override
+        public Duration getOldestDueCheckDelay() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public int purgeAttempts(Instant completedBefore, int limit) {
             this.completedBefore = completedBefore;
             this.limit = limit;

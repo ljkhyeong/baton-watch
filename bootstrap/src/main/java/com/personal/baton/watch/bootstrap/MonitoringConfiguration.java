@@ -5,6 +5,7 @@ import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
+import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
@@ -66,6 +67,11 @@ public class MonitoringConfiguration {
             Instant midpoint = before.plus(Duration.between(before, after).dividedBy(2));
             return Duration.between(databaseTime, midpoint);
         };
+    }
+
+    @Bean
+    GetCheckScheduleDelayUseCase getCheckScheduleDelayUseCase(CheckWorkPersistencePort persistence) {
+        return persistence::getOldestDueCheckDelay;
     }
 
     @Bean

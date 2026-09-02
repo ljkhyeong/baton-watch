@@ -93,7 +93,7 @@ tests:
       - eval_time: 15m
         alertname: WatchEventDeliveryWorkerStalled
         exp_alerts: []
-  - name: 유지보수 다섯 작업 중 하나의 중단과 오류 레이블 중복 집계 방지
+  - name: 유지보수 여섯 작업 중 하나의 중단과 오류 레이블 중복 집계 방지
     interval: 1m
     input_series:
       - series: up{job="baton-watch",instance="watch"}
@@ -105,6 +105,8 @@ tests:
       - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="purgeAttemptHistory",outcome="SUCCESS"}
         values: '0+1x20'
       - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="updateDatabaseClockOffset",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="refreshCheckScheduleDelay",outcome="SUCCESS"}
         values: '0+1x20'
       - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryMaintenanceScheduler",code_function="purgeDeliveredEventHistory",outcome="SUCCESS"}
         values: '0+1x20'

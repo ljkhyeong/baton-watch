@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
+import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
@@ -41,12 +42,13 @@ class MonitoringSchedulingTest {
             .withBean(SimpleMeterRegistry.class, SimpleMeterRegistry::new)
             .withUserConfiguration(MonitoringMetrics.class)
             .withBean(RunDueChecksUseCase.class,
-                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0, Duration.ZERO))
+                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0))
             .withBean(RunEventDeliveriesUseCase.class,
                     () -> () -> new EventDeliveryBatchResult(0, 0, 0, 0, 0))
             .withBean(MarkStaleProjectionsUseCase.class, () -> () -> 0)
             .withBean(PurgeAttemptHistoryUseCase.class, () -> () -> 0)
             .withBean(PurgeDeliveredEventsUseCase.class, () -> () -> 0)
+            .withBean(GetCheckScheduleDelayUseCase.class, () -> () -> Duration.ZERO)
             .withBean(GetDatabaseClockOffsetUseCase.class, () -> () -> Duration.ZERO)
             .withBean(GetEventDeliveryBacklogUseCase.class,
                     () -> () -> new EventDeliveryBacklog(0, Optional.empty()))
@@ -76,10 +78,10 @@ class MonitoringSchedulingTest {
                     .getScheduledTasks();
             if (!expected) {
                 assertThat(context).doesNotHaveBean(MonitoringScheduler.class);
-                assertThat(tasks).hasSize(6);
+                assertThat(tasks).hasSize(7);
             } else {
                 assertThat(context).hasSingleBean(MonitoringScheduler.class);
-                assertThat(tasks).hasSize(7);
+                assertThat(tasks).hasSize(8);
             }
         });
     }
@@ -91,7 +93,7 @@ class MonitoringSchedulingTest {
     }
 
     @ParameterizedTest(name = "점검 중지 중 전달 설정 {0}에서 예약 {1}개 유지")
-    @CsvSource({"on,6", "off,5"})
+    @CsvSource({"on,7", "off,6"})
     void appliesDeliverySettingIndependentlyOfDisabledChecks(String enabled, int expectedTaskCount) {
         runner.withPropertyValues("watch.check-enabled=false", "watch.event-delivery.enabled=" + enabled)
                 .run(context -> {

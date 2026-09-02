@@ -4,7 +4,6 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalizationSt
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
-import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
@@ -54,7 +53,7 @@ final class MonitoringMetrics {
                         maximumCheckScheduleDelaySeconds,
                         AtomicLong::get)
                 .baseUnit("seconds")
-                .description("최근 점검 배치에서 선점한 작업의 최대 일정 지연")
+                .description("현재 가장 오래된 선점 가능 점검의 일정 지연")
                 .register(registry);
         Gauge.builder(
                         "baton.watch.event.delivery.inflight",
@@ -86,8 +85,8 @@ final class MonitoringMetrics {
         inFlightChecks.decrementAndGet();
     }
 
-    void updateCheckScheduleDelay(DueCheckBatchResult result) {
-        maximumCheckScheduleDelaySeconds.set(result.maximumScheduleDelay().toSeconds());
+    void updateCheckScheduleDelay(Duration delay) {
+        maximumCheckScheduleDelaySeconds.set(delay.toSeconds());
     }
 
     void recordCheckClaim(ClaimedCheck claimed) {

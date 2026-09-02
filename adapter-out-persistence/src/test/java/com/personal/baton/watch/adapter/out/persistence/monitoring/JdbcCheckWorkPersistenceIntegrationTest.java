@@ -35,6 +35,32 @@ import org.springframework.transaction.support.DefaultTransactionDefinition;
 class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
     @Test
+    void reportsTheOldestClaimableDueDelayAndExcludesActiveLeases() {
+        assertThat(checkWorkPersistence.getOldestDueCheckDelay()).isZero();
+        Instant now = databaseClock();
+        synchronize(
+                "resource:oldest-due",
+                1,
+                "https://oldest-due.example/path",
+                now.minusSeconds(10));
+        synchronize(
+                "resource:next-due",
+                1,
+                "https://next-due.example/path",
+                now.minusSeconds(5));
+
+        assertThat(checkWorkPersistence.getOldestDueCheckDelay())
+                .isBetween(Duration.ofSeconds(10), Duration.ofSeconds(30));
+
+        claimOne();
+        assertThat(checkWorkPersistence.getOldestDueCheckDelay())
+                .isBetween(Duration.ofSeconds(5), Duration.ofSeconds(30));
+
+        claimOne();
+        assertThat(checkWorkPersistence.getOldestDueCheckDelay()).isZero();
+    }
+
+    @Test
     void leaseWindowStartsFromTheDatabaseTransactionTime() {
         synchronize("resource:database-time", 1, "https://database-time.example/path", BASE_TIME);
         Instant beforeClaim = databaseClock();

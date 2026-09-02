@@ -28,7 +28,8 @@ for worker in ("check", "event_delivery"):
 for scheduler, functions in {
     "MonitoringScheduler": ["checkDueMonitors"],
     "EventDeliveryScheduler": ["deliverPendingEvents"],
-    "MonitoringMaintenanceScheduler": ["markStaleProjections", "purgeAttemptHistory", "updateDatabaseClockOffset"],
+    "MonitoringMaintenanceScheduler": ["markStaleProjections", "purgeAttemptHistory",
+                                       "updateDatabaseClockOffset", "refreshCheckScheduleDelay"],
     "EventDeliveryMaintenanceScheduler": ["purgeDeliveredEventHistory", "refreshEventDeliveryBacklog"],
 }.items():
     for function in functions:
@@ -51,7 +52,7 @@ for panel in dashboard["panels"]:
     for target in panel["targets"]:
         expression = target["expr"].replace("$__rate_interval", "5m").replace("$instance", "test-.*")
         # 인스턴스 둘의 데이터를 합치거나 존재하지 않는 메트릭을 조회하면 실패한다.
-        expected_count = 14 if panel["id"] == 9 else 2
+        expected_count = 16 if panel["id"] == 9 else 2
         queries.append({"expr": "count(" + expression + ")", "eval_time": "5m",
                         "exp_samples": [{"labels": "{}", "value": expected_count}]})
         missing_queries.append({"expr": expression, "eval_time": "5m", "exp_samples": []})

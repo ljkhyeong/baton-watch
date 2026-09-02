@@ -158,7 +158,8 @@ class BatonWatchApplicationSmokeTest {
             for (String method : List.of(
                     "checkDueMonitors", "deliverPendingEvents", "markStaleProjections",
                     "purgeAttemptHistory", "updateDatabaseClockOffset",
-                    "purgeDeliveredEventHistory", "refreshEventDeliveryBacklog")) {
+                    "purgeDeliveredEventHistory", "refreshEventDeliveryBacklog",
+                    "refreshCheckScheduleDelay")) {
                 assertThat(scrape.lines().filter(line ->
                         line.startsWith("tasks_scheduled_execution_seconds_count{")
                                 && line.contains("code_function=\"" + method + "\"")

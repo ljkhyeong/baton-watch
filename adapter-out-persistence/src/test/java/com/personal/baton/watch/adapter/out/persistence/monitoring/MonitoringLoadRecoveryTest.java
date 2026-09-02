@@ -83,11 +83,12 @@ class MonitoringLoadRecoveryTest extends MonitoringPersistenceIntegrationTestSup
 
         Duration maximumDelay = Duration.ZERO;
         for (int index = 0; index < monitors; index++) {
+            Duration currentDelay = checks.getOldestDueCheckDelay();
+            if (currentDelay.compareTo(maximumDelay) > 0) {
+                maximumDelay = currentDelay;
+            }
             var result = worker.runDueChecks();
             assertThat(result.applied()).isOne();
-            if (result.maximumScheduleDelay().compareTo(maximumDelay) > 0) {
-                maximumDelay = result.maximumScheduleDelay();
-            }
         }
         assertThat(worker.runDueChecks().claimed()).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM watch_attempt", Integer.class))
@@ -126,7 +127,7 @@ class MonitoringLoadRecoveryTest extends MonitoringPersistenceIntegrationTestSup
         assertThat(recoveredSender.runEventDeliveries().claimed()).isZero();
         System.out.printf(
                 "부하·복구 결과: 모니터=%d 지연=%dms 동기화=%dms 점검·DB복구=%dms "
-                        + "전달실패·복구=%dms 최대일정지연=%dms 최종백로그=0%n",
+                        + "전달실패·복구=%dms 최대적체지연=%dms 최종백로그=0%n",
                 monitors, checkDelayMillis, millis(synchronizedAt - started),
                 millis(checkedAt - synchronizedAt), millis(System.nanoTime() - checkedAt),
                 maximumDelay.toMillis());

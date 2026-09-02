@@ -57,7 +57,7 @@ class RunDueChecksServiceTest {
         DueCheckBatchResult result = service.runDueChecks();
 
         assertEquals(List.of("claim", "check", "finalize", "claim"), calls);
-        assertEquals(new DueCheckBatchResult(1, 1, 0, 0, Duration.ofSeconds(12)), result);
+        assertEquals(new DueCheckBatchResult(1, 1, 0, 0), result);
         assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
@@ -91,8 +91,7 @@ class RunDueChecksServiceTest {
             assertTrue(Thread.currentThread().isInterrupted());
             assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), calls);
             int completed = interruptedBeforeStart ? 0 : 1;
-            Duration delay = interruptedBeforeStart ? Duration.ZERO : Duration.ofSeconds(12);
-            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, delay), result);
+            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0), result);
         } finally {
             Thread.interrupted();
         }
@@ -144,27 +143,6 @@ class RunDueChecksServiceTest {
         assertEquals(databaseClaimedAt.plus(INTERVAL), persistence.finalization.nextCheckAt());
     }
 
-    @Test
-    void reportsTheMaximumScheduleDelayAcrossTheClaimedBatch() {
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
-        persistence.claims = List.of(
-                claim(1, 3),
-                claim(2, 17),
-                claim(3, 5));
-        RunDueChecksService service = new RunDueChecksService(
-                persistence,
-                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
-                3);
-
-        DueCheckBatchResult result = service.runDueChecks();
-
-        assertEquals(new DueCheckBatchResult(3, 3, 0, 0, Duration.ofSeconds(17)), result);
-    }
-
     @ParameterizedTest
     @EnumSource(
             value = CheckFinalizationStatus.class,
@@ -186,18 +164,8 @@ class RunDueChecksServiceTest {
         int alreadyFinalized = status == CheckFinalizationStatus.ALREADY_FINALIZED ? 1 : 0;
         int staleClaims = status == CheckFinalizationStatus.STALE_CLAIM ? 1 : 0;
         assertEquals(
-                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims, Duration.ofSeconds(12)),
+                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims),
                 result);
-    }
-
-    private static ClaimedCheck claim(long sequence, long scheduleDelaySeconds) {
-        return new ClaimedCheck(
-                new UUID(0, sequence),
-                new UUID(1, sequence),
-                CLAIM.targetUrl(),
-                NOW.minusSeconds(scheduleDelaySeconds),
-                NOW,
-                false);
     }
 
     private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
@@ -229,6 +197,11 @@ class RunDueChecksServiceTest {
             calls.add("finalize");
             this.finalization = finalization;
             return status;
+        }
+
+        @Override
+        public Duration getOldestDueCheckDelay() {
+            throw new UnsupportedOperationException();
         }
 
         @Override

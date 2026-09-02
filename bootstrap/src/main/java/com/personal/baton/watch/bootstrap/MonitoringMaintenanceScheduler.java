@@ -1,5 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
+import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
@@ -17,16 +18,19 @@ final class MonitoringMaintenanceScheduler {
     private final MarkStaleProjectionsUseCase markStaleProjections;
     private final PurgeAttemptHistoryUseCase purgeAttemptHistory;
     private final GetDatabaseClockOffsetUseCase getDatabaseClockOffset;
+    private final GetCheckScheduleDelayUseCase getCheckScheduleDelay;
     private final MonitoringMetrics metrics;
 
     MonitoringMaintenanceScheduler(
             MarkStaleProjectionsUseCase markStaleProjections,
             PurgeAttemptHistoryUseCase purgeAttemptHistory,
             GetDatabaseClockOffsetUseCase getDatabaseClockOffset,
+            GetCheckScheduleDelayUseCase getCheckScheduleDelay,
             MonitoringMetrics metrics) {
         this.markStaleProjections = markStaleProjections;
         this.purgeAttemptHistory = purgeAttemptHistory;
         this.getDatabaseClockOffset = getDatabaseClockOffset;
+        this.getCheckScheduleDelay = getCheckScheduleDelay;
         this.metrics = metrics;
     }
 
@@ -57,5 +61,12 @@ final class MonitoringMaintenanceScheduler {
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void updateDatabaseClockOffset() {
         metrics.updateDatabaseClockOffset(getDatabaseClockOffset.getDatabaseClockOffset());
+    }
+
+    @Scheduled(
+            fixedDelayString = "${watch.maintenance-interval}",
+            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
+    void refreshCheckScheduleDelay() {
+        metrics.updateCheckScheduleDelay(getCheckScheduleDelay.getCheckScheduleDelay());
     }
 }

@@ -11,7 +11,6 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalizationSt
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
-import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
@@ -66,12 +65,7 @@ class MonitoringMetricsTest {
         assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
         assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
 
-        metrics.updateCheckScheduleDelay(new DueCheckBatchResult(
-                3,
-                1,
-                1,
-                1,
-                Duration.ofSeconds(17)));
+        metrics.updateCheckScheduleDelay(Duration.ofSeconds(17));
         ClaimedCheck claimedCheck = claimedCheck(true);
         metrics.recordCheckClaim(claimedCheck);
         metrics.recordCheckClaim(claimedCheck);
@@ -152,7 +146,7 @@ class MonitoringMetricsTest {
         metrics.updateDatabaseClockOffset(Duration.ofSeconds(1));
         assertOnlyAllowedTags(registry);
 
-        metrics.updateCheckScheduleDelay(new DueCheckBatchResult(0, 0, 0, 0, Duration.ZERO));
+        metrics.updateCheckScheduleDelay(Duration.ZERO);
         assertEquals(0.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
     }
 

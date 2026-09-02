@@ -102,6 +102,8 @@ class WorkerSchedulingConfigurationTest {
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
                 "MonitoringMaintenanceScheduler#purgeAttemptHistory",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
+                "MonitoringMaintenanceScheduler#refreshCheckScheduleDelay",
+                WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
                 "MonitoringMaintenanceScheduler#updateDatabaseClockOffset",
                 WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER,
                 "EventDeliveryScheduler#deliverPendingEvents",

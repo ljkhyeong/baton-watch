@@ -30,7 +30,6 @@ public final class MonitoringScheduler {
             scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
     void checkDueMonitors() {
         DueCheckBatchResult result = runDueChecks.runDueChecks();
-        metrics.updateCheckScheduleDelay(result);
         if (result.claimed() > 0) {
             log.info(
                     "모니터 점검 배치 완료 claimed={} applied={} replayed={} stale={}",

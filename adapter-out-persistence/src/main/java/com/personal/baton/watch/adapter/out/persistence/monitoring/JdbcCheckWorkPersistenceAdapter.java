@@ -65,6 +65,27 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     }
 
     @Override
+    public Duration getOldestDueCheckDelay() {
+        long delaySeconds = jdbc.sql("""
+                        SELECT COALESCE((
+                            SELECT FLOOR(EXTRACT(EPOCH FROM (
+                                transaction_timestamp() - next_check_at
+                            )))::BIGINT
+                            FROM watch_monitor
+                            WHERE monitor_status = 'ACTIVE'
+                              AND next_check_at <= transaction_timestamp()
+                              AND (lease_expires_at IS NULL
+                                   OR lease_expires_at <= transaction_timestamp())
+                            ORDER BY next_check_at, resource_reference
+                            LIMIT 1
+                        ), 0)
+                        """)
+                .query(Long.class)
+                .single();
+        return Duration.ofSeconds(delaySeconds);
+    }
+
+    @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
         Objects.requireNonNull(completedBefore, "completedBefore");
         Assert.isTrue(limit > 0, "limit must be positive");
