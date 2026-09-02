@@ -24,6 +24,7 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - 기존 메트릭을 조회하는 Grafana 운영 대시보드 JSON과 실제 PromQL 검사
 - 내부 프록시·공개 HTTPS 상태 경로에서 WATCH 서비스 이름과 `UP` 상태를 함께 확인하는 Blackbox Exporter 모듈과 선택적 Prometheus 수집·경보 템플릿
 - 격리 PostgreSQL 부하·장애 복구 시험, 별도 JVM 강제 종료 후 리스·동일 이벤트 재전달 시험,
+  실제 Spring Boot HTTP·Hikari·PostgreSQL·예약 작업을 함께 사용하는 전체 런타임 부하·복구 시험,
   작업자 미실행을 포함한 기존 메트릭 경보 규칙과 `promtool` 검사,
   `0600` DB 백업·별도 임시 PostgreSQL 복원 확인 도구,
   URL·비밀값을 제외한 리소스별 최근 점검·전달 상태의 읽기 전용 진단 도구
@@ -75,6 +76,7 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 
 ~~~bash
 ./gradlew :adapter-out-persistence:loadTest --no-daemon
+./gradlew :bootstrap:runtimeLoadTest --no-daemon
 ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
 python3 ops/tests/gateway-test.py
@@ -192,6 +194,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
+- [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md)
 - [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
 - [NGINX 요청 속도 제한과 공개 검증](docs/runbooks/request-rate-limit.md)

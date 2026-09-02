@@ -12,6 +12,14 @@
   `watch_monitor(next_check_at, resource_reference)` 부분 인덱스에서 첫 행만 읽는다.
   기존 메트릭 이름과 120초 경보는 유지하며 대시보드·경보·런북을 같은 의미로 맞췄다.
   런타임 의존성, DB 스키마, 메트릭 레이블, 외부 서비스와 유료 기능은 추가하지 않았다.
+- 실제 Spring Boot HTTP·인증·HikariCP·PostgreSQL·점검 및 전달 예약 작업·Prometheus
+  노출을 한 흐름으로 실행하는 `:bootstrap:runtimeLoadTest`를 추가했다. 기본 25개,
+  최대 50개 모니터를 사용하며 일반 테스트와 분리하고 CI 결과를 7일 보관한다.
+- HikariCP 연결 고갈의 비식별화된 실패와 복구, 동시 모니터 동기화, 100ms 점검,
+  콜백 `503` 적체와 `204` 복구, 최종 일정 지연·이벤트 백로그 0을 확인한다. 외부
+  점검기와 콜백 전송기만 Spring 테스트 더블로 바꾸며 실제 DNS·소켓·TLS·공개
+  콜백·Cloudflare·외부 관측 시스템은 검증하지 않는다. 새 런타임 의존성, 스키마,
+  API 계약과 유료 서비스는 추가하지 않았다. 남아 있던 영문 운영 로그도 한글화했다.
 
 - 2026-09-01 인바운드 상태 점검은 HTTP 200과 `status: UP`뿐 아니라
   `service: baton-watch`도 함께 요구한다. 다른 서비스의 `UP` 응답이나 서비스 이름이
@@ -199,6 +207,12 @@
 - `./gradlew clean test :adapter-out-persistence:loadTest
   :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`가 통과했다. 일반 테스트
   431개와 기본 100개 모니터 부하·복구 2개가 실패·오류·건너뜀 없이 완료됐다.
+- `./gradlew clean test :bootstrap:runtimeLoadTest :bootstrap:verifyBootJarLicense
+  --no-daemon --no-build-cache`가 통과했다. 일반 테스트 431개와 25개 모니터 전체
+  런타임 시험 1개가 실패·오류·건너뜀 없이 완료됐다. 최종 실행에서 풀 복구 640ms,
+  동시 동기화 70ms, 점검 완료 4.989초, 전달 복구 4.490초였고 최종 백로그는 0이었다.
+  이 값은 로컬 회귀 참고값이며 지원 규모·처리량·SLO 증거가 아니다. 이 변경의 원격
+  CI 결과는 아직 확인하지 않았다.
 - 부하·복구 시험은 DB에서 읽은 실제 적체 지연을 기록했고 0ms 대상 사례의 최댓값은
   3초, 20ms 대상 사례는 5초였다. 최종 이벤트 백로그는 두 사례 모두 0이었다.
 - `./ops/tests/prometheus-rules-test.sh`가 통과했다. 기존 WATCH 경보 11개와
@@ -428,6 +442,7 @@ Bearer·멱등성 헤더, 리다이렉트 금지와 응답 크기 제한도 확�
    이미지 다이제스트로 전체 검사를 통과한 뒤 PR을 준비 상태로 바꾸고 병합하며,
    `main`의 공급망 출처 증명 결과까지 확인한다.
 2. [부하·복구 시험](docs/runbooks/load-recovery-test.md),
+   [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md),
    [별도 JVM 복구 시험](docs/runbooks/process-recovery-test.md),
    [경보·대시보드 적용 조건](docs/runbooks/monitoring-alerts.md),
    [NGINX 요청 제한](docs/runbooks/request-rate-limit.md), 배포 런북의 백업 절차를
