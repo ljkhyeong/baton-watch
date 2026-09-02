@@ -235,8 +235,8 @@ require(
     "WATCH must import copied file secrets through Spring configtree",
 )
 require(
-    watch_environment.get("MANAGEMENT_SERVER_ADDRESS") == "127.0.0.1",
-    "management server must remain container-loopback only",
+    "MANAGEMENT_SERVER_ADDRESS" not in watch_environment,
+    "관리 서버 주소는 애플리케이션 안전 설정에서만 관리해야 합니다",
 )
 require(
     watch_environment.get("SPRING_DATASOURCE_USERNAME") == "baton_watch_runtime",

@@ -43,6 +43,7 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "management.server.port=0",
+            "management.server.address=0.0.0.0",
             "management.endpoint.health.show-details=always",
             "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
@@ -228,6 +229,8 @@ class BatonWatchApplicationSmokeTest {
                 """,
                 String.class);
         assertThat(appliedVersions).containsSubsequence("1", "2", "3", "4");
+        assertThat(environment.getProperty("management.server.address"))
+                .isEqualTo("127.0.0.1");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
         assertThat(environment.getProperty("management.endpoint.health.show-details"))
