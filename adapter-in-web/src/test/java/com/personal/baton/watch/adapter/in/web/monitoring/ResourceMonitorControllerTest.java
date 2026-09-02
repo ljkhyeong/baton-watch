@@ -261,7 +261,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(content().string("already-sent"));
 
         assertThat(output)
-                .contains("monitor API failed failureType=HttpMessageNotWritableException")
+                .contains("모니터 API 처리 실패 failureType=HttpMessageNotWritableException")
                 .doesNotContain("raw-output-secret")
                 .doesNotContain("Response already committed");
     }

@@ -89,7 +89,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     }
 
     private void logFailure(Exception exception) {
-        log.error("monitor API failed failureType={}", exception.getClass().getSimpleName());
+        log.error("모니터 API 처리 실패 failureType={}", exception.getClass().getSimpleName());
     }
 
 }

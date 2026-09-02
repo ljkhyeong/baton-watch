@@ -57,7 +57,7 @@ class ScheduledTaskObservationTest {
         });
 
         assertThat(output)
-                .contains("scheduled task failed failureType=IllegalStateException")
+                .contains("예약 작업 실패 failureType=IllegalStateException")
                 .doesNotContain("sensitive scheduler detail");
     }
 

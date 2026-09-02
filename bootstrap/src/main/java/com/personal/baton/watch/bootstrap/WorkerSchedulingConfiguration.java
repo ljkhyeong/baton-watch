@@ -21,7 +21,7 @@ final class WorkerSchedulingConfiguration {
     @Bean
     ErrorHandler scheduledTaskErrorHandler() {
         return failure -> log.error(
-                "scheduled task failed failureType={}",
+                "예약 작업 실패 failureType={}",
                 failure.getClass().getSimpleName());
     }
 

@@ -27,7 +27,7 @@ final class EventDeliveryScheduler {
         EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();
         if (result.claimed() > 0) {
             log.info(
-                    "health-change delivery batch completed claimed={} delivered={} retry={} replayed={} stale={}",
+                    "상태 변경 이벤트 전달 배치 완료 claimed={} delivered={} retry={} replayed={} stale={}",
                     result.claimed(),
                     result.delivered(),
                     result.retryScheduled(),
