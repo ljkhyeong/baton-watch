@@ -148,7 +148,7 @@ curl http://localhost:8080/api/v1/system/status
 
 `WATCH_API_TOKEN`은 RFC 6750 `token68` 문자 집합을 사용하며 패딩 제외 문자가 32자 이상이고 전체 길이가 200자 이하여야 합니다. 32바이트 16진수 난수 값은 이 조건과 호환됩니다.
 
-로컬 Compose는 WATCH와 비공개 PostgreSQL 18.6 서비스를 시작합니다. 데이터베이스 포트와 WATCH 관리 포트 `8081`은 공개되지 않으며, 관리 포트는 런타임 네트워크 내부에서 Actuator 상태와 Prometheus 메트릭을 제공합니다. WATCH는 메트릭을 외부 서비스로 직접 전송하지 않습니다. [선택적 이벤트 전달 오버레이](compose.staging-event-delivery.yml)는 BATON 콜백 사전 검사가 끝난 경우에만 전달을 활성화하고 토큰을 `configtree` 비밀 파일로 주입합니다. 이 오버레이를 선택하지 않으면 기본 스테이징은 이벤트 전달을 수행하지 않습니다. 스테이징 산출물은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch` 이미지 세 개를 사용합니다. 운영 런북은 세 이미지의 ID·OCI 리비전·아카이브 SHA-256을 보관하고, 소유자·런타임 비밀번호를 SQL이나 명령행에 노출하지 않고 별도로 교체·원복하는 절차를 제공합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다. 모니터를 동기화하려면 다음 명령을 사용합니다.
+로컬 Compose는 WATCH와 비공개 PostgreSQL 18.6 서비스를 시작합니다. 데이터베이스 포트와 WATCH 관리 포트 `8081`은 공개되지 않으며, 애플리케이션 안전 설정은 실행 방식과 관계없이 관리 서버 주소를 `127.0.0.1`로 고정합니다. 관리 포트는 컨테이너 내부에서 Actuator 상태와 Prometheus 메트릭을 제공합니다. WATCH는 메트릭을 외부 서비스로 직접 전송하지 않습니다. [선택적 이벤트 전달 오버레이](compose.staging-event-delivery.yml)는 BATON 콜백 사전 검사가 끝난 경우에만 전달을 활성화하고 토큰을 `configtree` 비밀 파일로 주입합니다. 이 오버레이를 선택하지 않으면 기본 스테이징은 이벤트 전달을 수행하지 않습니다. 스테이징 산출물은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch` 이미지 세 개를 사용합니다. 운영 런북은 세 이미지의 ID·OCI 리비전·아카이브 SHA-256을 보관하고, 소유자·런타임 비밀번호를 SQL이나 명령행에 노출하지 않고 별도로 교체·원복하는 절차를 제공합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다. 모니터를 동기화하려면 다음 명령을 사용합니다.
 
 ~~~bash
 curl -X PUT http://localhost:8080/api/v1/resource-monitors/role-resource-123 \

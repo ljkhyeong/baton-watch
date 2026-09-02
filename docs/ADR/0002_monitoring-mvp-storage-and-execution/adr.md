@@ -168,7 +168,8 @@ PostgreSQL `clock_timestamp()`와 JDBC 왕복 전후 JVM 시각의 중간점을 
 Spring은 내부 예약 작업 진단을 위해 원래 작업 예외를 유지하므로 Actuator
 `scheduledtasks` 엔드포인트는 공개 관리 허용 목록에서 제외한다. `health`와
 `prometheus`만 공개한다. 같은 환경 후처리기 속성 소스가 상세 상태 비공개와
-관리 허용 목록을 고정하여 외부 설정이 노출 범위를 넓히지 못하게 한다.
+관리 허용 목록뿐 아니라 관리 서버 주소 `127.0.0.1`도 고정하여 실행 방식이나
+외부 설정이 관리 경로의 노출 범위를 넓히지 못하게 한다.
 
 Compose의 WATCH 상태 확인은 Spring Boot 기본 readiness 그룹을 사용하며
 `readinessState,db`만 포함한다. liveness에는 DB를 포함하지 않는다. 별도 상태
