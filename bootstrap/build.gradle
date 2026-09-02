@@ -22,6 +22,30 @@ dependencies {
     testImplementation 'org.testcontainers:testcontainers-postgresql'
 }
 
+tasks.named('test', Test) {
+    useJUnitPlatform {
+        excludeTags 'runtime-load'
+    }
+}
+
+tasks.register('runtimeLoadTest', Test) {
+    description = '실제 Spring Boot HTTP·Hikari·PostgreSQL·예약 작업의 부하와 복구를 확인한다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'runtime-load'
+    }
+    filter {
+        includeTestsMatching '*BatonWatchRuntimeLoadTest'
+        failOnNoMatchingTests = true
+    }
+    systemProperty 'watch.runtime-load.monitors',
+            providers.gradleProperty('watchRuntimeLoadMonitors').getOrElse('25')
+    testLogging.showStandardStreams = true
+    outputs.upToDateWhen { false }
+}
+
 jar {
     enabled = false
 }

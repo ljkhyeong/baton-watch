@@ -129,6 +129,9 @@ jobs:
       - name: 격리 DB 부하와 장애 복구 스모크
         run: ./gradlew :adapter-out-persistence:loadTest -PwatchLoadMonitors=25 --no-daemon
 
+      - name: 전체 런타임 부하와 장애 복구 스모크
+        run: ./gradlew :bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25 --no-daemon
+
       - name: Prometheus 경보 규칙 검증
         run: ./ops/tests/prometheus-rules-test.sh
 
@@ -142,6 +145,8 @@ jobs:
             adapter-out-persistence/build/test-results/loadTest/*.xml
             adapter-out-persistence/build/reports/tests/processRecoveryTest
             adapter-out-persistence/build/test-results/processRecoveryTest/*.xml
+            bootstrap/build/reports/tests/runtimeLoadTest
+            bootstrap/build/test-results/runtimeLoadTest/*.xml
             adapter-out-persistence/build/test-results/test/TEST-*DatabaseBackupIntegrationTest.xml
             adapter-out-persistence/build/test-results/test/TEST-*MonitoringDiagnosticsIntegrationTest.xml
           retention-days: 7
