@@ -2,7 +2,7 @@
 
 확인일: 2026-09-05
 
-BATON `b6b3d164ca5b9c8931b71f300cedbee44749562a` (`codex/watch-state-recovery`)에 역할 자료 상태 조회·수동 재점검 UI와 후속 보완을 반영했다. 최신성은 연결 판정 시각으로 확인하고, 점검 시도 시각은 별도로 표시한다. 오프라인·조회 캐시 만료 표시와 탭 복귀·재연결 재조회, 수동 상태 조회도 제공한다. 접수·새 결과 확인 안내를 역할 이동 뒤에도 유지하며 수동 조회와 표시 상태 변경을 스크린리더 알림 영역에 전달한다.
+BATON `ef39f1fc468e0b58bbc8aee623b58edaa88f110c` (`codex/watch-state-recovery`)에 역할 자료 상태 조회·수동 재점검 UI와 후속 보완을 반영했다. 최신성은 연결 판정 시각으로 확인하고, 점검 시도 시각은 별도로 표시한다. 오프라인·조회 캐시 만료 표시와 탭 복귀·재연결 재조회, 수동 상태 조회도 제공한다. 접수·새 결과 확인 안내를 역할 이동 뒤에도 유지하며 수동 조회와 표시 상태 변경을 스크린리더 알림 영역에 전달한다.
 WATCH에는 최신 불변 BATON 스냅샷의 대조·재전송 도구를 추가했다. 아래 내용은 저장소 구현과
 로컬 검증 결과이며 공개 운영 활성화나 실제 콜백 전달의 증거가 아니다.
 
@@ -55,8 +55,8 @@ WATCH의 현재 상태를 조회하고 다음 경계를 적용한다.
   연속 실패 횟수를 표시하고 정상 결과가 오면 지운다. 점검 서비스 내부 오류는 대상 링크의
   새 실패를 뜻하지 않으며 WATCH가 보존한 기존 횟수를 그대로 표시한다.
 - 수동 재점검은 현재 원격 리비전과 자료를 다시 확인해 동기화가 덜 된 요청을 보류한다.
-  접수와 완료를 구별하고 WATCH의 429 대기 초를 전달한다. GET과 POST 사이의 동시 변경을
-  원자적으로 막는 새 계약은 아니며 원본 아웃박스가 최종 감시 목표로 수렴시킨다.
+  접수와 완료를 구별하고 WATCH의 429 대기 초를 전달한다. GET과 POST 사이에 자료가
+  바뀔 수 있다. BATON 아웃박스가 최신 URL과 점검 활성 상태를 WATCH에 반영한다.
   접수 후 버튼을 30초, 429이면 서버 대기 초 동안 비활성화하고 남은 초를 표시한다.
   재요청 시각과 진행 중인 요청은 팀·시즌·자료·공유 키·URL별로 구분해 역할 이동 뒤에도
   유지한다. 미사용 재요청 시각 캐시는 1시간 뒤 정리하며 현재 페이지 메모리만 사용한다.
@@ -76,9 +76,9 @@ UI는 이 인박스를 적용하지 않으므로 역순 이벤트로 최신 상�
 
 구현 근거:
 
-- [BATON 상태 조회 결정](https://github.com/ljkhyeong/baton/blob/b6b3d164ca5b9c8931b71f300cedbee44749562a/docs/ADR/0021_watch-current-state-query/adr.md)
-- [BATON 상태 조회 서비스](https://github.com/ljkhyeong/baton/blob/b6b3d164ca5b9c8931b71f300cedbee44749562a/application/src/main/java/com/personal/baton/application/workspace/WorkspaceResourceHealthService.java)
-- [BATON 자료 상태 화면](https://github.com/ljkhyeong/baton/blob/b6b3d164ca5b9c8931b71f300cedbee44749562a/frontend/src/features/watch/ResourceHealthStatus.tsx)
+- [BATON 상태 조회 결정](https://github.com/ljkhyeong/baton/blob/ef39f1fc468e0b58bbc8aee623b58edaa88f110c/docs/ADR/0021_watch-current-state-query/adr.md)
+- [BATON 상태 조회 서비스](https://github.com/ljkhyeong/baton/blob/ef39f1fc468e0b58bbc8aee623b58edaa88f110c/application/src/main/java/com/personal/baton/application/workspace/WorkspaceResourceHealthService.java)
+- [BATON 자료 상태 화면](https://github.com/ljkhyeong/baton/blob/ef39f1fc468e0b58bbc8aee623b58edaa88f110c/frontend/src/features/watch/ResourceHealthStatus.tsx)
 
 ## WATCH 독립 복원
 
