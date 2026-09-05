@@ -2,6 +2,16 @@
 
 최종 수정일: 2026-09-05
 
+## 에이전트 지시와 스킬 정리
+
+- [GPT-6 Astra 공식 가이드](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra)에 맞춰
+  공통 규칙은 [AGENTS.md](AGENTS.md), 작업별 조건은 스킬 5개로 정리했다.
+  중복된 `baton-watch-flows`와 일반 코딩 설명, 반복된 구현 현황을 삭제했다.
+- 지시·스킬·표시 정보는 301줄에서 130줄로, 문자 수는 41.4% 줄었다.
+  API 문서 경로와 이벤트 삭제 조건, 실제 경보·대시보드 검사 명령도 바로잡았다.
+- 스킬 5개의 형식·표시 정보와 HANDOFF를 포함한 로컬 링크 44개를 확인했다. 문서·스킬만 변경했으며
+  애플리케이션 테스트와 이미지 검사는 실행하지 않았다.
+
 ## 화면 문구와 문서 정리
 
 - BATON `ef39f1fc`를 전용 브랜치 `codex/watch-state-recovery`에 커밋·푸시했다.

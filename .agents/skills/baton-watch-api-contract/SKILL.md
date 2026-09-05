@@ -1,36 +1,16 @@
 ---
 name: baton-watch-api-contract
-description: BATON WATCH의 HTTP 계약 작업 흐름. /api/v1 경로, 요청 또는 응답 DTO, 검증, 인증 적용 범위, 오류 코드, 상태 코드, 페이지네이션, 멱등성, 범위를 좁힌 컨트롤러 및 직렬화 테스트를 추가하거나 변경할 때 사용한다.
+description: BATON WATCH의 인바운드 HTTP 경로, DTO, 인증, 오류 응답과 계약 테스트를 변경할 때 사용한다.
 ---
 
 # BATON WATCH API 계약
 
-## 계약 점검 및 보존
+기준은 [PRD-0002](../../../docs/prd/0002_api-contract/spec.md)와 변경 대상 컨트롤러·HTTP 테스트다. 외부로 보내는 BATON 콜백은 [PRD-0004](../../../docs/prd/0004_health-change-event-delivery/spec.md)의 별도 계약이다.
 
-- docs/PRD/0002_api-contract/spec.md, 영향을 받는 컨트롤러/DTO와 해당 HTTP 테스트를 읽는다.
-- 엔드포인트가 제품 동작이나 서비스 소유권을 변경한다면 PRD-0001과 ADR-0001을 읽는다.
-- 아웃바운드 BATON 콜백을 다루는 작업이라면 PRD-0004를 읽는다. 이 콜백은
-  인바운드 WATCH API 경로가 아니다.
-- GET /api/v1/system/status와 인증된 PUT/GET
-  /api/v1/resource-monitors/{resourceReference}, POST
-  /api/v1/resource-monitors/{resourceReference}/check-requests를 구현된 경로로 취급한다.
-- 경로를 /api/v1 아래에 유지하고 이름이 있는 전송 DTO를 반환한다. 인바운드 애플리케이션 포트에 위임한다.
-- 전송 검증은 웹 어댑터에 두고, 인가·상태·트랜잭션 규칙은 애플리케이션 또는 도메인 코드에 둔다.
-- 같은 필드와 HTTP 경계에서 한 제약이 다른 제약을 이미 포함하면 소유하는 제약만
-  유지한다. 문서 모양만 맞추려고 중복 Bean Validation이나 별도 검증기를 만들지 않는다.
-- 요청 바인딩, Bearer 헤더 해석과 프레임워크 예외 분류는 Spring MVC·Security의
-  표준 변환기와 공통 예외 처리 확장점을 우선 사용한다. WATCH 고유 코드는 안정적인
-  Problem Details 봉투, 민감 정보 제거와 MVC 이전 인증·방화벽 경계에만 둔다.
+- `/api/v1` 경로와 명시적인 전송 DTO를 사용한다. 컨트롤러는 애플리케이션 포트에 위임하고, 요청 형식 검증은 웹 어댑터에 둔다.
+- 공개 상태 조회와 인증이 필요한 모니터 API를 구분한다. Spring MVC 이전 인증·방화벽 오류도 공통 Problem Details 형식을 유지한다. 응답에 대상 본문·자격 증명·해석된 IP·원본 예외·BATON 인가 판단을 노출하지 않는다.
+- 요청 바인딩·Bearer 해석·예외 처리는 기존 Spring MVC·Security 확장점을 사용한다. 같은 필드를 중복 검증하는 코드를 추가하지 않는다.
+- 수동 재점검은 `202` 예약 접수, 기존 도래 일정·유효 리스 합류, 리소스별 새 예약 간격 30초를 유지한다. 상세 조건은 [PRD-0003](../../../docs/prd/0003_monitoring-mvp/spec.md)을 따른다.
+- 계약을 바꾸면 해당 PRD와 관련 MockMvc 테스트를 함께 갱신한다. 변경한 인증·상태 코드·콘텐츠 타입·필드·시간 형식·호환성을 확인한다.
 
-## 변경 절차
-
-1. 명령 또는 조회를 추가하기 전에 인증, 멱등성, 응답 형태, 오류와 호환성을 정의한다.
-2. 응답 본문, 자격 증명, 해석된 주소, 원본 예외 또는 BATON이 소유하는 인가 결정을 노출하지 않는다.
-3. 같은 변경에서 PRD-0002와 범위를 좁힌 MockMvc 계약 테스트를 갱신한다.
-4. 정확한 상태, 콘텐츠 타입, 필드, 열거형 값과 타임스탬프 형식을 검증한다.
-5. ./gradlew :adapter-in-web:test를 실행하고, 애플리케이션 또는 런타임 조립이 변경됐다면 검증 범위를 넓힌다.
-
-수동 재점검은 202 예약 접수, 기존 도래 일정·유효 리스 합류와 리소스별 30초 간격을 유지한다.
-시도 이력, 인바운드 웹훅 또는 이벤트 전달 경로는 채택되지 않았다.
-PRD-0004가 아웃바운드 직접 전달을 구현한다는 이유만으로 이러한 경로를 만들지
-않는다.
+`./gradlew :adapter-in-web:test`를 실행한다. 런타임 인증·조립도 바꾸면 관련 `bootstrap` 테스트를 포함한다.

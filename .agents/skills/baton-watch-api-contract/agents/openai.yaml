@@ -1,4 +1,4 @@
 interface:
   display_name: "BATON WATCH API 계약"
-  short_description: "WATCH HTTP API 계약을 유지합니다"
-  default_prompt: "$baton-watch-api-contract 스킬을 사용해 BATON WATCH API 엔드포인트와 범위를 좁힌 계약 테스트를 추가하거나 변경합니다."
+  short_description: "WATCH HTTP 경로·인증·DTO·오류 응답 변경"
+  default_prompt: "$baton-watch-api-contract로 요청한 WATCH API 계약 변경을 처리해줘."
