@@ -5,6 +5,8 @@ import static com.personal.baton.watch.adapter.out.persistence.monitoring.Monito
 
 import com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MonitorRow;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult.Status;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
@@ -17,6 +19,7 @@ import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -60,6 +63,54 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 .optional()
                 .map(this::toProjection);
     }
+
+    @Override
+    public MonitorCheckRequestResult requestCheck(
+            ResourceReference resourceReference, Instant requestedAt, Duration minimumInterval) {
+        return transactions.execute(ignored -> {
+            CheckRequestRow row = jdbc.sql("SELECT " + MONITOR_COLUMNS + """
+                            , last_check_requested_at
+                            FROM watch_monitor WHERE resource_reference = ? FOR UPDATE
+                            """)
+                    .param(resourceReference.value())
+                    .query((rs, index) -> new CheckRequestRow(
+                            MonitoringJdbcRows.mapMonitor(rs, index),
+                            MonitoringJdbcRows.instant(rs, "last_check_requested_at")))
+                    .optional().orElse(null);
+            if (row == null) {
+                return new MonitorCheckRequestResult(Status.NOT_FOUND, null, 0);
+            }
+            MonitorRow monitor = row.monitor();
+            if (monitor.monitoringState() == MonitoringState.INACTIVE) {
+                return new MonitorCheckRequestResult(Status.INACTIVE, null, 0);
+            }
+            if (monitor.leaseExpiresAt() != null && monitor.leaseExpiresAt().isAfter(requestedAt)) {
+                return new MonitorCheckRequestResult(Status.IN_PROGRESS, null, 0);
+            }
+            if (!monitor.nextCheckAt().isAfter(requestedAt)) {
+                return new MonitorCheckRequestResult(Status.ALREADY_SCHEDULED, monitor.nextCheckAt(), 0);
+            }
+            if (row.lastRequestedAt() != null) {
+                Instant retryAt = row.lastRequestedAt().plus(minimumInterval);
+                if (retryAt.isAfter(requestedAt)) {
+                    Duration remaining = Duration.between(requestedAt, retryAt);
+                    long seconds = remaining.toSeconds() + (remaining.getNano() == 0 ? 0 : 1);
+                    return new MonitorCheckRequestResult(Status.RATE_LIMITED, null, seconds);
+                }
+            }
+            jdbc.sql("""
+                            UPDATE watch_monitor
+                            SET next_check_at = ?, last_check_requested_at = ?, updated_at = ?
+                            WHERE resource_reference = ?
+                            """)
+                    .params(databaseTime(requestedAt), databaseTime(requestedAt),
+                            databaseTime(requestedAt), resourceReference.value())
+                    .update();
+            return new MonitorCheckRequestResult(Status.SCHEDULED, requestedAt, 0);
+        });
+    }
+
+    private record CheckRequestRow(MonitorRow monitor, Instant lastRequestedAt) {}
 
     @Override
     public int markStaleUnknown(Instant staleBefore, Instant markedAt, int limit) {

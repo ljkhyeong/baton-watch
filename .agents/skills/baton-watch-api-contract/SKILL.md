@@ -12,7 +12,8 @@ description: BATON WATCH의 HTTP 계약 작업 흐름. /api/v1 경로, 요청 �
 - 아웃바운드 BATON 콜백을 다루는 작업이라면 PRD-0004를 읽는다. 이 콜백은
   인바운드 WATCH API 경로가 아니다.
 - GET /api/v1/system/status와 인증된 PUT/GET
-  /api/v1/resource-monitors/{resourceReference}를 구현된 경로로 취급한다.
+  /api/v1/resource-monitors/{resourceReference}, POST
+  /api/v1/resource-monitors/{resourceReference}/check-requests를 구현된 경로로 취급한다.
 - 경로를 /api/v1 아래에 유지하고 이름이 있는 전송 DTO를 반환한다. 인바운드 애플리케이션 포트에 위임한다.
 - 전송 검증은 웹 어댑터에 두고, 인가·상태·트랜잭션 규칙은 애플리케이션 또는 도메인 코드에 둔다.
 - 같은 필드와 HTTP 경계에서 한 제약이 다른 제약을 이미 포함하면 소유하는 제약만
@@ -29,6 +30,7 @@ description: BATON WATCH의 HTTP 계약 작업 흐름. /api/v1 경로, 요청 �
 4. 정확한 상태, 콘텐츠 타입, 필드, 열거형 값과 타임스탬프 형식을 검증한다.
 5. ./gradlew :adapter-in-web:test를 실행하고, 애플리케이션 또는 런타임 조립이 변경됐다면 검증 범위를 넓힌다.
 
-시도 이력, 수동 점검, 인바운드 웹훅 또는 이벤트 전달 경로는 채택되지 않았다.
+수동 재점검은 202 예약 접수, 기존 도래 일정·유효 리스 합류와 리소스별 30초 간격을 유지한다.
+시도 이력, 인바운드 웹훅 또는 이벤트 전달 경로는 채택되지 않았다.
 PRD-0004가 아웃바운드 직접 전달을 구현한다는 이유만으로 이러한 경로를 만들지
 않는다.

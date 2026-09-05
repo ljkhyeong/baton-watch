@@ -9,10 +9,11 @@ BATON WATCH는 BATON `RoleResource` URL 스냅샷을 비동기로 상태 점검�
 - `GET /api/v1/system/status`
 - 인증된 `PUT` 및 `GET /api/v1/resource-monitors/{resourceReference}`. 조회 프로젝션은 마지막 점검 시각과 상태 도출에 반영한 마지막 확정 결과 시각을 구분하며, JSON `PUT` 본문은 인증 후 16 KiB로 제한되고 초과 시 `413 PAYLOAD_TOO_LARGE`를 반환
 - 외부 설정보다 우선하는 Spring Boot 환경 후처리기로 요청·응답 헤더 8 KiB, 연결 128개, 수락 대기 32개, 워커 스레드 최대 32개·최소 유휴 4개, 워커 큐 64개를 고정한 내장 Tomcat 자원 상한
+- 인증된 `POST /api/v1/resource-monitors/{resourceReference}/check-requests` 비동기 재점검 예약. 기존 작업 합류와 리소스별 30초 요청 간격 적용
 - 리비전 안전성을 보장하는 `ACTIVE`/`INACTIVE` 모니터 동기화
 - PostgreSQL 기반 일정, 리스, 불변 시도·결과, 현재 상태, 전달 리스와 재시도 상태를 포함한 내구성 있는 상태 변경 이벤트
 - 대상 점검과 콜백 전달을 항목 처리 직전에 한 건씩 점유하는 격리된 단일 스레드 실행 레인, 60초 직렬 배치 실행 예산, 제한된 JDBC 구문·트랜잭션·행 잠금 대기
-- DNS 고정, SSRF·리다이렉트 방어, 시간·헤더·바이트 제한, 강제 상한이 있는 런타임 리소스 설정, 오래된 프로젝션 처리, 제한된 보존 기간을 갖춘 백그라운드 점검기
+- 본문을 읽지 않고 GET 응답 헤더로 판단하는 도달성 점검, DNS 고정, SSRF·리다이렉트 방어, 시간·헤더 제한, 강제 상한이 있는 런타임 리소스 설정, 오래된 프로젝션 처리, 제한된 보존 기간을 갖춘 백그라운드 점검기
 - 점검·전달 HTTP의 전체 시간 제한, 호출자 중단과 실행기 종료를 실제 요청 취소에 연결해 느린 응답이 작업자를 계속 점유하지 않도록 처리
 - API·유지보수·이벤트 전달을 유지하면서 인스턴스의 점검 예약만 끄는 시작 시 설정
 - 고정 페이로드, 이벤트 ID 멱등성, DNS 고정, 리다이렉트 금지, 지연 상한이 있는 지수 백오프 재시도, 전달 완료 이벤트 보존을 적용한 하나의 BATON HTTPS 콜백 최소 한 번 전달
@@ -77,6 +78,7 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 ~~~bash
 ./gradlew :adapter-out-persistence:loadTest --no-daemon
 ./gradlew :bootstrap:runtimeLoadTest --no-daemon
+./gradlew :bootstrap:capacityTest --no-daemon
 ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
 python3 ops/tests/gateway-test.py
@@ -194,6 +196,8 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 포함된 스테이징 산출물은 실제로 가동 중이거나 인증되었거나 외부에서 검증된 배포의 증거가 아닙니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
+- [운영 기본 설정의 용량 참고 시험](docs/runbooks/capacity-test.md)
+- [BATON 연동 확인과 복구 조건](docs/runbooks/baton-integration-review.md)
 - [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md)
 - [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
@@ -202,3 +206,18 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [점검 중지·재개와 읽기 전용 장애 진단](docs/runbooks/check-control-and-diagnostics.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)
+
+## 복구 후 재점검
+
+기존 모니터 API 토큰으로 `POST /api/v1/resource-monitors/{resourceReference}/check-requests`를
+호출하면 기존 활성 모니터의 일정을 앞당길 수 있습니다. 본문 없이 호출하며 202는 접수만
+뜻합니다. 이미 도래했거나 실행 중인 점검은 공유하고, 새 수동 예약은 30초 간격을 적용합니다.
+비활성 모니터는 409, 없는 모니터는 404, 간격 제한은 429와 `Retry-After`로 응답합니다.
+점검 설정이 꺼져 있으면 활성 작업자가 실행될 때까지 대기합니다.
+[재점검·진단 절차](docs/runbooks/check-control-and-diagnostics.md)를 참고하세요.
+
+대상 점검은 GET 상태·헤더를 확인하고 본문을 읽지 않은 채 연결을 닫습니다. 큰 본문이나
+스트리밍 본문 자체는 실패 사유가 아니며, 본문 전체 다운로드·로그인 뒤 접근은 검증하지
+않습니다. 기존 `watch.http.max-response-bytes`는 구성 호환성을 위해 검증하지만 현재
+점검의 성패에는 사용하지 않습니다. 진단의 새 `responseBytes: 0`은 본문 미소비를 뜻합니다.
+콜백 전달의 본문 제한은 유지합니다.

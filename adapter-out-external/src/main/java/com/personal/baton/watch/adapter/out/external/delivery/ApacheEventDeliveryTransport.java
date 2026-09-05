@@ -15,6 +15,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 
 /** 이미 검증되고 DNS에 고정된 POST 하나를 리다이렉트나 클라이언트 상태 없이 실행한다. */
@@ -70,7 +71,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
 
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(delivery.endpoint().uri()), request, response -> {
+                    client, HttpHost.create(delivery.endpoint().uri()), request, CloseMode.GRACEFUL, response -> {
                         progress.responseStarted();
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {

@@ -15,9 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,8 +24,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
 class ApacheHttpHopTransportTest {
-
-    private static final long ASYNC_COORDINATION_TIMEOUT_SECONDS = 5;
 
     private HttpServer server;
 
@@ -71,7 +66,7 @@ class ApacheHttpHopTransportTest {
 
             assertEquals(302, response.statusCode());
             assertEquals(List.of("/first", "/second"), response.locations());
-            assertEquals(8, response.responseBytes());
+            assertEquals(0, response.responseBytes());
         }
         assertEquals("GET", method.get());
         assertEquals("check.test:" + port, host.get());
@@ -79,73 +74,41 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
-    void reportsConsumedBytesWhenAStreamingResponseExceedsTheRemainingBudget()
-            throws Exception {
-        server = server();
-        server.createContext("/body", exchange -> {
-            byte[] body = "123456789".getBytes(StandardCharsets.UTF_8);
-            exchange.sendResponseHeaders(200, 0);
-            exchange.getResponseBody().write(body);
-            exchange.close();
-        });
-        server.start();
-
-        try (ApacheHttpHopTransport transport =
-                new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
-            OutboundHttpFailure failure = assertThrows(
-                    OutboundHttpFailure.class,
-                    () -> transport.execute(target("/body"), Duration.ofSeconds(2), 8));
-
-            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
-            assertEquals(8, failure.responseBytes());
-        }
-    }
-
-    @Test
-    void abortsAnUnknownLengthResponseAtTheCapWithoutWaitingForMoreBodyBytes()
-            throws Exception {
-        CountDownLatch prefixSent = new CountDownLatch(1);
+    void acceptsALargeDeclaredBodyWithoutWaitingForIt() throws Exception {
         CountDownLatch releaseBody = new CountDownLatch(1);
         server = server();
-        server.createContext("/body", exchange -> {
-            exchange.sendResponseHeaders(200, 0);
+        server.createContext("/large", exchange -> {
+            exchange.sendResponseHeaders(200, 1024 * 1024);
             try {
-                exchange.getResponseBody().write("12345678".getBytes(StandardCharsets.UTF_8));
                 exchange.getResponseBody().flush();
-                prefixSent.countDown();
                 await(releaseBody);
             } finally {
                 exchange.close();
             }
         });
         server.start();
-        ExecutorService caller = Executors.newSingleThreadExecutor();
-        Future<OutboundHttpFailure> result = null;
 
-        try (ApacheHttpHopTransport transport =
-                new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
-            result = caller.submit(() -> {
-                try {
-                    transport.execute(target("/body"), Duration.ofSeconds(2), 8);
-                    return null;
-                } catch (OutboundHttpFailure failure) {
-                    return failure;
-                }
-            });
-
-            assertTrue(prefixSent.await(
-                    ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS));
-            OutboundHttpFailure failure = result.get(
-                    ASYNC_COORDINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
-            assertEquals(8, failure.responseBytes());
+        try (var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+            HttpHopResponse response = transport.execute(target("/large"), Duration.ofSeconds(1), 64);
+            assertEquals(200, response.statusCode());
+            assertEquals(0, response.responseBytes());
         } finally {
             releaseBody.countDown();
-            if (result != null) {
-                result.cancel(true);
-            }
-            caller.shutdownNow();
-            assertTrue(caller.awaitTermination(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void closesAStreamingBodyImmediatelyAndReleasesTheWorker() throws Exception {
+        try (var streaming = new StreamingHttpTestServer();
+                var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+            HttpHopResponse response = transport.execute(
+                    target(streaming.uri("check.test", "/stream")), Duration.ofSeconds(1), 64);
+            assertEquals(200, response.statusCode());
+            assertEquals(0, response.responseBytes());
+            assertTrue(streaming.awaitDisconnected());
+            assertEquals(204, transport.execute(
+                    target(streaming.uri("check.test", "/quick")),
+                    Duration.ofSeconds(1), 64).statusCode());
         }
     }
 
@@ -174,23 +137,38 @@ class ApacheHttpHopTransportTest {
 
     @ParameterizedTest
     @EnumSource(StopReason.class)
-    void cancelsTheSocketAndReleasesTheWorker(StopReason reason) throws Exception {
-        try (var streaming = new StreamingHttpTestServer();
-                var transport = new ApacheHttpHopTransport(testLimits(65_536), 1, 1)) {
+    void cancelsWhileWaitingForHeadersAndReleasesTheWorker(StopReason reason) throws Exception {
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseHeaders = new CountDownLatch(1);
+        server = server();
+        server.createContext("/slow", exchange -> {
+            try (exchange) {
+                requestStarted.countDown();
+                await(releaseHeaders);
+                exchange.sendResponseHeaders(204, -1);
+            }
+        });
+        server.createContext("/quick", exchange -> {
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+        ApprovedTarget slow = target("/slow");
+        try (var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
             AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
             AtomicBoolean callerInterrupted = new AtomicBoolean();
             Thread caller = new Thread(() -> {
                 try {
-                    transport.execute(target(streaming.uri("check.test", "/stream")),
-                            Duration.ofSeconds(reason == StopReason.TIMEOUT ? 2 : 10), 65_536);
+                    transport.execute(slow,
+                            Duration.ofSeconds(reason == StopReason.TIMEOUT ? 1 : 10), 64);
                 } catch (OutboundHttpFailure exception) {
                     failure.set(exception);
                     callerInterrupted.set(Thread.currentThread().isInterrupted());
                 }
-            }, "test-streaming-caller");
+            }, "test-header-caller");
             caller.start();
             try {
-                assertTrue(streaming.awaitResponseStarted());
+                assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
                 switch (reason) {
                     case TIMEOUT -> { }
                     case CALLER_INTERRUPTED -> caller.interrupt();
@@ -198,17 +176,21 @@ class ApacheHttpHopTransportTest {
                 }
                 caller.join(3_000);
                 assertFalse(caller.isAlive());
-                assertEquals(reason == StopReason.TIMEOUT
-                        ? OutboundHttpFailure.Kind.READ_TIMEOUT
-                        : OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.get().kind());
-                assertEquals(reason == StopReason.CALLER_INTERRUPTED, callerInterrupted.get());
-                if (reason != StopReason.SHUTDOWN) {
-                    assertEquals(204, transport.execute(
-                            target(streaming.uri("check.test", "/quick")),
-                            Duration.ofSeconds(1), 65_536).statusCode());
+                if (reason == StopReason.TIMEOUT) {
+                    // 전체 기한과 소켓 응답 기한 중 먼저 만료된 경로가 결과를 결정한다.
+                    assertTrue(failure.get().kind() == OutboundHttpFailure.Kind.CONNECT_TIMEOUT
+                            || failure.get().kind() == OutboundHttpFailure.Kind.READ_TIMEOUT);
+                } else {
+                    assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.get().kind());
                 }
-                assertTrue(streaming.awaitDisconnected());
+                assertEquals(reason == StopReason.CALLER_INTERRUPTED, callerInterrupted.get());
+                releaseHeaders.countDown();
+                if (reason != StopReason.SHUTDOWN) {
+                    assertEquals(204, transport.execute(target("/quick"),
+                            Duration.ofSeconds(1), 64).statusCode());
+                }
             } finally {
+                releaseHeaders.countDown();
                 caller.interrupt();
                 caller.join(1_000);
             }

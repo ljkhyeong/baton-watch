@@ -37,10 +37,14 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
 
     @ExceptionHandler(MonitorApiException.class)
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
+        HttpHeaders headers = new HttpHeaders();
+        if (exception.retryAfterSeconds() > 0) {
+            headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
+        }
         return problem(
                 exception.status(),
                 exception.problem(),
-                HttpHeaders.EMPTY);
+                headers);
     }
 
     @ExceptionHandler(Exception.class)

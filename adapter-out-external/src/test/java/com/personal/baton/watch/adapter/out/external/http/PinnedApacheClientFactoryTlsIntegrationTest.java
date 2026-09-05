@@ -28,6 +28,7 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.ssl.SSLContexts;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -113,7 +114,7 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
                 hostname, List.of(LOOPBACK), clientLimits())) {
             return ApacheResponseLifecycle.execute(
                     client, new HttpHost("https", hostname, server.getAddress().getPort()),
-                    request, response -> response.getCode());
+                    request, CloseMode.GRACEFUL, response -> response.getCode());
         }
     }
 

@@ -24,7 +24,7 @@ dependencies {
 
 tasks.named('test', Test) {
     useJUnitPlatform {
-        excludeTags 'runtime-load'
+        excludeTags 'runtime-load', 'capacity'
     }
 }
 
@@ -42,6 +42,22 @@ tasks.register('runtimeLoadTest', Test) {
     }
     systemProperty 'watch.runtime-load.monitors',
             providers.gradleProperty('watchRuntimeLoadMonitors').getOrElse('25')
+    testLogging.showStandardStreams = true
+    outputs.upToDateWhen { false }
+}
+
+tasks.register('capacityTest', Test) {
+    description = '운영 기본 일정과 느린 점검 혼합 조건의 처리 간격 및 보존 정리 참고값을 측정한다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform { includeTags 'capacity' }
+    filter {
+        includeTestsMatching '*BatonWatchCapacityTest'
+        failOnNoMatchingTests = true
+    }
+    systemProperty 'watch.capacity.monitors', providers.gradleProperty('watchCapacityMonitors').getOrElse('12')
+    systemProperty 'watch.capacity.slow-millis', providers.gradleProperty('watchCapacitySlowMillis').getOrElse('5000')
     testLogging.showStandardStreams = true
     outputs.upToDateWhen { false }
 }

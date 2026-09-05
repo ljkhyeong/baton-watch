@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProject
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.DatabaseClockPort;
@@ -19,6 +20,7 @@ import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
+import com.personal.baton.watch.application.monitoring.service.RequestMonitorCheckService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -82,6 +84,11 @@ public class MonitoringConfiguration {
     @Bean
     GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
         return persistence::findProjection;
+    }
+
+    @Bean
+    RequestMonitorCheckUseCase requestMonitorCheckUseCase(MonitorPersistencePort persistence, Clock clock) {
+        return new RequestMonitorCheckService(persistence, clock);
     }
 
     @Bean
