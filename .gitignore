@@ -7,3 +7,4 @@ ops/staging.env
 .DS_Store
 *.dump
 .watch-backup.*
+__pycache__/

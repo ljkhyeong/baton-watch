@@ -56,6 +56,9 @@ jobs:
       - name: 셸 스크립트 정적 검사
         run: shellcheck ops/*.sh ops/tests/*.sh
 
+      - name: BATON 스냅샷 독립 복원 도구 검사
+        run: python3 ops/tests/baton-snapshot-recovery-test.py
+
       - name: 런타임 라이선스 정책 회귀 검사
         run: |
           python3 ops/tests/runtime-license-policy-test.py

@@ -221,3 +221,9 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 않습니다. 기존 `watch.http.max-response-bytes`는 구성 호환성을 위해 검증하지만 현재
 점검의 성패에는 사용하지 않습니다. 진단의 새 `responseBytes: 0`은 본문 미소비를 뜻합니다.
 콜백 전달의 본문 제한은 유지합니다.
+
+## BATON 원본 스냅샷으로 독립 복원
+
+WATCH DB만 복원한 뒤에는 [BATON 스냅샷 대조·재전송 절차](docs/runbooks/baton-snapshot-recovery.md)를
+사용한다. 기본 실행은 조회이며 같은 리비전의 불변 스냅샷으로만 재전송한다. 더 높은 WATCH
+리비전과 같은 리비전의 다른 본문은 충돌로 보고하며 원본 URL·토큰은 결과에 남기지 않는다.
