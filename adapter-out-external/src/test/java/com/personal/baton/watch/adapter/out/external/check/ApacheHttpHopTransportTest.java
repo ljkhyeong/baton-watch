@@ -128,7 +128,6 @@ class ApacheHttpHopTransportTest {
                     () -> transport.execute(target("/headers"), Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
-            assertEquals(0, failure.responseBytes());
         }
     }
 

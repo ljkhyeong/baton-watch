@@ -38,8 +38,8 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
         return requestExecutor.execute(
                 request,
                 remainingTime,
-                progress -> executeBlocking(
-                        target, request, remainingTime, progress));
+                onResponseStarted -> executeBlocking(
+                        target, request, remainingTime, onResponseStarted));
     }
 
     @Override
@@ -51,7 +51,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
             ApprovedTarget target,
             HttpGet request,
             Duration remainingTime,
-            ApacheHttpRequestExecutor.Progress progress)
+            Runnable onResponseStarted)
             throws IOException {
         ApacheHttpClientLimits clientLimits = ApacheHttpClientLimits.cappedBy(
                 limits.connectTimeout(),
@@ -64,7 +64,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
                 target.target().hostname(), target.addresses(), clientLimits)) {
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(target.target().uri()), request, CloseMode.IMMEDIATE, response -> {
-                        progress.responseStarted();
+                        onResponseStarted.run();
                         List<String> locations = Arrays.stream(response.getHeaders(HttpHeaders.LOCATION))
                                 .map(Header::getValue)
                                 .map(value -> Objects.requireNonNullElse(value, ""))

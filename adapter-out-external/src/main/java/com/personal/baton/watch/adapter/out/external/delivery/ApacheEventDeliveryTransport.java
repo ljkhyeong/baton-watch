@@ -42,7 +42,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
         return requestExecutor.execute(
                 httpRequest,
                 remainingTime,
-                progress -> executeBlocking(request, httpRequest, remainingTime, progress));
+                onResponseStarted -> executeBlocking(request, httpRequest, remainingTime, onResponseStarted));
     }
 
     @Override
@@ -54,7 +54,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             ApprovedDeliveryRequest delivery,
             HttpPost request,
             Duration remainingTime,
-            ApacheHttpRequestExecutor.Progress progress)
+            Runnable onResponseStarted)
             throws IOException {
         ApacheHttpClientLimits clientLimits = ApacheHttpClientLimits.cappedBy(
                 limits.connectTimeout(),
@@ -72,13 +72,10 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(delivery.endpoint().uri()), request, CloseMode.GRACEFUL, response -> {
-                        progress.responseStarted();
+                        onResponseStarted.run();
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {
-                            bodyDiscarder.discard(
-                                    entity,
-                                    limits.maxResponseBytes(),
-                                    progress::responseBytes);
+                            bodyDiscarder.discard(entity, limits.maxResponseBytes());
                         }
                         return response.getCode();
                     });

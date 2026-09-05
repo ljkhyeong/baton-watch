@@ -202,7 +202,7 @@ class SafeUrlCheckEngineTest {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(transportKind, 0);
+        OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(transportKind);
         transport.add(scriptedFailure);
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)

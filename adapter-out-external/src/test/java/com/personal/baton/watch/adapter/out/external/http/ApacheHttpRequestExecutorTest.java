@@ -51,7 +51,7 @@ class ApacheHttpRequestExecutorTest {
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             Thread caller = new Thread(() -> {
                 try {
-                    executor.execute(request, Duration.ofSeconds(5), progress -> {
+                    executor.execute(request, Duration.ofSeconds(5), onResponseStarted -> {
                         operationStarted.countDown();
                         try {
                             block.await();
@@ -88,7 +88,7 @@ class ApacheHttpRequestExecutorTest {
                 new ApacheHttpRequestExecutor(rejectedExecutor)) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
-                    () -> executor.execute(new HttpGet("https://check.test/"), Duration.ofSeconds(1), progress -> null));
+                    () -> executor.execute(new HttpGet("https://check.test/"), Duration.ofSeconds(1), onResponseStarted -> null));
 
             assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
         }
@@ -105,7 +105,7 @@ class ApacheHttpRequestExecutorTest {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             Thread worker = executor.execute(
-                    new HttpGet("https://check.test/"), Duration.ofSeconds(1), progress -> Thread.currentThread());
+                    new HttpGet("https://check.test/"), Duration.ofSeconds(1), onResponseStarted -> Thread.currentThread());
 
             assertTrue(worker.getName().startsWith("test-http-"));
             assertTrue(worker.isDaemon());
@@ -116,32 +116,32 @@ class ApacheHttpRequestExecutorTest {
     void preservesTheBoundedBlockingFailureTaxonomy() {
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.TLS_FAILURE,
-                progress -> {
+                onResponseStarted -> {
                     throw new SSLException("sensitive TLS detail");
                 });
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.READ_TIMEOUT,
-                progress -> {
+                onResponseStarted -> {
                     throw new SocketTimeoutException("sensitive timeout detail");
                 });
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.INTERNAL_FAILURE,
-                progress -> {
+                onResponseStarted -> {
                     throw new UnknownHostException("pinned resolver mismatch");
                 });
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.NETWORK_FAILURE,
-                progress -> {
+                onResponseStarted -> {
                     throw new IOException("sensitive network detail");
                 });
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE,
-                progress -> {
+                onResponseStarted -> {
                     throw new MessageConstraintException("sensitive parser detail");
                 });
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.INTERNAL_FAILURE,
-                progress -> {
+                onResponseStarted -> {
                     throw new IllegalStateException("sensitive adapter detail");
                 });
     }
@@ -182,7 +182,7 @@ class ApacheHttpRequestExecutorTest {
                 var caller = Executors.newSingleThreadExecutor()) {
             assertTrue(workerOccupied.await(1, TimeUnit.SECONDS));
             var result = caller.submit(() -> assertThrows(OutboundHttpFailure.class,
-                    () -> executor.execute(request, Duration.ofSeconds(10), progress -> {
+                    () -> executor.execute(request, Duration.ofSeconds(10), onResponseStarted -> {
                         operationCalled.set(true);
                         return null;
                     })));
@@ -212,9 +212,9 @@ class ApacheHttpRequestExecutorTest {
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             Thread caller = new Thread(() -> {
                 try {
-                    executor.execute(request, Duration.ofMillis(500), progress -> {
+                    executor.execute(request, Duration.ofMillis(500), onResponseStarted -> {
                         if (responseStarted) {
-                            progress.responseStarted();
+                            onResponseStarted.run();
                         }
                         operationStarted.countDown();
                         try {
@@ -243,7 +243,7 @@ class ApacheHttpRequestExecutorTest {
 
     private static void assertBlockingFailure(
             OutboundHttpFailure.Kind expectedKind,
-            IOFunction<ApacheHttpRequestExecutor.Progress, Void> operation) {
+            IOFunction<Runnable, Void> operation) {
         try (ApacheHttpRequestExecutor executor =
                 new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             OutboundHttpFailure failure = assertThrows(

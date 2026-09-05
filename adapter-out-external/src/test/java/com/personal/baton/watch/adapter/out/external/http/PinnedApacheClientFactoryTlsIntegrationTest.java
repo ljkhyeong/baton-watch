@@ -103,7 +103,6 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
                             request, Duration.ofSeconds(5), ignored -> execute(request)));
 
             assertEquals(OutboundHttpFailure.Kind.TLS_FAILURE, failure.kind());
-            assertEquals(0, failure.responseBytes());
             assertEquals(0, handlerCalls.get());
         }
     }
