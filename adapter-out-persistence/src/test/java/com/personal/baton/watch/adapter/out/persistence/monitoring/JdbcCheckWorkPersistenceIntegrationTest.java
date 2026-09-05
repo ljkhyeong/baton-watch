@@ -75,7 +75,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 """, claimed.attemptId());
         Instant claimedAt = ((java.sql.Timestamp) lease.get("claimed_at")).toInstant();
         Instant leaseExpiresAt = ((java.sql.Timestamp) lease.get("lease_expires_at")).toInstant();
-        assertThat(claimed.scheduledAt()).isEqualTo(BASE_TIME);
         assertThat(claimed.claimedAt()).isEqualTo(claimedAt);
         assertThat(claimedAt).isBetween(beforeClaim, afterClaim);
         assertThat(leaseExpiresAt).isEqualTo(claimedAt.plus(LEASE));

@@ -18,11 +18,9 @@ public final class MonitoringScheduler {
     private static final Logger log = LoggerFactory.getLogger(MonitoringScheduler.class);
 
     private final RunDueChecksUseCase runDueChecks;
-    private final MonitoringMetrics metrics;
 
-    public MonitoringScheduler(RunDueChecksUseCase runDueChecks, MonitoringMetrics metrics) {
+    public MonitoringScheduler(RunDueChecksUseCase runDueChecks) {
         this.runDueChecks = runDueChecks;
-        this.metrics = metrics;
     }
 
     @Scheduled(

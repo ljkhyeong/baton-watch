@@ -32,7 +32,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
     }
 
     @Override
-    public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
+    public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime)
             throws OutboundHttpFailure {
         HttpGet request = new HttpGet(target.target().uri());
         return requestExecutor.execute(
@@ -70,8 +70,7 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
                                 .map(value -> Objects.requireNonNullElse(value, ""))
                                 .toList();
                         // 도달 여부는 응답 헤더로 판단하고 본문을 읽거나 비우지 않는다.
-                        return new HttpHopResponse(
-                                response.getCode(), locations, 0);
+                        return new HttpHopResponse(response.getCode(), locations);
                     });
         }
     }

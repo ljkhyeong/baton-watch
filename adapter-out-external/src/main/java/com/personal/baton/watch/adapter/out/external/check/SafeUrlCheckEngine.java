@@ -39,13 +39,13 @@ final class SafeUrlCheckEngine {
 
     CheckObservation check(TargetUrl targetUrl) {
         long startedAt = clock.getAsLong();
-        CheckState state = new CheckState();
+        int redirectCount = 0;
         try {
             ValidatedUri current;
             try {
                 current = targetPolicy.prepare(targetUrl);
             } catch (IllegalArgumentException exception) {
-                return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, state);
+                return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, redirectCount);
             }
 
             Set<String> visited = new HashSet<>();
@@ -54,7 +54,7 @@ final class SafeUrlCheckEngine {
             while (true) {
                 Duration remaining = remaining(startedAt);
                 if (remaining.isZero()) {
-                    return failure(CheckOutcome.CONNECT_TIMEOUT, startedAt, state);
+                    return failure(CheckOutcome.CONNECT_TIMEOUT, startedAt, redirectCount);
                 }
 
                 List<InetAddress> resolved;
@@ -62,8 +62,8 @@ final class SafeUrlCheckEngine {
                     resolved = dnsLookup.resolve(current.hostname(), remaining);
                 } catch (DnsLookupException exception) {
                     return switch (exception.reason()) {
-                        case DNS_FAILURE -> failure(CheckOutcome.DNS_FAILURE, startedAt, state);
-                        case INTERNAL_FAILURE -> internalFailure(startedAt, state);
+                        case DNS_FAILURE -> failure(CheckOutcome.DNS_FAILURE, startedAt, redirectCount);
+                        case INTERNAL_FAILURE -> internalFailure(startedAt, redirectCount);
                     };
                 }
 
@@ -71,35 +71,29 @@ final class SafeUrlCheckEngine {
                 try {
                     approved = addressPolicy.approve(resolved);
                 } catch (AddressPolicyException exception) {
-                    return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, state);
+                    return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, redirectCount);
                 }
 
                 remaining = remaining(startedAt);
                 if (remaining.isZero()) {
-                    return failure(CheckOutcome.DNS_FAILURE, startedAt, state);
+                    return failure(CheckOutcome.DNS_FAILURE, startedAt, redirectCount);
                 }
-
-                long remainingBytes = limits.maxResponseBytes() - state.responseBytes;
 
                 HttpHopResponse response;
                 try {
-                    response = transport.execute(new ApprovedTarget(current, approved), remaining, remainingBytes);
+                    response = transport.execute(new ApprovedTarget(current, approved), remaining);
                 } catch (OutboundHttpFailure exception) {
-                    state.addBytes(exception.responseBytes(), limits.maxResponseBytes());
-                    return transportFailure(exception.kind(), startedAt, state);
-                }
-                if (!state.addBytes(response.responseBytes(), limits.maxResponseBytes())) {
-                    return failure(CheckOutcome.RESPONSE_TOO_LARGE, startedAt, state);
+                    return transportFailure(exception.kind(), startedAt, redirectCount);
                 }
 
                 if (!isRedirectStatus(response.statusCode())) {
-                    return finalResponse(response.statusCode(), startedAt, state);
+                    return finalResponse(response.statusCode(), startedAt, redirectCount);
                 }
                 if (response.locations().size() != 1) {
-                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
+                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, redirectCount);
                 }
-                if (state.redirectCount >= limits.maxRedirects()) {
-                    return failure(CheckOutcome.TOO_MANY_REDIRECTS, startedAt, state);
+                if (redirectCount >= limits.maxRedirects()) {
+                    return failure(CheckOutcome.TOO_MANY_REDIRECTS, startedAt, redirectCount);
                 }
 
                 ValidatedUri next;
@@ -107,33 +101,33 @@ final class SafeUrlCheckEngine {
                     URI redirectUri = targetPolicy.resolveRedirect(current, response.locations().getFirst());
                     next = targetPolicy.prepare(new TargetUrl(redirectUri.toString()));
                 } catch (IllegalArgumentException exception) {
-                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
+                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, redirectCount);
                 }
                 if (current.scheme().equals("https") && next.scheme().equals("http")) {
-                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
+                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, redirectCount);
                 }
                 if (!visited.add(next.loopKey())) {
-                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, state);
+                    return failure(CheckOutcome.REDIRECT_REJECTED, startedAt, redirectCount);
                 }
 
-                state.redirectCount++;
+                redirectCount++;
                 current = next;
             }
         } catch (RuntimeException exception) {
-            return internalFailure(startedAt, state);
+            return internalFailure(startedAt, redirectCount);
         }
     }
 
-    private CheckObservation finalResponse(int status, long startedAt, CheckState state) {
+    private CheckObservation finalResponse(int status, long startedAt, int redirectCount) {
         if (status < 200 || status > 599) {
-            return failure(CheckOutcome.NETWORK_FAILURE, startedAt, state);
+            return failure(CheckOutcome.NETWORK_FAILURE, startedAt, redirectCount);
         }
         return CheckObservation.forHttpStatus(
-                status, elapsed(startedAt), state.responseBytes, state.redirectCount);
+                status, elapsed(startedAt), 0, redirectCount);
     }
 
     private CheckObservation transportFailure(
-            OutboundHttpFailure.Kind kind, long startedAt, CheckState state) {
+            OutboundHttpFailure.Kind kind, long startedAt, int redirectCount) {
         CheckOutcome outcome = switch (kind) {
             case CONNECT_TIMEOUT -> CheckOutcome.CONNECT_TIMEOUT;
             case READ_TIMEOUT -> CheckOutcome.READ_TIMEOUT;
@@ -143,22 +137,22 @@ final class SafeUrlCheckEngine {
             case INTERNAL_FAILURE -> CheckOutcome.INTERNAL_FAILURE;
         };
         return outcome == CheckOutcome.INTERNAL_FAILURE
-                ? internalFailure(startedAt, state)
-                : failure(outcome, startedAt, state);
+                ? internalFailure(startedAt, redirectCount)
+                : failure(outcome, startedAt, redirectCount);
     }
 
-    private CheckObservation failure(CheckOutcome outcome, long startedAt, CheckState state) {
+    private CheckObservation failure(CheckOutcome outcome, long startedAt, int redirectCount) {
         return CheckObservation.failure(
-                outcome, elapsed(startedAt), state.responseBytes, state.redirectCount);
+                outcome, elapsed(startedAt), 0, redirectCount);
     }
 
-    private CheckObservation internalFailure(long startedAt, CheckState state) {
+    private CheckObservation internalFailure(long startedAt, int redirectCount) {
         return new CheckObservation(
                 CheckOutcome.INTERNAL_FAILURE,
                 null,
                 elapsed(startedAt),
-                state.responseBytes,
-                state.redirectCount);
+                0,
+                redirectCount);
     }
 
     private Duration remaining(long startedAt) {
@@ -179,18 +173,4 @@ final class SafeUrlCheckEngine {
         return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
     }
 
-    private static final class CheckState {
-
-        private long responseBytes;
-        private int redirectCount;
-
-        private boolean addBytes(long additionalBytes, long maximum) {
-            if (additionalBytes > maximum - responseBytes) {
-                responseBytes = maximum;
-                return false;
-            }
-            responseBytes += additionalBytes;
-            return true;
-        }
-    }
 }

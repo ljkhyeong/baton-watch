@@ -60,13 +60,12 @@ class ApacheHttpHopTransportTest {
 
         int port = server.getAddress().getPort();
         try (ApacheHttpHopTransport transport =
-                new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+                new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             HttpHopResponse response = transport.execute(
-                    target("/start"), Duration.ofSeconds(2), 64);
+                    target("/start"), Duration.ofSeconds(2));
 
             assertEquals(302, response.statusCode());
             assertEquals(List.of("/first", "/second"), response.locations());
-            assertEquals(0, response.responseBytes());
         }
         assertEquals("GET", method.get());
         assertEquals("check.test:" + port, host.get());
@@ -88,10 +87,9 @@ class ApacheHttpHopTransportTest {
         });
         server.start();
 
-        try (var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
-            HttpHopResponse response = transport.execute(target("/large"), Duration.ofSeconds(1), 64);
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            HttpHopResponse response = transport.execute(target("/large"), Duration.ofSeconds(1));
             assertEquals(200, response.statusCode());
-            assertEquals(0, response.responseBytes());
         } finally {
             releaseBody.countDown();
         }
@@ -100,15 +98,14 @@ class ApacheHttpHopTransportTest {
     @Test
     void closesAStreamingBodyImmediatelyAndReleasesTheWorker() throws Exception {
         try (var streaming = new StreamingHttpTestServer();
-                var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+                var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             HttpHopResponse response = transport.execute(
-                    target(streaming.uri("check.test", "/stream")), Duration.ofSeconds(1), 64);
+                    target(streaming.uri("check.test", "/stream")), Duration.ofSeconds(1));
             assertEquals(200, response.statusCode());
-            assertEquals(0, response.responseBytes());
             assertTrue(streaming.awaitDisconnected());
             assertEquals(204, transport.execute(
                     target(streaming.uri("check.test", "/quick")),
-                    Duration.ofSeconds(1), 64).statusCode());
+                    Duration.ofSeconds(1)).statusCode());
         }
     }
 
@@ -125,10 +122,10 @@ class ApacheHttpHopTransportTest {
         server.start();
 
         try (ApacheHttpHopTransport transport =
-                new ApacheHttpHopTransport(testLimits(64, 4, 8_192), 1, 1)) {
+                new ApacheHttpHopTransport(testLimits(4, 8_192), 1, 1)) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
-                    () -> transport.execute(target("/headers"), Duration.ofSeconds(2), 64));
+                    () -> transport.execute(target("/headers"), Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
             assertEquals(0, failure.responseBytes());
@@ -154,13 +151,13 @@ class ApacheHttpHopTransportTest {
         });
         server.start();
         ApprovedTarget slow = target("/slow");
-        try (var transport = new ApacheHttpHopTransport(testLimits(64), 1, 1)) {
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
             AtomicBoolean callerInterrupted = new AtomicBoolean();
             Thread caller = new Thread(() -> {
                 try {
                     transport.execute(slow,
-                            Duration.ofSeconds(reason == StopReason.TIMEOUT ? 1 : 10), 64);
+                            Duration.ofSeconds(reason == StopReason.TIMEOUT ? 1 : 10));
                 } catch (OutboundHttpFailure exception) {
                     failure.set(exception);
                     callerInterrupted.set(Thread.currentThread().isInterrupted());
@@ -187,7 +184,7 @@ class ApacheHttpHopTransportTest {
                 releaseHeaders.countDown();
                 if (reason != StopReason.SHUTDOWN) {
                     assertEquals(204, transport.execute(target("/quick"),
-                            Duration.ofSeconds(1), 64).statusCode());
+                            Duration.ofSeconds(1)).statusCode());
                 }
             } finally {
                 releaseHeaders.countDown();
@@ -214,17 +211,16 @@ class ApacheHttpHopTransportTest {
         return new ApprovedTarget(validated, List.of(InetAddress.getLoopbackAddress()));
     }
 
-    private static CheckerLimits testLimits(long maxResponseBytes) {
-        return testLimits(maxResponseBytes, 100, 8_192);
+    private static CheckerLimits testLimits() {
+        return testLimits(100, 8_192);
     }
 
     private static CheckerLimits testLimits(
-            long maxResponseBytes, int maxHeaderCount, int maxHeaderLineLength) {
+            int maxHeaderCount, int maxHeaderLineLength) {
         return new CheckerLimits(
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
-                maxResponseBytes,
                 3,
                 maxHeaderCount,
                 maxHeaderLineLength);

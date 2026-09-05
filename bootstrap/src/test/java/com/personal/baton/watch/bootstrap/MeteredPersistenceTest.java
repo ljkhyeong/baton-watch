@@ -40,7 +40,6 @@ class MeteredPersistenceTest {
                 UUID.fromString("00000000-0000-0000-0000-000000000002"),
                 new TargetUrl("https://example.com/health"),
                 NOW,
-                NOW,
                 true);
         CheckFinalization finalization = new CheckFinalization(
                 claim.attemptId(),

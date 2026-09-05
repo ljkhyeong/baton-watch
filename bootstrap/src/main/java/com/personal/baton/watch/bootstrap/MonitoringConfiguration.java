@@ -144,7 +144,6 @@ public class MonitoringConfiguration {
                 http.connectTimeout(),
                 http.responseTimeout(),
                 http.totalTimeout(),
-                http.maxResponseBytes(),
                 http.maxRedirects(),
                 http.maxHeaderCount(),
                 http.maxHeaderLineLength());

@@ -218,7 +218,6 @@ class MonitoringMetricsTest {
                 UUID.fromString("00000000-0000-0000-0000-000000000001"),
                 UUID.fromString("00000000-0000-0000-0000-000000000002"),
                 new TargetUrl("https://example.com/health"),
-                NOW.minusSeconds(1),
                 NOW,
                 recoveredLease);
     }

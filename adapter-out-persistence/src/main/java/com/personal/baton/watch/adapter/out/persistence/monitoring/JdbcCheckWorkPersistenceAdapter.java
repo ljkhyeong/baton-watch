@@ -195,7 +195,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 attemptId,
                 leaseToken,
                 new TargetUrl(monitor.targetUrl()),
-                monitor.nextCheckAt(),
                 claimedAt,
                 monitor.leaseAttemptId() != null
                         && monitor.leaseExpiresAt() != null
