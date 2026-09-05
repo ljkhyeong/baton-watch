@@ -82,6 +82,9 @@ bootstrap -> adapters -> application -> domain
 
 ## 빌드와 실행
 
+개발 중에는 [변경 범위별 검증 절차](docs/runbooks/development-validation.md)에 따라 필요한 검사부터 실행합니다.
+`python3 ops/run-validation.py status`로 이전 결과를 확인하고, 같은 도구의 `run` 명령으로 로그와 종료 코드를 보관할 수 있습니다.
+
 저장소에는 공식 SHA-256 체크섬과 함께 9.7.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker와 Docker Compose가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
 
 HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는 최대 풀 이하여야 합니다. 연결·검증 제한은 각각 250~30000ms이며 검증 제한이 연결 제한보다 작아야 합니다. 유휴 10000~1800000ms와 생존 확인 30000~1800000ms를 허용하며, 가변 풀의 유휴 제한은 최대 수명 30000~3600000ms보다 1000ms 이상 짧고 생존 확인은 최대 수명보다 짧아야 합니다. 초기화 실패 제한은 1~30000ms입니다. pgJDBC의 연결·로그인·취소 제한은 1~30초, 소켓 제한은 1~120초며, `WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다. `SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 하며, 검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다. 환경 변수 이름과 로컬 기본값은 [.env.example](.env.example)을 참고하세요.
@@ -100,7 +103,7 @@ HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는
 점검과 전달은 배치 전체를 미리 점유하지 않고 각 외부 호출 직전에 한 건씩 점유합니다. 시작 시 각 리스가 선점·외부 호출·확정의 최악 실행 시간을 넘고, 직렬 배치가 `WATCH_WORKER_EXECUTION_BUDGET` 안에 끝나는지 검증합니다. 배치 허용 실행 시간의 기본값과 상한은 60초이며 기본 점검 배치는 1건, 전달 배치는 2건입니다. 기본 데이터베이스·HTTP 제한에서 점검 배치의 계산상 최대 실행 시간은 21초, 전달 배치는 42초입니다.
 
 ~~~bash
-./gradlew clean test :bootstrap:verifyBootJarLicense --no-build-cache
+./gradlew test :bootstrap:verifyBootJarLicense
 ~~~
 
 일반 테스트는 실제 DB 백업·격리 복원과 읽기 전용 진단 CLI도 확인합니다. 별도 부하·복구 시험과 경보
@@ -151,14 +154,9 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 출처 증명을 추가합니다. 이 산출물은 14일 동안 보관하며 컨테이너 이미지 자체는
 현재 출처 증명 대상이 아닙니다.
 
-2026-09-01 ARM64 실제 검사에서는 현재 고정된 PostgreSQL 이미지 23건, NGINX 이미지
-1건, cloudflared 이미지 12건의 수정 가능한 `HIGH`·`CRITICAL` 취약점이 검출되어
-검사가 차단됩니다. 같은 날 확인한 공식 최신 후보도 PostgreSQL 23건, NGINX 1건,
-cloudflared 11건으로 기준을 통과하지 못해 버전만 올리지 않았습니다. 현재 소스의
-부트 JAR와 자체 이미지 세 개는 최신 보관 증거를 사용한 실제 검사에서 수정 가능한
-`HIGH`·`CRITICAL` 항목이 없었습니다. 검사 예외는 추가하지 않았으며 공식 이미지의
-수정 릴리스 검증 전에는 배포 준비가 완료된 것으로 보지 않습니다. 상세 결과는
-[HANDOFF.md](HANDOFF.md)를 참고하세요.
+공급망 검사의 차단 사유와 재검사 조건은 [HANDOFF.md](HANDOFF.md)에서 관리합니다.
+보고서의 이미지·플랫폼·검사 시점을 확인하며, 과거 검사 결과만으로 현재 배포 준비가
+완료됐다고 판단하지 않습니다. 날짜별 결과는 [이전 인계 기록](docs/history/handoff-2026-09-05.md)에 보관합니다.
 
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
 다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와

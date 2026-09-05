@@ -29,6 +29,7 @@
 
 ## 검증과 완료
 
+- 검증 전에 [개발 검증 절차](docs/runbooks/development-validation.md)와 기존 실행 결과를 확인한다. 긴 검사는 `ops/run-validation.py`로 명령·파일 지문·종료 코드·로그를 남기고, 같은 입력의 성공 결과나 환경 차단을 이유 없이 재실행하지 않는다.
 - 문구·문서·스킬만 바꾸면 링크·형식과 `git diff --check`를 확인한다. 구현을 그대로 반복하는 테스트는 추가하지 않는다.
 - 코드는 관련 테스트부터 실행한다. 여러 모듈의 동작을 바꾸면 `./gradlew test`, 시간 경계는 고정 `Clock`, Compose 변경은 해당 파일 조합의 `docker compose config`로 검증한다. 필요한 검사가 통과하면 새 변경·실패·미해결 문제가 있을 때만 검사를 늘리거나 반복한다.
 - 검증한 변경은 사용자가 달리 지시하지 않는 한 한국어 Conventional Commit으로 커밋하고 작업 브랜치를 푸시한다. `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:` 등 타입을 유지하며 강제 푸시는 명시적 승인이 필요하다.

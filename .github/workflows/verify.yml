@@ -26,6 +26,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: 로컬 검증 기록 도구 검사
+        run: python3 ops/tests/run-validation-test.py
+
       - name: 의존성 변경 검토
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
