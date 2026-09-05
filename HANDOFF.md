@@ -4,9 +4,10 @@
 
 ## 현재 작업
 
-- 작업 브랜치: `codex/simplify-watch-skills`. 공용 HTTP의 미사용 실패 바이트 집계를 제거하고
-  응답 시작 알림을 `Runnable`로 바꿨다. 본문 폐기 함수의 반환값·진행 콜백·0바이트 분기와 전용 테스트 1개를 제거했다.
-  콜백 본문 상한·실제 읽은 바이트 검사, HTTP 취소·타임아웃 분류는 유지한다.
+- 작업 브랜치: `codex/simplify-watch-skills`. 프로젝트 점검 후 테스트 준비 코드 22줄을 줄였다.
+  작업 시간 검증은 기존 공통 설정을 재사용하고, HTTP 테스트 서버의 미사용 응답 시작 신호를 제거했다.
+- `8bf0546`에서 공용 HTTP의 미사용 실패 바이트 집계와 본문 폐기 함수의 반환값·콜백·0바이트 분기를 제거했다.
+  콜백 본문 상한, HTTP 취소·타임아웃 분류는 유지한다.
 - `d3aa13a`에서 점검 바이트 계산·전용 테스트 2개, 미사용 `ClaimedCheck.scheduledAt`과
   스케줄러 메트릭 주입을 제거했다. 기존 설정 검증·저장 필드, DB 예약·리스·지연 측정은 유지한다.
 - `15bd9b8`에서 지시·스킬을 정리했고, `d1763d0`에서 [검증 기록 도구](ops/run-validation.py)와
@@ -19,7 +20,8 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
-| 공용 HTTP 정리 | 관련 테스트 후 `:adapter-out-external:test` 210개 실행·통과, 실패·건너뜀 없음. 본문·헤더 제한, TLS·DNS 고정, 취소·종료·타임아웃 확인. 변경과 호출자가 외부 통신 모듈 안에 있어 전체 프로젝트 검사는 반복하지 않음 |
+| 테스트 준비 코드 정리 | `WorkerExecutionBudgetTest`·`ApacheHttpHopTransportTest`·`ApacheEventDeliveryTransportTest` 15개 실행·통과. 실패·건너뜀 없음. 테스트 보조 코드만 바뀌어 관련 검사만 실행 |
+| 공용 HTTP 정리 `8bf0546` | 당시 `:adapter-out-external:test` 210개 실행·통과, 실패·건너뜀 없음. 본문·헤더 제한, TLS·DNS 고정, 취소·종료·타임아웃 확인 |
 | 점검 코드 정리 `d3aa13a` | 당시 `./gradlew test` 통과. 435개 중 423개 실행·domain 12개 기존 결과 재사용, 실패·건너뜀 없음. 실제 PostgreSQL 검사 포함 |
 | 검증 기록 도구 | Python 테스트 5개 통과. 성공·실패 종료 코드, 도구 부재, 실행 중 파일 변경, 시그널 종료 확인 |
 | 개발 검증 절차·CI 등록 | 문서 링크 74개·워크플로 YAML·기존 필수 Gradle 명령 유지·이전 인계 본문 보존 확인 |
@@ -31,6 +33,7 @@
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
 점검 코드 정리의 전체 로그는 `.gradle/agent-validation/20260905T132821057159Z-cleanup-full/`에 있다.
 공용 HTTP 모듈 로그는 `.gradle/agent-validation/20260905T134006130498Z-http-module/`에 있다.
+테스트 준비 코드 정리 로그는 `.gradle/agent-validation/20260905T135604532497Z-test-support-cleanup/`에 있다.
 
 ## 이번 세션의 도구 상태
 

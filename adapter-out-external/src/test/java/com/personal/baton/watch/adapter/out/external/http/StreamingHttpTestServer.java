@@ -18,7 +18,6 @@ public final class StreamingHttpTestServer implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService handlers = Executors.newFixedThreadPool(
             2, Thread.ofPlatform().daemon().name("test-streaming-http-", 1).factory());
-    private final CountDownLatch responseStarted = new CountDownLatch(1);
     private final CountDownLatch disconnected = new CountDownLatch(1);
 
     public StreamingHttpTestServer() throws IOException {
@@ -38,10 +37,6 @@ public final class StreamingHttpTestServer implements AutoCloseable {
         return URI.create("http://" + hostname + ":" + server.getAddress().getPort() + path);
     }
 
-    public boolean awaitResponseStarted() throws InterruptedException {
-        return responseStarted.await(3, TimeUnit.SECONDS);
-    }
-
     public boolean awaitDisconnected() throws InterruptedException {
         return disconnected.await(3, TimeUnit.SECONDS);
     }
@@ -53,7 +48,6 @@ public final class StreamingHttpTestServer implements AutoCloseable {
             while (!Thread.currentThread().isInterrupted()) {
                 exchange.getResponseBody().write('x');
                 exchange.getResponseBody().flush();
-                responseStarted.countDown();
                 Thread.sleep(25);
             }
         } catch (IOException exception) {
