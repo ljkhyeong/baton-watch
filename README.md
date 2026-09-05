@@ -198,6 +198,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
 - [운영 기본 설정의 용량 참고 시험](docs/runbooks/capacity-test.md)
 - [BATON 연동 확인과 복구 조건](docs/runbooks/baton-integration-review.md)
+- [BATON 자료 상태·재점검의 공개 HTTPS 검증](docs/runbooks/baton-resource-health-verification.md)
 - [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md)
 - [별도 JVM 중단·재시작 복구 시험](docs/runbooks/process-recovery-test.md)
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
