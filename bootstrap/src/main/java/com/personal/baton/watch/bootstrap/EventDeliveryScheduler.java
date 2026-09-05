@@ -4,12 +4,12 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchR
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
+@Conditional(EventDeliveryConfiguration.EnabledCondition.class)
 final class EventDeliveryScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(EventDeliveryScheduler.class);
@@ -27,7 +27,7 @@ final class EventDeliveryScheduler {
         EventDeliveryBatchResult result = runEventDeliveries.runEventDeliveries();
         if (result.claimed() > 0) {
             log.info(
-                    "health-change delivery batch completed claimed={} delivered={} retry={} replayed={} stale={}",
+                    "상태 변경 이벤트 전달 배치 완료 claimed={} delivered={} retry={} replayed={} stale={}",
                     result.claimed(),
                     result.delivered(),
                     result.retryScheduled(),

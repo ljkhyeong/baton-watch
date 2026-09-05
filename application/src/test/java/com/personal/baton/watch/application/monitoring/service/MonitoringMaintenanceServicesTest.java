@@ -3,6 +3,7 @@ package com.personal.baton.watch.application.monitoring.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
@@ -51,6 +52,12 @@ class MonitoringMaintenanceServicesTest {
 
     private static final class RecordingMonitorPersistence implements MonitorPersistencePort {
 
+        @Override
+        public MonitorCheckRequestResult requestCheck(
+                ResourceReference reference, Instant requestedAt, Duration minimumInterval) {
+            throw new UnsupportedOperationException();
+        }
+
         private Instant staleBefore;
         private Instant markedAt;
         private int limit;
@@ -86,6 +93,11 @@ class MonitoringMaintenanceServicesTest {
 
         @Override
         public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Duration getOldestDueCheckDelay() {
             throw new UnsupportedOperationException();
         }
 

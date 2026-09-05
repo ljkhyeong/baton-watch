@@ -28,6 +28,7 @@ public final class RuntimeSafetyEnvironmentPostProcessor
             Map.entry("logging.level.org.apache.hc.client5.http.impl", "OFF"),
             Map.entry("logging.level.org.apache.hc.client5.http.ssl", "OFF"),
             Map.entry("logging.level.org.springframework.jdbc.core.StatementCreatorUtils", "OFF"),
+            Map.entry("management.server.address", "127.0.0.1"),
             Map.entry("management.endpoint.health.show-details", "never"),
             Map.entry("management.endpoints.web.exposure.include", "health,prometheus"));
 

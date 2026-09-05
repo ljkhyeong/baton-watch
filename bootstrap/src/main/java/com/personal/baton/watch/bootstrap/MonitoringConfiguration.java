@@ -5,11 +5,13 @@ import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
+import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.DatabaseClockPort;
@@ -18,13 +20,13 @@ import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
 import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
+import com.personal.baton.watch.application.monitoring.service.RequestMonitorCheckService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -33,14 +35,14 @@ public class MonitoringConfiguration {
 
     @Bean
     JdbcMonitorPersistenceAdapter monitorPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
-        return new JdbcMonitorPersistenceAdapter(jdbcTemplate, transactions);
+            JdbcClient jdbcClient, TransactionOperations transactions) {
+        return new JdbcMonitorPersistenceAdapter(jdbcClient, transactions);
     }
 
     @Bean
     JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
-            JdbcTemplate jdbcTemplate, TransactionOperations transactions) {
-        return new JdbcCheckWorkPersistenceAdapter(jdbcTemplate, transactions);
+            JdbcClient jdbcClient, TransactionOperations transactions) {
+        return new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
     }
 
     @Bean
@@ -70,6 +72,11 @@ public class MonitoringConfiguration {
     }
 
     @Bean
+    GetCheckScheduleDelayUseCase getCheckScheduleDelayUseCase(CheckWorkPersistencePort persistence) {
+        return persistence::getOldestDueCheckDelay;
+    }
+
+    @Bean
     SynchronizeMonitorUseCase synchronizeMonitorUseCase(MonitorPersistencePort persistence, Clock clock) {
         return command -> persistence.synchronize(command, clock.instant());
     }
@@ -77,6 +84,11 @@ public class MonitoringConfiguration {
     @Bean
     GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
         return persistence::findProjection;
+    }
+
+    @Bean
+    RequestMonitorCheckUseCase requestMonitorCheckUseCase(MonitorPersistencePort persistence, Clock clock) {
+        return new RequestMonitorCheckService(persistence, clock);
     }
 
     @Bean

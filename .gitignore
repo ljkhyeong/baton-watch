@@ -5,3 +5,6 @@ ops/staging.env
 .idea/
 *.iml
 .DS_Store
+*.dump
+.watch-backup.*
+__pycache__/

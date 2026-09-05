@@ -30,18 +30,11 @@ public record CheckObservation(
 
     public static CheckObservation forHttpStatus(
             int httpStatusCode, Duration duration, long responseBytes, int redirectCount) {
-        if (httpStatusCode >= 200 && httpStatusCode <= 399) {
-            return new CheckObservation(CheckOutcome.SUCCESS, httpStatusCode, duration, responseBytes, redirectCount);
+        CheckOutcome outcome = httpOutcome(httpStatusCode);
+        if (outcome == null) {
+            throw new IllegalArgumentException("unsupported final HTTP status");
         }
-        if (httpStatusCode >= 400 && httpStatusCode <= 499) {
-            return new CheckObservation(
-                    CheckOutcome.HTTP_CLIENT_ERROR, httpStatusCode, duration, responseBytes, redirectCount);
-        }
-        if (httpStatusCode >= 500 && httpStatusCode <= 599) {
-            return new CheckObservation(
-                    CheckOutcome.HTTP_SERVER_ERROR, httpStatusCode, duration, responseBytes, redirectCount);
-        }
-        throw new IllegalArgumentException("unsupported final HTTP status");
+        return new CheckObservation(outcome, httpStatusCode, duration, responseBytes, redirectCount);
     }
 
     public static CheckObservation failure(
@@ -58,13 +51,21 @@ public record CheckObservation(
 
     private static void validateStatus(CheckOutcome outcome, Integer status) {
         boolean valid = switch (outcome) {
-            case SUCCESS -> status != null && status >= 200 && status <= 399;
-            case HTTP_CLIENT_ERROR -> status != null && status >= 400 && status <= 499;
-            case HTTP_SERVER_ERROR -> status != null && status >= 500 && status <= 599;
+            case SUCCESS, HTTP_CLIENT_ERROR, HTTP_SERVER_ERROR ->
+                    status != null && httpOutcome(status) == outcome;
             default -> status == null;
         };
         if (!valid) {
             throw new IllegalArgumentException("HTTP status does not match outcome");
         }
+    }
+
+    private static CheckOutcome httpOutcome(int status) {
+        return switch (status / 100) {
+            case 2, 3 -> CheckOutcome.SUCCESS;
+            case 4 -> CheckOutcome.HTTP_CLIENT_ERROR;
+            case 5 -> CheckOutcome.HTTP_SERVER_ERROR;
+            default -> null;
+        };
     }
 }

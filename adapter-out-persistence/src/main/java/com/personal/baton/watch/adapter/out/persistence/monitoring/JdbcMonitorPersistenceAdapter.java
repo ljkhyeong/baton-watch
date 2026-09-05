@@ -5,6 +5,8 @@ import static com.personal.baton.watch.adapter.out.persistence.monitoring.Monito
 
 import com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MonitorRow;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult.Status;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
@@ -17,24 +19,24 @@ import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import org.springframework.dao.support.DataAccessUtils;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.util.Assert;
 
 /** 모니터 동기화, 프로젝션 조회, 오래된 프로젝션 처리를 담당하는 JDBC 어댑터다. */
 public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePort {
 
-    private final JdbcTemplate jdbc;
+    private final JdbcClient jdbc;
     private final TransactionOperations transactions;
     private final HealthDerivationPolicy healthPolicy;
     private final JdbcHealthChangeEventAppender eventAppender;
 
     public JdbcMonitorPersistenceAdapter(
-            JdbcTemplate jdbc, TransactionOperations transactions) {
+            JdbcClient jdbc, TransactionOperations transactions) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
         this.healthPolicy = new HealthDerivationPolicy();
@@ -53,12 +55,62 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
     @Override
     public Optional<MonitorProjection> findProjection(ResourceReference resourceReference) {
         Objects.requireNonNull(resourceReference, "resourceReference");
-        List<MonitorRow> rows = jdbc.query(
-                "SELECT " + MONITOR_COLUMNS + " FROM watch_monitor WHERE resource_reference = ?",
-                MonitoringJdbcRows::mapMonitor,
-                resourceReference.value());
-        return DataAccessUtils.optionalResult(rows).map(this::toProjection);
+        return jdbc.sql(
+                        "SELECT " + MONITOR_COLUMNS
+                                + " FROM watch_monitor WHERE resource_reference = ?")
+                .param(resourceReference.value())
+                .query(MonitoringJdbcRows::mapMonitor)
+                .optional()
+                .map(this::toProjection);
     }
+
+    @Override
+    public MonitorCheckRequestResult requestCheck(
+            ResourceReference resourceReference, Instant requestedAt, Duration minimumInterval) {
+        return transactions.execute(ignored -> {
+            CheckRequestRow row = jdbc.sql("SELECT " + MONITOR_COLUMNS + """
+                            , last_check_requested_at
+                            FROM watch_monitor WHERE resource_reference = ? FOR UPDATE
+                            """)
+                    .param(resourceReference.value())
+                    .query((rs, index) -> new CheckRequestRow(
+                            MonitoringJdbcRows.mapMonitor(rs, index),
+                            MonitoringJdbcRows.instant(rs, "last_check_requested_at")))
+                    .optional().orElse(null);
+            if (row == null) {
+                return new MonitorCheckRequestResult(Status.NOT_FOUND, null, 0);
+            }
+            MonitorRow monitor = row.monitor();
+            if (monitor.monitoringState() == MonitoringState.INACTIVE) {
+                return new MonitorCheckRequestResult(Status.INACTIVE, null, 0);
+            }
+            if (monitor.leaseExpiresAt() != null && monitor.leaseExpiresAt().isAfter(requestedAt)) {
+                return new MonitorCheckRequestResult(Status.IN_PROGRESS, null, 0);
+            }
+            if (!monitor.nextCheckAt().isAfter(requestedAt)) {
+                return new MonitorCheckRequestResult(Status.ALREADY_SCHEDULED, monitor.nextCheckAt(), 0);
+            }
+            if (row.lastRequestedAt() != null) {
+                Instant retryAt = row.lastRequestedAt().plus(minimumInterval);
+                if (retryAt.isAfter(requestedAt)) {
+                    Duration remaining = Duration.between(requestedAt, retryAt);
+                    long seconds = remaining.toSeconds() + (remaining.getNano() == 0 ? 0 : 1);
+                    return new MonitorCheckRequestResult(Status.RATE_LIMITED, null, seconds);
+                }
+            }
+            jdbc.sql("""
+                            UPDATE watch_monitor
+                            SET next_check_at = ?, last_check_requested_at = ?, updated_at = ?
+                            WHERE resource_reference = ?
+                            """)
+                    .params(databaseTime(requestedAt), databaseTime(requestedAt),
+                            databaseTime(requestedAt), resourceReference.value())
+                    .update();
+            return new MonitorCheckRequestResult(Status.SCHEDULED, requestedAt, 0);
+        });
+    }
+
+    private record CheckRequestRow(MonitorRow monitor, Instant lastRequestedAt) {}
 
     @Override
     public int markStaleUnknown(Instant staleBefore, Instant markedAt, int limit) {
@@ -74,11 +126,13 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     private SynchronizationResult synchronizeInTransaction(
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
-        MonitorRow existing = DataAccessUtils.singleResult(jdbc.query(
-                "SELECT " + MONITOR_COLUMNS
-                        + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
-                MonitoringJdbcRows::mapMonitor,
-                command.resourceReference().value()));
+        MonitorRow existing = jdbc.sql(
+                        "SELECT " + MONITOR_COLUMNS
+                                + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
+                .param(command.resourceReference().value())
+                .query(MonitoringJdbcRows::mapMonitor)
+                .optional()
+                .orElse(null);
 
         if (existing == null) {
             MonitorRow inserted = tryInsertMonitor(command, synchronizedAt);
@@ -86,11 +140,12 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 return new SynchronizationResult(
                         SynchronizationStatus.APPLIED, toProjection(inserted));
             }
-            existing = jdbc.queryForObject(
-                    "SELECT " + MONITOR_COLUMNS
-                            + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
-                    MonitoringJdbcRows::mapMonitor,
-                    command.resourceReference().value());
+            existing = jdbc.sql(
+                            "SELECT " + MONITOR_COLUMNS
+                                    + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
+                    .param(command.resourceReference().value())
+                    .query(MonitoringJdbcRows::mapMonitor)
+                    .single();
         }
 
         int revisionComparison = command.sourceRevision().compareTo(existing.sourceRevision());
@@ -120,36 +175,38 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 ? null
                 : targetOrStateChanged ? synchronizedAt : existing.nextCheckAt();
 
-        MonitorRow updated = jdbc.queryForObject("""
-                UPDATE watch_monitor
-                SET source_revision = ?,
-                    monitor_status = ?,
-                    target_url = ?,
-                    current_health = ?,
-                    consecutive_failures = ?,
-                    last_outcome = ?,
-                    last_checked_at = ?,
-                    last_conclusive_at = ?,
-                    next_check_at = ?,
-                    lease_token = NULL,
-                    lease_attempt_id = NULL,
-                    lease_expires_at = NULL,
-                    updated_at = ?
-                WHERE resource_reference = ?
-                RETURNING
-                """ + MONITOR_COLUMNS,
-                MonitoringJdbcRows::mapMonitor,
-                command.sourceRevision().value(),
-                command.monitoringState().name(),
-                requestedTarget,
-                derivation.health().name(),
-                derivation.consecutiveFailures(),
-                lastOutcome == null ? null : lastOutcome.name(),
-                databaseTime(lastCheckedAt),
-                databaseTime(lastConclusiveAt),
-                databaseTime(nextCheckAt),
-                databaseTime(synchronizedAt),
-                command.resourceReference().value());
+        MonitorRow updated = jdbc.sql("""
+                        UPDATE watch_monitor
+                        SET source_revision = ?,
+                            monitor_status = ?,
+                            target_url = ?,
+                            current_health = ?,
+                            consecutive_failures = ?,
+                            last_outcome = ?,
+                            last_checked_at = ?,
+                            last_conclusive_at = ?,
+                            next_check_at = ?,
+                            lease_token = NULL,
+                            lease_attempt_id = NULL,
+                            lease_expires_at = NULL,
+                            updated_at = ?
+                        WHERE resource_reference = ?
+                        RETURNING
+                        """ + MONITOR_COLUMNS)
+                .params(
+                        command.sourceRevision().value(),
+                        command.monitoringState().name(),
+                        requestedTarget,
+                        derivation.health().name(),
+                        derivation.consecutiveFailures(),
+                        lastOutcome == null ? null : lastOutcome.name(),
+                        databaseTime(lastCheckedAt),
+                        databaseTime(lastConclusiveAt),
+                        databaseTime(nextCheckAt),
+                        databaseTime(synchronizedAt),
+                        command.resourceReference().value())
+                .query(MonitoringJdbcRows::mapMonitor)
+                .single();
 
         if (existing.health() != derivation.health()) {
             eventAppender.append(
@@ -171,58 +228,63 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
         Instant nextCheckAt = command.monitoringState() == MonitoringState.ACTIVE
                 ? synchronizedAt
                 : null;
-        return DataAccessUtils.singleResult(jdbc.query("""
-                INSERT INTO watch_monitor (
-                    resource_reference,
-                    source_revision,
-                    monitor_status,
-                    target_url,
-                    current_health,
-                    consecutive_failures,
-                    next_check_at,
-                    created_at,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, 'UNKNOWN', 0, ?, ?, ?)
-                ON CONFLICT (resource_reference) DO NOTHING
-                RETURNING
-                """ + MONITOR_COLUMNS,
-                MonitoringJdbcRows::mapMonitor,
-                command.resourceReference().value(),
-                command.sourceRevision().value(),
-                command.monitoringState().name(),
-                target,
-                databaseTime(nextCheckAt),
-                databaseTime(synchronizedAt),
-                databaseTime(synchronizedAt)));
+        return jdbc.sql("""
+                        INSERT INTO watch_monitor (
+                            resource_reference,
+                            source_revision,
+                            monitor_status,
+                            target_url,
+                            current_health,
+                            consecutive_failures,
+                            next_check_at,
+                            created_at,
+                            updated_at
+                        ) VALUES (?, ?, ?, ?, 'UNKNOWN', 0, ?, ?, ?)
+                        ON CONFLICT (resource_reference) DO NOTHING
+                        RETURNING
+                        """ + MONITOR_COLUMNS)
+                .params(
+                        command.resourceReference().value(),
+                        command.sourceRevision().value(),
+                        command.monitoringState().name(),
+                        target,
+                        databaseTime(nextCheckAt),
+                        databaseTime(synchronizedAt),
+                        databaseTime(synchronizedAt))
+                .query(MonitoringJdbcRows::mapMonitor)
+                .optional()
+                .orElse(null);
     }
 
     private int markStaleInTransaction(
             Instant staleBefore, Instant markedAt, int limit) {
-        List<MonitorRow> stale = jdbc.query(
-                "SELECT " + MONITOR_COLUMNS + """
-                         FROM watch_monitor
-                         WHERE monitor_status = 'ACTIVE'
-                           AND current_health <> 'UNKNOWN'
-                           AND last_conclusive_at <= ?
-                         ORDER BY last_conclusive_at, resource_reference
-                         LIMIT ?
-                         FOR UPDATE SKIP LOCKED
-                        """,
-                MonitoringJdbcRows::mapMonitor,
-                databaseTime(staleBefore),
-                limit);
+        List<MonitorRow> stale = jdbc.sql(
+                        "SELECT " + MONITOR_COLUMNS + """
+                                 FROM watch_monitor
+                                 WHERE monitor_status = 'ACTIVE'
+                                   AND current_health <> 'UNKNOWN'
+                                   AND last_conclusive_at <= ?
+                                 ORDER BY last_conclusive_at, resource_reference
+                                 LIMIT ?
+                                 FOR UPDATE SKIP LOCKED
+                                """)
+                .params(databaseTime(staleBefore), limit)
+                .query(MonitoringJdbcRows::mapMonitor)
+                .list();
 
         for (MonitorRow monitor : stale) {
             HealthDerivation markedStale = healthPolicy.markStale(monitor.derivation());
-            jdbc.update("""
-                    UPDATE watch_monitor
-                    SET current_health = ?, consecutive_failures = ?, updated_at = ?
-                    WHERE resource_reference = ?
-                    """,
-                    markedStale.health().name(),
-                    markedStale.consecutiveFailures(),
-                    databaseTime(markedAt),
-                    monitor.resourceReference());
+            jdbc.sql("""
+                            UPDATE watch_monitor
+                            SET current_health = ?, consecutive_failures = ?, updated_at = ?
+                            WHERE resource_reference = ?
+                            """)
+                    .params(
+                            markedStale.health().name(),
+                            markedStale.consecutiveFailures(),
+                            databaseTime(markedAt),
+                            monitor.resourceReference())
+                    .update();
             eventAppender.append(
                     monitor.resourceReference(),
                     monitor.sourceRevision().value(),

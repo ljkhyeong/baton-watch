@@ -175,8 +175,8 @@ migration_evidence="$(
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$migration_evidence" != "1,2,3,4" ]]; then
-    fail "Flyway V1~V4 적용 증거가 올바르지 않습니다"
+if [[ "$migration_evidence" != "1,2,3,4,5" ]]; then
+    fail "Flyway V1~V5 적용 증거가 올바르지 않습니다"
 fi
 
 role_evidence="$(

@@ -5,7 +5,6 @@ import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecu
 import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
-import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
@@ -14,9 +13,9 @@ import java.util.Objects;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.io.CloseMode;
 
 /** 이미 검증되고 DNS에 고정된 단일 홉용 Apache HttpClient 5 전송 구현. */
 public final class ApacheHttpHopTransport implements HttpHopTransport, AutoCloseable {
@@ -24,7 +23,6 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
     private final CheckerLimits limits;
     private final ApacheHttpRequestExecutor requestExecutor;
     private final PinnedApacheClientFactory clientFactory;
-    private final ResponseBodyDiscarder bodyDiscarder = new ResponseBodyDiscarder();
 
     public ApacheHttpHopTransport(CheckerLimits limits, int threadCount, int queueCapacity) {
         this.limits = Objects.requireNonNull(limits, "limits");
@@ -36,10 +34,12 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
     @Override
     public HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
             throws OutboundHttpFailure {
+        HttpGet request = new HttpGet(target.target().uri());
         return requestExecutor.execute(
+                request,
                 remainingTime,
                 progress -> executeBlocking(
-                        target, remainingTime, remainingBytes, progress));
+                        target, request, remainingTime, progress));
     }
 
     @Override
@@ -49,8 +49,8 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
 
     private HttpHopResponse executeBlocking(
             ApprovedTarget target,
+            HttpGet request,
             Duration remainingTime,
-            long remainingBytes,
             ApacheHttpRequestExecutor.Progress progress)
             throws IOException {
         ApacheHttpClientLimits clientLimits = ApacheHttpClientLimits.cappedBy(
@@ -62,22 +62,16 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
 
         try (CloseableHttpClient client = clientFactory.open(
                 target.target().hostname(), target.addresses(), clientLimits)) {
-            HttpGet request = new HttpGet(target.target().uri());
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(target.target().uri()), request, response -> {
+                    client, HttpHost.create(target.target().uri()), request, CloseMode.IMMEDIATE, response -> {
                         progress.responseStarted();
                         List<String> locations = Arrays.stream(response.getHeaders(HttpHeaders.LOCATION))
                                 .map(Header::getValue)
                                 .map(value -> Objects.requireNonNullElse(value, ""))
                                 .toList();
-                        long responseBytes = 0;
-                        HttpEntity entity = response.getEntity();
-                        if (entity != null) {
-                            responseBytes = bodyDiscarder.discard(
-                                    entity, remainingBytes, progress::responseBytes);
-                        }
+                        // 도달 여부는 응답 헤더로 판단하고 본문을 읽거나 비우지 않는다.
                         return new HttpHopResponse(
-                                response.getCode(), locations, responseBytes);
+                                response.getCode(), locations, 0);
                     });
         }
     }

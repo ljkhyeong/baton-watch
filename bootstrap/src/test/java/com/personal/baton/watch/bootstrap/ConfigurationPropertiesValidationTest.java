@@ -2,7 +2,6 @@ package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.context.properties.bind.validation.BindValidationException;
@@ -19,15 +18,12 @@ class ConfigurationPropertiesValidationTest {
                         "watch.http.dns-queue-capacity=65",
                         "watch.poll-interval=0s",
                         "watch.lease-duration=366d")
-                .run(context -> {
-                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
-                    assertThat(fieldNames(failure))
-                            .containsExactlyInAnyOrder(
-                                    "checkBatchSize",
-                                    "http.dnsQueueCapacity",
-                                    "leaseDuration",
-                                    "pollInterval");
-                });
+                .run(context -> assertInvalidFields(
+                        context.getStartupFailure(),
+                        "checkBatchSize",
+                        "http.dnsQueueCapacity",
+                        "leaseDuration",
+                        "pollInterval"));
     }
 
     @Test
@@ -37,15 +33,12 @@ class ConfigurationPropertiesValidationTest {
                         "watch.event-delivery.http.request-queue-capacity=17",
                         "watch.event-delivery.maintenance-interval=0s",
                         "watch.event-delivery.retention=366d")
-                .run(context -> {
-                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
-                    assertThat(fieldNames(failure))
-                            .containsExactlyInAnyOrder(
-                                    "batchSize",
-                                    "http.requestQueueCapacity",
-                                    "maintenanceInterval",
-                                    "retention");
-                });
+                .run(context -> assertInvalidFields(
+                        context.getStartupFailure(),
+                        "batchSize",
+                        "http.requestQueueCapacity",
+                        "maintenanceInterval",
+                        "retention"));
     }
 
     @Test
@@ -55,15 +48,12 @@ class ConfigurationPropertiesValidationTest {
                         "watch.maintenance-interval=59s",
                         "watch.check-interval=59s",
                         "watch.internal-failure-retry-interval=29s")
-                .run(context -> {
-                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
-                    assertThat(fieldNames(failure))
-                            .containsExactlyInAnyOrder(
-                                    "pollInterval",
-                                    "maintenanceInterval",
-                                    "checkInterval",
-                                    "internalFailureRetryInterval");
-                });
+                .run(context -> assertInvalidFields(
+                        context.getStartupFailure(),
+                        "pollInterval",
+                        "maintenanceInterval",
+                        "checkInterval",
+                        "internalFailureRetryInterval"));
     }
 
     @Test
@@ -73,15 +63,12 @@ class ConfigurationPropertiesValidationTest {
                         "watch.event-delivery.maintenance-interval=59s",
                         "watch.event-delivery.initial-retry-delay=4s",
                         "watch.event-delivery.max-retry-delay=4s")
-                .run(context -> {
-                    BindValidationException failure = findValidationFailure(context.getStartupFailure());
-                    assertThat(fieldNames(failure))
-                            .containsExactlyInAnyOrder(
-                                    "pollInterval",
-                                    "maintenanceInterval",
-                                    "initialRetryDelay",
-                                    "maxRetryDelay");
-                });
+                .run(context -> assertInvalidFields(
+                        context.getStartupFailure(),
+                        "pollInterval",
+                        "maintenanceInterval",
+                        "initialRetryDelay",
+                        "maxRetryDelay"));
     }
 
     private static ApplicationContextRunner watchContext(String... invalidProperties) {
@@ -141,23 +128,14 @@ class ConfigurationPropertiesValidationTest {
                 .withPropertyValues(invalidProperties);
     }
 
-    private static BindValidationException findValidationFailure(Throwable failure) {
-        Throwable current = failure;
-        while (current != null) {
-            if (current instanceof BindValidationException validationFailure) {
-                return validationFailure;
-            }
-            current = current.getCause();
-        }
-        throw new AssertionError("BindValidationException was not found", failure);
-    }
-
-    private static List<String> fieldNames(BindValidationException failure) {
-        return failure.getValidationErrors().getAllErrors().stream()
-                .filter(FieldError.class::isInstance)
-                .map(FieldError.class::cast)
-                .map(FieldError::getField)
-                .toList();
+    private static void assertInvalidFields(Throwable failure, String... expectedFields) {
+        assertThat(failure).rootCause()
+                .isInstanceOfSatisfying(BindValidationException.class, validationFailure ->
+                        assertThat(validationFailure.getValidationErrors().getAllErrors().stream()
+                                        .filter(FieldError.class::isInstance)
+                                        .map(FieldError.class::cast)
+                                        .map(FieldError::getField))
+                                .containsExactlyInAnyOrder(expectedFields));
     }
 
     @Configuration(proxyBeanMethods = false)

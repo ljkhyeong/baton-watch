@@ -48,7 +48,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         int retryScheduled = 0;
         int alreadyDelivered = 0;
         int staleClaims = 0;
-        while (claimed < batchSize) {
+        while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
             Optional<ClaimedHealthChangeEvent> nextEvent =
                     persistence.claimPendingEvent(leaseDuration);
             if (nextEvent.isEmpty()) {

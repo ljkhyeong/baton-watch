@@ -56,8 +56,19 @@ jobs:
       - name: 셸 스크립트 정적 검사
         run: shellcheck ops/*.sh ops/tests/*.sh
 
+      - name: BATON 스냅샷 독립 복원 도구 검사
+        run: python3 ops/tests/baton-snapshot-recovery-test.py
+
+      - name: 런타임 라이선스 정책 회귀 검사
+        run: |
+          python3 ops/tests/runtime-license-policy-test.py
+          ./ops/tests/supply-chain-scan-test.sh
+
       - name: 전체 Gradle 검증
         run: ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
+
+      - name: 별도 JVM 강제 종료와 리스 복구 검증
+        run: ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 
       - name: PostgreSQL과 전체 조립 테스트 증거 확인
         run: |
@@ -66,17 +77,21 @@ jobs:
           from xml.etree import ElementTree as ET
 
           expected = {
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.DatabaseBackupIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringDiagnosticsIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapterIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringSchemaIntegrationTest",
+              "com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringProcessRecoveryTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresReadDeadlineIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperationsIntegrationTest",
               "com.personal.baton.watch.bootstrap.BatonWatchApplicationSmokeTest",
           }
           report_directories = (
               Path("adapter-out-persistence/build/test-results/test"),
+              Path("adapter-out-persistence/build/test-results/processRecoveryTest"),
               Path("bootstrap/build/test-results/test"),
           )
 
@@ -110,6 +125,35 @@ jobs:
 
       - name: 스테이징 배포 정책 검증
         run: ./ops/tests/staging-compose-policy-test.sh
+
+      - name: NGINX 요청 속도 제한과 프록시 경계 검증
+        run: python3 ops/tests/gateway-test.py
+
+      - name: 격리 DB 부하와 장애 복구 스모크
+        run: ./gradlew :adapter-out-persistence:loadTest -PwatchLoadMonitors=25 --no-daemon
+
+      - name: 전체 런타임 부하와 장애 복구 스모크
+        run: ./gradlew :bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25 --no-daemon
+
+      - name: Prometheus 경보 규칙 검증
+        run: ./ops/tests/prometheus-rules-test.sh
+
+      - name: 운영 시험 결과 보관
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: operations-tests-${{ github.sha }}
+          path: |
+            adapter-out-persistence/build/reports/tests/loadTest
+            adapter-out-persistence/build/test-results/loadTest/*.xml
+            adapter-out-persistence/build/reports/tests/processRecoveryTest
+            adapter-out-persistence/build/test-results/processRecoveryTest/*.xml
+            bootstrap/build/reports/tests/runtimeLoadTest
+            bootstrap/build/test-results/runtimeLoadTest/*.xml
+            adapter-out-persistence/build/test-results/test/TEST-*DatabaseBackupIntegrationTest.xml
+            adapter-out-persistence/build/test-results/test/TEST-*MonitoringDiagnosticsIntegrationTest.xml
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: 스테이징 이미지 보관 증거 검증
         run: ./ops/tests/staging-image-evidence-test.sh
@@ -192,156 +236,55 @@ jobs:
             fi
           done
 
+      - name: 실제 PostgreSQL 데이터베이스 작업 검증
+        run: ./ops/tests/staging-database-operation-postgres-test.sh
+
+      - name: CodeQL 분석
+        uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
+
+      - name: 검사할 배포 이미지 보관
+        env:
+          WATCH_IMAGE_REVISION: ${{ github.sha }}
+          WATCH_IMAGE_ARCHIVE_DIR: build/image-evidence/${{ github.sha }}
+        run: ./ops/staging-image-evidence.sh archive
+
       - name: 배포 산출물 SBOM 생성과 취약점·라이선스 검사
         run: |
-          reports_dir="${PWD}/build/supply-chain"
-          inputs_dir="${RUNNER_TEMP}/supply-chain-input"
-          cache_dir="${RUNNER_TEMP}/trivy-cache"
-          mkdir -p "${reports_dir}" "${inputs_dir}/jar" "${inputs_dir}/images" "${cache_dir}"
-          cp bootstrap/build/libs/baton-watch.jar "${inputs_dir}/jar/baton-watch.jar"
-          docker save --output "${inputs_dir}/images/database-operations.tar" \
-            "baton-watch-database-operations:${GITHUB_SHA}"
-          docker save --output "${inputs_dir}/images/migrations.tar" \
-            "baton-watch-migrations:${GITHUB_SHA}"
-          docker save --output "${inputs_dir}/images/runtime.tar" \
-            "baton-watch:${GITHUB_SHA}"
-
-          trivy_image="docker.io/aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969"
-          scan_rootfs() {
-            docker run --rm \
-              --volume "${reports_dir}:/reports" \
-              --volume "${inputs_dir}/jar:/inputs:ro" \
-              --volume "${cache_dir}:/root/.cache/trivy" \
-              "${trivy_image}" rootfs \
-              --cache-dir /root/.cache/trivy \
-              --format cyclonedx \
-              --output /reports/baton-watch.cdx.json \
-              --scanners vuln \
-              --severity HIGH,CRITICAL \
-              --ignore-unfixed \
-              --exit-code 1 \
-              --skip-version-check \
-              --no-progress \
-              /inputs
-          }
-          scan_image_archive() {
-            archive="$1"
-            report="$2"
-            docker run --rm \
-              --volume "${reports_dir}:/reports" \
-              --volume "${inputs_dir}/images:/inputs:ro" \
-              --volume "${cache_dir}:/root/.cache/trivy" \
-              "${trivy_image}" image \
-              --cache-dir /root/.cache/trivy \
-              --format cyclonedx \
-              --output "/reports/${report}" \
-              --scanners vuln \
-              --severity HIGH,CRITICAL \
-              --ignore-unfixed \
-              --exit-code 1 \
-              --skip-version-check \
-              --no-progress \
-              --input "/inputs/${archive}"
-          }
-
-          scan_rootfs
-          scan_image_archive database-operations.tar database-operations.cdx.json
-          scan_image_archive migrations.tar migrations.cdx.json
-          scan_image_archive runtime.tar runtime.cdx.json
-
-          ignored_licenses="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          reports = Path("build/supply-chain")
-          for report in sorted(reports.glob("*.cdx.json")):
-              document = json.loads(report.read_text())
-              if document.get("bomFormat") != "CycloneDX":
-                  raise SystemExit(f"CycloneDX 보고서가 올바르지 않습니다: {report}")
-              if not document.get("components"):
-                  raise SystemExit(f"SBOM에 구성요소가 없습니다: {report}")
-
-          allowed = set()
-          reading_allowlist = False
-          for line in Path(".github/dependency-review-config.yml").read_text().splitlines():
-              if line == "allow-licenses:":
-                  reading_allowlist = True
-                  continue
-              if reading_allowlist and line.startswith("  - "):
-                  allowed.add(line.removeprefix("  - "))
-                  continue
-              if reading_allowlist and line.strip():
-                  break
-          if not allowed:
-              raise SystemExit("런타임 라이선스 허용 목록이 비어 있습니다.")
-
-          # Trivy 0.74가 라이선스를 싣지 않지만 각 배포 POM은 Apache-2.0을 선언한다.
-          approved_missing = {
-              "pkg:maven/org.flywaydb/flyway-database-postgresql@13.4.0",
-          }
-          approved_alternatives = {
-              "pkg:maven/ch.qos.logback/logback-classic@1.5.38": {"LGPL-2.1-only"},
-              "pkg:maven/ch.qos.logback/logback-core@1.5.38": {"LGPL-2.1-only"},
-              "pkg:maven/jakarta.annotation/jakarta.annotation-api@3.0.0": {
-                  "GPL-2.0-only WITH classpath-exception"
-              },
-          }
-
-          document = json.loads((reports / "baton-watch.cdx.json").read_text())
-          missing = set()
-          alternatives = {}
-          for component in document["components"]:
-              identifiers = {
-                  entry.get("license", {}).get("id")
-                  or entry.get("license", {}).get("name")
-                  or entry.get("expression")
-                  for entry in component.get("licenses", [])
-              } - {None}
-              purl = component.get("purl", component.get("bom-ref", "알 수 없는 구성요소"))
-              if not identifiers:
-                  missing.add(purl)
-                  continue
-              additional = identifiers - allowed
-              if additional:
-                  if identifiers.isdisjoint(allowed):
-                      continue
-                  alternatives[purl] = additional
-          if missing != approved_missing:
-              raise SystemExit(
-                  "라이선스를 판별하지 못한 런타임 의존성이 승인 목록과 다릅니다: "
-                  f"실제={sorted(missing)}, 승인={sorted(approved_missing)}"
-              )
-          if alternatives != approved_alternatives:
-              raise SystemExit(
-                  "대체 라이선스가 있는 런타임 의존성이 승인 목록과 다릅니다: "
-                  f"실제={alternatives}, 승인={approved_alternatives}"
-              )
-
-          ignored = allowed | {
-              identifier
-              for identifiers in approved_alternatives.values()
-              for identifier in identifiers
-          }
-          print(",".join(sorted(ignored)))
-          PY
+          # 이미지 참조는 렌더링된 스테이징 구성에서 읽고, 구성 간 정합성은 앞선 Compose 정책 검사에서 확인한다.
+          staging_config="$(
+            WATCH_IMAGE_REVISION="${GITHUB_SHA}" \
+            WATCH_POSTGRES_VOLUME_NAME="baton-watch-ci-${GITHUB_RUN_ID}" \
+              docker compose \
+                --env-file ops/staging.env.example \
+                --file compose.staging.yml \
+                --file compose.staging-tunnel.yml \
+                config --no-consistency --format json
           )"
-
-          docker run --rm \
-            --volume "${reports_dir}:/reports:ro" \
-            "${trivy_image}" sbom \
-            --scanners license \
-            --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
-            --exit-code 1 \
-            --ignored-licenses "${ignored_licenses}" \
-            --skip-version-check \
-            --no-progress \
-            /reports/baton-watch.cdx.json
-
-          cp "${inputs_dir}/jar/baton-watch.jar" "${reports_dir}/baton-watch.jar"
-          (
-            cd build/supply-chain
-            sha256sum baton-watch.jar ./*.cdx.json > SHA256SUMS
-          )
+          postgres_image="$(
+            printf '%s\n' "${staging_config}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["postgres"]["image"])'
+          )"
+          gateway_image="$(
+            printf '%s\n' "${staging_config}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
+          )"
+          cloudflared_image="$(
+            printf '%s\n' "${staging_config}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["cloudflared"]["image"])'
+          )"
+          for external_image in "${postgres_image}" "${gateway_image}" "${cloudflared_image}"; do
+            docker pull "${external_image}"
+          done
+          image_archive_dir="build/image-evidence/${GITHUB_SHA}"
+          ./ops/scan-supply-chain.sh \
+            build/supply-chain \
+            bootstrap/build/libs/baton-watch.jar \
+            "${image_archive_dir}/database-operations.tar" \
+            "${image_archive_dir}/migrations.tar" \
+            "${image_archive_dir}/runtime.tar" \
+            "${postgres_image}" \
+            "${gateway_image}" \
+            "${cloudflared_image}"
 
       - name: 공급망 산출물 보관
         if: ${{ !cancelled() && hashFiles('build/supply-chain/*') != '' }}
@@ -351,12 +294,6 @@ jobs:
           path: build/supply-chain
           if-no-files-found: error
           retention-days: 14
-
-      - name: 실제 PostgreSQL 데이터베이스 작업 검증
-        run: ./ops/tests/staging-database-operation-postgres-test.sh
-
-      - name: CodeQL 분석
-        uses: github/codeql-action/analyze@a35ac6e6798d72df5475948b28efb89edc2e19ca # v4.37.9
 
   attest:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}

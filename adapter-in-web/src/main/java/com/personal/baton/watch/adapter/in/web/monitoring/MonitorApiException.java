@@ -1,19 +1,23 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
-import java.net.URI;
+import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
 import org.springframework.http.HttpStatus;
 
 final class MonitorApiException extends RuntimeException {
 
     private final HttpStatus status;
-    private final URI type;
-    private final String code;
+    private final MonitorApiProblem problem;
+    private final long retryAfterSeconds;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
+        this(status, slug, title, code, 0);
+    }
+
+    private MonitorApiException(HttpStatus status, String slug, String title, String code, long retryAfterSeconds) {
         super(title);
         this.status = status;
-        this.type = URI.create("urn:baton-watch:problem:" + slug);
-        this.code = code;
+        this.problem = MonitorApiProblem.of(slug, title, code);
+        this.retryAfterSeconds = retryAfterSeconds;
     }
 
     static MonitorApiException invalidRequest() {
@@ -48,15 +52,25 @@ final class MonitorApiException extends RuntimeException {
         return new MonitorApiException(HttpStatus.NOT_FOUND, "monitor-not-found", "Monitor not found", "MONITOR_NOT_FOUND");
     }
 
+    static MonitorApiException inactive() {
+        return new MonitorApiException(HttpStatus.CONFLICT, "monitor-inactive",
+                "비활성 모니터는 재점검할 수 없습니다", "MONITOR_INACTIVE");
+    }
+
+    static MonitorApiException checkRequestRateLimited(long retryAfterSeconds) {
+        return new MonitorApiException(HttpStatus.TOO_MANY_REQUESTS, "check-request-rate-limited",
+                "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED", retryAfterSeconds);
+    }
+
+    long retryAfterSeconds() {
+        return retryAfterSeconds;
+    }
+
     HttpStatus status() {
         return status;
     }
 
-    URI type() {
-        return type;
-    }
-
-    String code() {
-        return code;
+    MonitorApiProblem problem() {
+        return problem;
     }
 }

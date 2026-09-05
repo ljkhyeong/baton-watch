@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.springframework.transaction.support.TransactionOperations;
@@ -34,7 +35,8 @@ class PostgresTransactionOperationsIntegrationTest
         String reference = "resource:lock-timeout";
         synchronize(reference, 1, "https://lock-timeout.example/path", BASE_TIME);
         JdbcMonitorPersistenceAdapter boundedPersistence = new JdbcMonitorPersistenceAdapter(
-                jdbc, boundedTransactions(Duration.ofSeconds(5), TEST_LOCK_TIMEOUT));
+                JdbcClient.create(jdbc),
+                boundedTransactions(Duration.ofSeconds(5), TEST_LOCK_TIMEOUT));
         CountDownLatch lockAcquired = new CountDownLatch(1);
         CountDownLatch releaseLock = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();

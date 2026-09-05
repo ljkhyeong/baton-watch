@@ -10,6 +10,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult.Status;
+import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
@@ -46,12 +49,14 @@ class ResourceMonitorControllerTest {
 
     private SynchronizeMonitorUseCase synchronizeMonitor;
     private GetMonitorProjectionUseCase getMonitor;
+    private RequestMonitorCheckUseCase requestCheck;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
         getMonitor = reference -> Optional.of(projection());
+        requestCheck = reference -> new MonitorCheckRequestResult(Status.SCHEDULED, NOW, 0);
         rebuildMockMvc();
     }
 
@@ -94,7 +99,11 @@ class ResourceMonitorControllerTest {
                                 """))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))
+                .andExpect(jsonPath("$.title").value("Invalid target URL"))
+                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INVALID_TARGET_URL"));
     }
 
@@ -257,14 +266,53 @@ class ResourceMonitorControllerTest {
                 .andExpect(content().string("already-sent"));
 
         assertThat(output)
-                .contains("monitor API failed failureType=HttpMessageNotWritableException")
+                .contains("모니터 API 처리 실패 failureType=HttpMessageNotWritableException")
                 .doesNotContain("raw-output-secret")
                 .doesNotContain("Response already committed");
     }
 
+    @Test
+    void acceptsAndMergesCheckRequestsWithoutReturningTargetData() throws Exception {
+        for (Status resultStatus : new Status[] {
+                Status.SCHEDULED, Status.ALREADY_SCHEDULED, Status.IN_PROGRESS}) {
+            requestCheck = reference -> new MonitorCheckRequestResult(
+                    resultStatus, resultStatus == Status.IN_PROGRESS ? null : NOW, 0);
+            rebuildMockMvc();
+            mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
+                    .andExpect(status().isAccepted())
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.status").value(resultStatus.name()))
+                    .andExpect(jsonPath("$.targetUrl").doesNotExist());
+        }
+    }
+
+    @Test
+    void rejectsMissingInactiveAndTooFrequentCheckRequests() throws Exception {
+        requestCheck = reference -> new MonitorCheckRequestResult(Status.NOT_FOUND, null, 0);
+        rebuildMockMvc();
+        mockMvc.perform(post("/api/v1/resource-monitors/missing/check-requests"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("MONITOR_NOT_FOUND"));
+
+        requestCheck = reference -> new MonitorCheckRequestResult(Status.INACTIVE, null, 0);
+        rebuildMockMvc();
+        mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MONITOR_INACTIVE"));
+
+        requestCheck = reference -> new MonitorCheckRequestResult(Status.RATE_LIMITED, null, 12);
+        rebuildMockMvc();
+        mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "12"))
+                .andExpect(jsonPath("$.code").value("CHECK_REQUEST_RATE_LIMITED"))
+                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"));
+    }
+
     private void rebuildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceMonitorController(synchronizeMonitor, getMonitor),
+                        new ResourceMonitorController(synchronizeMonitor, getMonitor, requestCheck),
                         new FrameworkFailureController())
                 .setControllerAdvice(new MonitorApiExceptionHandler())
                 .build();

@@ -1,0 +1,38 @@
+# 두 경로의 수집 설정과 함께 선택적으로 적용한다. 기존 WATCH 경보와 분리한다.
+groups:
+  - name: baton-watch-ingress
+    rules:
+      - alert: WatchIngressRequestFailed
+        # 수집 대상의 고정 레이블을 유지해 실패 원인이 바뀌어도 대기 시간을 이어간다.
+        expr: |
+          up{job="baton-watch-ingress"}
+          unless on (job, instance)
+          (
+            (up{job="baton-watch-ingress"} == 1)
+            and on (job, instance) (probe_success{job="baton-watch-ingress"} == 1)
+          )
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: WATCH 인바운드 정상 응답 확인 실패
+      - alert: WatchIngressProbeUnavailable
+        expr: |
+          (up{job="baton-watch-ingress"} == 0)
+          or
+          ((up{job="baton-watch-ingress"} == 1)
+            unless on (job, instance) probe_success{job="baton-watch-ingress"})
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 인바운드 점검 결과 수집 실패
+      - alert: WatchIngressTargetMissing
+        expr: |
+          absent(up{job="baton-watch-ingress",route="gateway"})
+          or absent(up{job="baton-watch-ingress",route="public"})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 인바운드 점검 대상 누락

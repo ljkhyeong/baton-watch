@@ -22,6 +22,7 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
                         Map.entry(
                                 "logging.level.org.springframework.jdbc.core.StatementCreatorUtils",
                                 "TRACE"),
+                        Map.entry("management.server.address", "0.0.0.0"),
                         Map.entry("management.endpoint.health.show-details", "always"),
                         Map.entry("management.endpoints.web.exposure.include", "*"))));
 
@@ -41,6 +42,8 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
         assertThat(environment.getProperty(
                         "logging.level.org.springframework.jdbc.core.StatementCreatorUtils"))
                 .isEqualTo("OFF");
+        assertThat(environment.getProperty("management.server.address"))
+                .isEqualTo("127.0.0.1");
         assertThat(environment.getProperty("management.endpoint.health.show-details"))
                 .isEqualTo("never");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))

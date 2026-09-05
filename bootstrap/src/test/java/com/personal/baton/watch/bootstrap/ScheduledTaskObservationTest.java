@@ -2,14 +2,17 @@ package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.core.instrument.observation.DefaultMeterObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.observation.autoconfigure.ScheduledTasksObservationAutoConfiguration;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -23,6 +26,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 class ScheduledTaskObservationTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
+            .withConfiguration(AutoConfigurations.of(
+                    ScheduledTasksObservationAutoConfiguration.class))
             .withUserConfiguration(
                     WorkerSchedulingConfiguration.class,
                     ScheduledTaskTestConfiguration.class);
@@ -33,7 +38,8 @@ class ScheduledTaskObservationTest {
             FailingScheduledWorker worker = context.getBean(FailingScheduledWorker.class);
             assertThat(worker.twoRuns.await(2, TimeUnit.SECONDS)).isTrue();
 
-            var failureTimer = context.getBean(SimpleMeterRegistry.class)
+            var registry = context.getBean(PrometheusMeterRegistry.class);
+            var failureTimer = registry
                     .get("tasks.scheduled.execution")
                     .tag("code.function", "run")
                     .tag("code.namespace", FailingScheduledWorker.class.getCanonicalName())
@@ -44,10 +50,14 @@ class ScheduledTaskObservationTest {
             assertThat(failureTimer.count()).isOne();
             assertThat(failureTimer.getId().getTags())
                     .noneMatch(tag -> tag.getValue().contains("sensitive scheduler detail"));
+            assertThat(registry.scrape()).contains(
+                    "tasks_scheduled_execution_seconds_count{",
+                    "code_namespace=\"" + FailingScheduledWorker.class.getCanonicalName() + "\"",
+                    "outcome=\"ERROR\"");
         });
 
         assertThat(output)
-                .contains("scheduled task failed failureType=IllegalStateException")
+                .contains("예약 작업 실패 failureType=IllegalStateException")
                 .doesNotContain("sensitive scheduler detail");
     }
 
@@ -61,12 +71,12 @@ class ScheduledTaskObservationTest {
         }
 
         @Bean
-        SimpleMeterRegistry meterRegistry() {
-            return new SimpleMeterRegistry();
+        PrometheusMeterRegistry meterRegistry() {
+            return new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         }
 
         @Bean
-        ObservationRegistry observationRegistry(SimpleMeterRegistry meterRegistry) {
+        ObservationRegistry observationRegistry(PrometheusMeterRegistry meterRegistry) {
             ObservationRegistry registry = ObservationRegistry.create();
             registry.observationConfig()
                     .observationHandler(new DefaultMeterObservationHandler(meterRegistry));

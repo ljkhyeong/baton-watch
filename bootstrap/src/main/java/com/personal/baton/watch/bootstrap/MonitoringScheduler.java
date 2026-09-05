@@ -1,36 +1,27 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
-import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Condition;
+import org.springframework.context.annotation.ConditionContext;
+import org.springframework.context.annotation.Conditional;
+import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
+@Conditional(MonitoringScheduler.CheckEnabledCondition.class)
 public final class MonitoringScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(MonitoringScheduler.class);
 
     private final RunDueChecksUseCase runDueChecks;
-    private final MarkStaleProjectionsUseCase markStaleProjections;
-    private final PurgeAttemptHistoryUseCase purgeAttemptHistory;
-    private final GetDatabaseClockOffsetUseCase getDatabaseClockOffset;
     private final MonitoringMetrics metrics;
 
-    public MonitoringScheduler(
-            RunDueChecksUseCase runDueChecks,
-            MarkStaleProjectionsUseCase markStaleProjections,
-            PurgeAttemptHistoryUseCase purgeAttemptHistory,
-            GetDatabaseClockOffsetUseCase getDatabaseClockOffset,
-            MonitoringMetrics metrics) {
+    public MonitoringScheduler(RunDueChecksUseCase runDueChecks, MonitoringMetrics metrics) {
         this.runDueChecks = runDueChecks;
-        this.markStaleProjections = markStaleProjections;
-        this.purgeAttemptHistory = purgeAttemptHistory;
-        this.getDatabaseClockOffset = getDatabaseClockOffset;
         this.metrics = metrics;
     }
 
@@ -39,10 +30,9 @@ public final class MonitoringScheduler {
             scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
     void checkDueMonitors() {
         DueCheckBatchResult result = runDueChecks.runDueChecks();
-        metrics.updateCheckScheduleDelay(result);
         if (result.claimed() > 0) {
             log.info(
-                    "monitor check batch completed claimed={} applied={} replayed={} stale={}",
+                    "모니터 점검 배치 완료 claimed={} applied={} replayed={} stale={}",
                     result.claimed(),
                     result.applied(),
                     result.alreadyFinalized(),
@@ -50,32 +40,11 @@ public final class MonitoringScheduler {
         }
     }
 
-    @Scheduled(
-            fixedDelayString = "${watch.maintenance-interval}",
-            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
-    void markStaleProjections() {
-        int stale = markStaleProjections.markStaleProjectionsUnknown();
-        metrics.recordStaleProjections(stale);
-        if (stale > 0) {
-            log.info("monitor stale projections marked count={}", stale);
-        }
-    }
+    static final class CheckEnabledCondition implements Condition {
 
-    @Scheduled(
-            fixedDelayString = "${watch.maintenance-interval}",
-            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
-    void purgeAttemptHistory() {
-        int purged = purgeAttemptHistory.purgeAttemptHistory();
-        metrics.recordPurgedAttempts(purged);
-        if (purged > 0) {
-            log.info("monitor attempt history purged count={}", purged);
+        @Override
+        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
+            return context.getEnvironment().getProperty("watch.check-enabled", Boolean.class, true);
         }
-    }
-
-    @Scheduled(
-            fixedDelayString = "${watch.maintenance-interval}",
-            scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
-    void updateDatabaseClockOffset() {
-        metrics.updateDatabaseClockOffset(getDatabaseClockOffset.getDatabaseClockOffset());
     }
 }

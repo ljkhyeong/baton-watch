@@ -33,6 +33,7 @@ services:
       SPRING_DATASOURCE_PASSWORD: "${WATCH_DB_PASSWORD:?WATCH_DB_PASSWORD is required}"
       SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 30s
       WATCH_API_TOKEN: "${WATCH_API_TOKEN:?WATCH_API_TOKEN is required}"
+      WATCH_CHECK_ENABLED: "${WATCH_CHECK_ENABLED:-true}"
       WATCH_DB_MAXIMUM_POOL_SIZE: "${WATCH_DB_MAXIMUM_POOL_SIZE:-8}"
       WATCH_DB_MINIMUM_IDLE: "${WATCH_DB_MINIMUM_IDLE:-2}"
       WATCH_DB_CONNECTION_TIMEOUT_MILLIS: "${WATCH_DB_CONNECTION_TIMEOUT_MILLIS:-3000}"
@@ -59,7 +60,7 @@ services:
     ports:
       - "${WATCH_HOST_BIND:-127.0.0.1}:${WATCH_HOST_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8081/actuator/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8081/actuator/health/readiness"]
       interval: 10s
       timeout: 3s
       retries: 6

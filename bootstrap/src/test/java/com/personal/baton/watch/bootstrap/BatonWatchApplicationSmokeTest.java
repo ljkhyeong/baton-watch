@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import java.net.URI;
@@ -18,6 +19,13 @@ import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.availability.AvailabilityChangeEvent;
+import org.springframework.boot.availability.ReadinessState;
+import org.springframework.boot.health.contributor.Health;
+import org.springframework.boot.health.contributor.HealthContributor;
+import org.springframework.boot.health.contributor.HealthIndicator;
+import org.springframework.boot.health.registry.HealthContributorRegistry;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -35,6 +43,7 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "management.server.port=0",
+            "management.server.address=0.0.0.0",
             "management.endpoint.health.show-details=always",
             "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
@@ -72,6 +81,8 @@ class BatonWatchApplicationSmokeTest {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final List<MeterRegistry> meterRegistries;
+    private final HealthContributorRegistry healthContributors;
+    private final ApplicationContext applicationContext;
 
     @LocalServerPort
     private int serverPort;
@@ -84,11 +95,15 @@ class BatonWatchApplicationSmokeTest {
             Environment environment,
             JdbcTemplate jdbc,
             ObjectMapper objectMapper,
-            List<MeterRegistry> meterRegistries) {
+            List<MeterRegistry> meterRegistries,
+            HealthContributorRegistry healthContributors,
+            ApplicationContext applicationContext) {
         this.environment = environment;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.meterRegistries = meterRegistries;
+        this.healthContributors = healthContributors;
+        this.applicationContext = applicationContext;
     }
 
     @Test
@@ -137,10 +152,61 @@ class BatonWatchApplicationSmokeTest {
         assertThat(managementGet("/actuator/health").statusCode()).isEqualTo(200);
         HttpResponse<String> prometheus = managementGet("/actuator/prometheus");
         assertThat(prometheus.statusCode()).isEqualTo(200);
-        assertThat(prometheus.body()).contains("jvm_info");
+        assertThat(prometheus.body()).contains("jvm_info", "process_uptime_seconds");
+        // 빈 배치도 완료 횟수를 남겨 미실행과 유휴 상태를 구분할 수 있어야 한다.
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
+            String scrape = managementGet("/actuator/prometheus").body();
+            for (String method : List.of(
+                    "checkDueMonitors", "deliverPendingEvents", "markStaleProjections",
+                    "purgeAttemptHistory", "updateDatabaseClockOffset",
+                    "purgeDeliveredEventHistory", "refreshEventDeliveryBacklog",
+                    "refreshCheckScheduleDelay")) {
+                assertThat(scrape.lines().filter(line ->
+                        line.startsWith("tasks_scheduled_execution_seconds_count{")
+                                && line.contains("code_function=\"" + method + "\"")
+                                && line.contains("outcome=\"SUCCESS\"")))
+                        .as("예약 작업 완료 지표: %s", method)
+                        .anyMatch(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)) > 0);
+            }
+        });
         assertThat(managementGet("/actuator/scheduledtasks").statusCode()).isEqualTo(404);
 
         assertThat(meterRegistries).anyMatch(PrometheusMeterRegistry.class::isInstance);
+    }
+
+    @Test
+    void readinessIncludesDatabaseAndLifecycleButLivenessDoesNot() throws Exception {
+        assertProbe("readiness", 200, "UP");
+        assertProbe("liveness", 200, "UP");
+        // DB 네트워크 장애 재현이 아니라 실제 조립의 상태 그룹 연결을 검증한다.
+        HealthContributor database = healthContributors.unregisterContributor("db");
+        assertThat(database).isNotNull();
+        try {
+            healthContributors.registerContributor("db", (HealthIndicator) () ->
+                    Health.down().withDetail("private", "노출하면 안 되는 DB 정보").build());
+            assertProbe("readiness", 503, "DOWN");
+            assertProbe("liveness", 200, "UP");
+        } finally {
+            healthContributors.unregisterContributor("db");
+            healthContributors.registerContributor("db", database);
+        }
+        assertProbe("readiness", 200, "UP");
+        try {
+            AvailabilityChangeEvent.publish(applicationContext, ReadinessState.REFUSING_TRAFFIC);
+            assertProbe("readiness", 503, "OUT_OF_SERVICE");
+            assertProbe("liveness", 200, "UP");
+        } finally {
+            AvailabilityChangeEvent.publish(applicationContext, ReadinessState.ACCEPTING_TRAFFIC);
+        }
+        assertProbe("readiness", 200, "UP");
+        assertThat(get("/actuator/health/readiness", null).statusCode()).isEqualTo(404);
+    }
+
+    private void assertProbe(String group, int expectedCode, String expectedStatus) throws Exception {
+        HttpResponse<String> response = managementGet("/actuator/health/" + group);
+        assertThat(response.statusCode()).isEqualTo(expectedCode);
+        assertThat(objectMapper.readTree(response.body()))
+                .isEqualTo(objectMapper.readTree("{\"status\":\"" + expectedStatus + "\"}"));
     }
 
     private HttpResponse<String> managementGet(String path) throws Exception {
@@ -163,6 +229,8 @@ class BatonWatchApplicationSmokeTest {
                 """,
                 String.class);
         assertThat(appliedVersions).containsSubsequence("1", "2", "3", "4");
+        assertThat(environment.getProperty("management.server.address"))
+                .isEqualTo("127.0.0.1");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
                 .isEqualTo("health,prometheus");
         assertThat(environment.getProperty("management.endpoint.health.show-details"))

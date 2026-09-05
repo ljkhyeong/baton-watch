@@ -1,0 +1,19 @@
+# WATCH 자체의 고정 상태 경로용이다. RoleResource URL 점검에는 사용하지 않는다.
+modules:
+  watch_gateway:
+    prober: http
+    timeout: 5s
+    http: &watch_http
+      method: GET
+      valid_status_codes: [200]
+      follow_redirects: false
+      body_size_limit: 16KiB
+      fail_if_body_json_not_matches_cel: 'body.service == "baton-watch" && body.status == "UP"'
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+  watch_public:
+    prober: http
+    timeout: 5s
+    http:
+      <<: *watch_http
+      fail_if_not_ssl: true
