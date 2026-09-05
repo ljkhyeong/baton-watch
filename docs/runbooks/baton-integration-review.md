@@ -2,7 +2,7 @@
 
 확인일: 2026-09-05
 
-BATON `fdd2c32c4c54b52dc8afafaff0c9f309bf5f2a9b` (`codex/watch-state-recovery`)에 역할 자료 상태 조회·수동 재점검 UI와 조회 분산·재점검 안내 보완을 반영했다.
+BATON `93cd76b9a40fc43d0e6962aa8ca0e11a1614161b` (`codex/watch-state-recovery`)에 역할 자료 상태 조회·수동 재점검 UI, 조회 분산·재점검 안내와 편집 제한 중 조회·실패 원인 표시를 반영했다.
 WATCH에는 최신 불변 BATON 스냅샷의 대조·재전송 도구를 추가했다. 아래 내용은 저장소 구현과
 로컬 검증 결과이며 공개 운영 활성화나 실제 콜백 전달의 증거가 아니다.
 
@@ -28,6 +28,12 @@ WATCH의 현재 상태를 조회하고 다음 경계를 적용한다.
   조회한다. 브라우저별 GET은 동시 2건·최소 250ms 시작 간격, 대기 최대 100건·대기부터 응답까지
   30초 상한이다. 실제 전송에는 기존 API 클라이언트의 10초 상한도 적용한다.
   백그라운드 주기 조회는 하지 않는다. 상세를 닫으면 대기·진행 조회를 취소한다.
+- 바통 전달·수정 충돌 복구 대기로 편집이 잠겨도 연결 상태는 조회한다. 수동 재점검 버튼은
+  기존대로 숨기며, 자동 점검 대상 여부는 편집 제한에서 추측하지 않고 서버 응답을 따른다.
+- 현재 원본과 일치하는 최근 결과에는 `lastOutcome`와 `consecutiveFailures`를 전달한다.
+  `AVAILABLE`이 아니면 두 값은 `null`이다. 화면은 고정 코드에 맞는 실패 원인과 양수인
+  연속 실패 횟수를 표시하고 정상 결과가 오면 지운다. 점검 서비스 내부 오류는 대상 링크의
+  새 실패를 뜻하지 않으며 WATCH가 보존한 기존 횟수를 그대로 표시한다.
 - 수동 재점검은 현재 원격 리비전과 자료를 다시 확인해 동기화가 덜 된 요청을 보류한다.
   접수와 완료를 구별하고 WATCH의 429 대기 초를 전달한다. GET과 POST 사이의 동시 변경을
   원자적으로 막는 새 계약은 아니며 원본 아웃박스가 최종 감시 목표로 수렴시킨다.
@@ -42,9 +48,9 @@ UI는 이 인박스를 적용하지 않으므로 역순 이벤트로 최신 상�
 
 구현 근거:
 
-- [BATON 상태 조회 결정](https://github.com/ljkhyeong/baton/blob/fdd2c32c4c54b52dc8afafaff0c9f309bf5f2a9b/docs/ADR/0021_watch-current-state-query/adr.md)
-- [BATON 상태 조회 서비스](https://github.com/ljkhyeong/baton/blob/fdd2c32c4c54b52dc8afafaff0c9f309bf5f2a9b/application/src/main/java/com/personal/baton/application/workspace/WorkspaceResourceHealthService.java)
-- [BATON 자료 상태 화면](https://github.com/ljkhyeong/baton/blob/fdd2c32c4c54b52dc8afafaff0c9f309bf5f2a9b/frontend/src/features/watch/ResourceHealthStatus.tsx)
+- [BATON 상태 조회 결정](https://github.com/ljkhyeong/baton/blob/93cd76b9a40fc43d0e6962aa8ca0e11a1614161b/docs/ADR/0021_watch-current-state-query/adr.md)
+- [BATON 상태 조회 서비스](https://github.com/ljkhyeong/baton/blob/93cd76b9a40fc43d0e6962aa8ca0e11a1614161b/application/src/main/java/com/personal/baton/application/workspace/WorkspaceResourceHealthService.java)
+- [BATON 자료 상태 화면](https://github.com/ljkhyeong/baton/blob/93cd76b9a40fc43d0e6962aa8ca0e11a1614161b/frontend/src/features/watch/ResourceHealthStatus.tsx)
 
 ## WATCH 독립 복원
 
@@ -64,11 +70,13 @@ GET이 URL을 노출하지 않으므로 리비전 일치만으로 전체 본문 
 
 ## 검증과 배포 순서
 
-이번 보완의 BATON 전체 일반 테스트 729개와 REST Docs 159개, 생성 API 계약 드리프트 검사,
-프런트 빌드와 전체 브라우저 455개가 통과했다. 브라우저 43개는 기존 프로젝트별 설정에 따라
-제외됐으며 통과 수에 포함하지 않았다. 기능별 18개에는 조회 분산·닫기 취소·429 대기·같은
-점검 시각과 새 결과의 구분이 포함된다. 외부 클라이언트 집중 5개에는 중복 합류·호출자 상한·
-대기 만료·중단·재점검 전송 자리 보존을 포함한다.
+이번 보완의 BATON 전체 일반 테스트 730개와 REST Docs 159개, 생성 API 계약 드리프트 검사,
+프런트 빌드와 기능별 브라우저 33개가 통과했다. Chromium·모바일·WebKit에서 바통 전달·충돌
+복구 대기·종료 시즌, 실패 원인·횟수와 정상 복구, 알 수 없는 결과 코드의 처리까지 확인했다.
+조회 분산·닫기 취소·429 대기·같은 점검 시각과 새 결과의 구분도 포함한다. 외부 클라이언트
+집중 6개는 실패 코드·횟수 형식, 중복 합류·호출자 상한·대기 만료·중단·재점검 전송 자리 보존을
+검증한다. 앞선 `fdd2c32`에서는 전체 브라우저 455개가 통과하고 기존 프로젝트별 설정에 따라
+43개가 제외됐다. 이번에는 변경 기능의 33개를 실행했으며 전체 브라우저를 다시 실행하지 않았다.
 
 WATCH 복구 도구는 이전 `20d276e` 작업에서 회귀 7개와 실제 MySQL V16 스키마의 최신 두
 스냅샷 내보내기·원본 세 행 불변을 검증했다. 이번 WATCH 변경은 문서뿐이며 애플리케이션과
