@@ -6,6 +6,8 @@
 조회하는 Grafana 대시보드다. [Grafana 가져오기](https://grafana.com/docs/grafana/latest/visualizations/dashboards/build-dashboards/import-dashboards/)에서
 JSON 파일을 올리고 Prometheus 데이터 소스와 인스턴스를 선택한다. 별도 플러그인은
 필요하지 않으며 이 저장소는 Grafana·수집기·외부 계정을 배포하지 않는다.
+무료 외부 저장소에 연결하려면 [Grafana Cloud Free 연결](grafana-cloud-free.md)의
+Prometheus 설정을 사용한다. 계정 Free 여부와 기존 서버의 수집 경로를 먼저 확인한다.
 
 12개 패널은 수집 상태, 가장 오래된 선점 가능 점검의 지연, 미전달 이벤트 수·경과 시간, 결과별 시도율,
 평균 HTTP 소요 시간, 완료 실패, 리스 회수, 예약 완료 횟수, 시계 편차, DB 연결 풀,

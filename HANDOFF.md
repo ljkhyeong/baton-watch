@@ -1,11 +1,14 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-09-05
+최종 수정일: 2026-09-07
 
 ## 현재 작업
 
-- 작업 브랜치: `codex/simplify-watch-skills`. 프로젝트 점검 후 테스트 준비 코드 22줄을 줄였다.
-  작업 시간 검증은 기존 공통 설정을 재사용하고, HTTP 테스트 서버의 미사용 응답 시작 신호를 제거했다.
+- 작업 브랜치: `codex/grafana-cloud-free`. `3739149`에서
+  [Grafana Cloud Free 연결 설정](ops/prometheus/watch-cloud-free.yml)을 추가했다.
+  WATCH 지표만 60초마다 전송하며 한 번의 수집은 1MB·2,000개 샘플로 제한한다.
+- 실제 Free 계정·전송 주소·비밀 파일·수집기는 미설정이다. 외부 전송과 계정 인증은 실행하지 않았다.
+  [무료 연결 절차](docs/runbooks/grafana-cloud-free.md)에 따라 준비한 뒤 수신을 확인한다.
 - `8bf0546`에서 공용 HTTP의 미사용 실패 바이트 집계와 본문 폐기 함수의 반환값·콜백·0바이트 분기를 제거했다.
   콜백 본문 상한, HTTP 취소·타임아웃 분류는 유지한다.
 - `d3aa13a`에서 점검 바이트 계산·전용 테스트 2개, 미사용 `ClaimedCheck.scheduledAt`과
@@ -20,6 +23,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 무료 메트릭 연결 `3739149` | `./ops/tests/prometheus-rules-test.sh` 통과. 새 설정 문법·기존 대시보드·경보 검사. 계정·수집기 정보가 없어 실제 인증·전송·수신은 미실행. Java·배포 이미지 변경이 없어 해당 검사는 반복하지 않음 |
 | 테스트 준비 코드 정리 | `WorkerExecutionBudgetTest`·`ApacheHttpHopTransportTest`·`ApacheEventDeliveryTransportTest` 15개 실행·통과. 실패·건너뜀 없음. 테스트 보조 코드만 바뀌어 관련 검사만 실행 |
 | 공용 HTTP 정리 `8bf0546` | 당시 `:adapter-out-external:test` 210개 실행·통과, 실패·건너뜀 없음. 본문·헤더 제한, TLS·DNS 고정, 취소·종료·타임아웃 확인 |
 | 점검 코드 정리 `d3aa13a` | 당시 `./gradlew test` 통과. 435개 중 423개 실행·domain 12개 기존 결과 재사용, 실패·건너뜀 없음. 실제 PostgreSQL 검사 포함 |
@@ -34,6 +38,7 @@
 점검 코드 정리의 전체 로그는 `.gradle/agent-validation/20260905T132821057159Z-cleanup-full/`에 있다.
 공용 HTTP 모듈 로그는 `.gradle/agent-validation/20260905T134006130498Z-http-module/`에 있다.
 테스트 준비 코드 정리 로그는 `.gradle/agent-validation/20260905T135604532497Z-test-support-cleanup/`에 있다.
+무료 메트릭 연결 로그는 `.gradle/agent-validation/20260906T154649360265Z-grafana-cloud-free/`에 있다.
 
 ## 이번 세션의 도구 상태
 
