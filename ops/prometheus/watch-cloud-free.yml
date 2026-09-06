@@ -1,0 +1,39 @@
+# Grafana Cloud Free 전용 연결 예시다. 계정·주소·비밀 파일은 실행 환경에서 설정한다.
+# 이 작업은 WATCH와 같은 네트워크 네임스페이스에서 관리 루프백에 접근해야 한다.
+scrape_configs:
+  - job_name: baton-watch
+    scrape_interval: 60s
+    scrape_timeout: 5s
+    metrics_path: /actuator/prometheus
+    body_size_limit: 1MB
+    sample_limit: 2000
+    static_configs:
+      - targets: [127.0.0.1:8081]
+        labels:
+          instance: watch-1
+          check_enabled: "true"
+          event_delivery_enabled: "false"
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: &watch_metrics 'up|baton_watch_.*|tasks_scheduled_execution_seconds_count|process_uptime_seconds|hikaricp_connections_(active|pending)'
+        action: keep
+
+remote_write:
+  - name: grafana-cloud-free
+    url: https://prometheus.example.invalid/api/prom/push
+    remote_timeout: 10s
+    follow_redirects: false
+    basic_auth:
+      username: GRAFANA_CLOUD_METRICS_USER_ID
+      password_file: /run/secrets/grafana-cloud-metrics-token
+    # 기존 Prometheus에 합쳐도 다른 서비스의 지표는 이 연결로 보내지 않는다.
+    write_relabel_configs:
+      - source_labels: [job]
+        regex: baton-watch
+        action: keep
+      - source_labels: [__name__]
+        regex: *watch_metrics
+        action: keep
+    queue_config:
+      max_shards: 1
+      sample_age_limit: 1h
