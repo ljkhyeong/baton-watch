@@ -125,7 +125,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
    완료해야 합니다. `curl -k`를 사용하거나 TLS 검증을 비활성화하지 마세요.
 
 이 경로 앞에 Cloudflare Access를 추가하지 마세요. WATCH 상태 엔드포인트는
-의도적으로 공개되어 있고 모니터 경로는 BATON-WATCH Bearer 계약을 사용합니다.
+인증 없이 공개하며 모니터 경로는 BATON-WATCH Bearer 계약을 사용합니다.
 별도의 엣지 인증 흐름을 추가하면 외부에서 관찰되는 HTTP 계약이 달라집니다.
 
 Cloudflare 설정, DNS, Active 인증서만으로는 오리진이 실행 중임을 입증할 수
@@ -165,7 +165,7 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 - 데이터베이스 연결 풀 포화, Spring `tasks.scheduled.execution` 오류와 기존
   저카디널리티 WATCH 메트릭을 연결한 외부 대시보드와 알림 전달 경로
 - 완료 처리 실패, 만료 리스 회수와 데이터베이스 시계 편차에 대한 대시보드·경보를
-  운영 승인 전에 구성하고 장애 주입으로 검증한 증거
+  운영 승인 전에 구성하고 장애 주입 테스트 결과
 
 현재 저장소에는 지원 규모, 외부 대시보드와 알림 임계치가 확정되어 있지 않으므로
 이 검증을 마치기 전에는 운영 처리 용량이 확인된 것으로 안내해서는 안 됩니다.
@@ -313,7 +313,7 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 호스트 접근은 파일 자체가 아니라 운영자만 탐색할 수 있는 `0700` 상위 디렉터리가
 차단합니다. Compose file source는 호스트 파일을 bind mount하므로 컨테이너 UID를
 위한 `uid`, `gid`, `mode` 선언으로 이 권한을 대신할 수 없습니다. 환경 템플릿 파일에는
-의도적으로 이미지 리비전, 파일 경로, 데이터베이스 식별자·초기 볼륨 이름,
+이미지 리비전, 파일 경로, 데이터베이스 식별자·초기 볼륨 이름,
 제한이 설정된 애플리케이션 설정만 들어 있습니다. 활성 볼륨은 상태 파일의
 비밀값이 아닌 할당 하나로 선택하며, 셸에 내보낸 값이 환경 템플릿의 초기 값보다
 우선합니다. 두 파일 중 어느 것도 셸에서
@@ -470,7 +470,7 @@ unset WATCH_POSTGRES_IMAGE WATCH_GATEWAY_IMAGE WATCH_CLOUDFLARED_IMAGE \
 전체 로컬 테스트 작업도 통과해야 합니다. `검증`은 공식 SHA-256으로
 고정된 Gradle Wrapper, Gradle 의존성 검증 메타데이터, 전체 SHA로 고정된
 GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적용한 변경 의존성
-검토, CodeQL, ShellCheck, PostgreSQL 통합 증거,
+검토, CodeQL, ShellCheck, PostgreSQL 통합 테스트 결과,
 `staging-compose-policy-test.sh`, `staging-image-evidence-test.sh`,
 `staging-database-operation-test.sh`,
 `staging-url-policy-test.sh`,
