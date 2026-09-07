@@ -36,7 +36,7 @@ Java 21과 실행 중인 Docker가 필요하다.
 `Idempotency-Key`와 전체 페이로드 값의 동일성을 비교한다. 시험이 끝나거나
 실패하면 자식 JVM, HTTP 서버·실행기를 정리하고 임시 DB는 Testcontainers가 정리한다.
 
-## 증거와 한계
+## 검증 결과와 범위
 
 결과는 `adapter-out-persistence/build/reports/tests/processRecoveryTest/index.html`과
 같은 작업의 JUnit XML에 남는다. CI는 이 스위트에 실행된 테스트가 있고
@@ -44,12 +44,12 @@ Java 21과 실행 중인 Docker가 필요하다.
 
 이 시험은 운영 부트 JAR이나 Spring 예약 스케줄러 전체를 재시작하지 않는다.
 대상 점검은 대역이고, 전달 포트는 시험 전용 JDK HTTP 통신을 사용한다. 페이로드는
-값 비교를 위한 레코드 문자열이므로 운영 JSON 직렬화·Bearer 인증·공개 HTTPS·DNS
-고정·SSRF 정책·HTTP 제한의 검증 증거가 아니다. 운영 아웃바운드 어댑터와 안전
-설정에는 테스트용 우회 분기를 추가하지 않는다.
+값 비교를 위한 레코드 문자열이다. 따라서 운영 JSON 직렬화·Bearer 인증·공개 HTTPS·DNS
+고정·SSRF 정책·HTTP 제한은 이 시험에서 검증하지 않는다. 운영 아웃바운드 어댑터와
+안전 설정에는 테스트용 우회 분기를 추가하지 않는다.
 
-수신 측은 BATON의 내구성 중복 제거 구현을 대신하지 않는다. 이 시험이 증명하는
-것은 WATCH의 프로세스 중단 후 리스 회수와 동일 이벤트 재전달이다. 실제 BATON의
-중복 제거·효과 적용, 운영 Hikari 풀, 호스트 중단과 운영 처리량은 별도 검증이
+시험용 수신 서버는 BATON의 DB 기반 중복 처리를 검증하지 않는다. 이 시험에서는
+WATCH 프로세스 중단 후 리스 회수와 동일 이벤트 재전달을 확인한다. 실제 BATON의
+중복 처리 방지·이벤트 반영, 운영 Hikari 풀, 호스트 중단과 운영 처리량은 별도 검증이
 필요하다. [부하 시험](load-recovery-test.md)과
 [공개 전달 검증](public-staging-event-delivery.md)의 범위를 함께 참고한다.

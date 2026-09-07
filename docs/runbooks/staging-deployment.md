@@ -322,13 +322,19 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
 초기화와 마이그레이션 스크립트도 같은 문법과 파일 경계를 다시 검증합니다.
 
-WATCH API 토큰이나 터널 토큰을 교체할 때는 같은 `secrets` 디렉터리에 새 일반
-파일을 만들고 각각 `0600`, `0444`를 적용한 뒤 원래 경로로 원자적으로 바꾸세요.
-symlink나 기존 파일에 대한 제자리 덮어쓰기는 허용하지 않습니다. bind mount는 이전
-inode를 계속 참조할 수 있으므로 교체 뒤에는 `restart`가 아니라
-`staging_compose up -d --no-deps --force-recreate watch` 또는
-`staging_compose up -d --no-deps --force-recreate cloudflared`를 실행하고 상태 점검을
-다시 통과시켜야 합니다.
+WATCH API 토큰이나 터널 토큰은 다음 순서로 교체하세요.
+
+1. 같은 `secrets` 디렉터리에 새 일반 파일을 만듭니다. 권한은 WATCH API 토큰에 `0600`,
+   터널 토큰에 `0444`를 적용합니다.
+2. 새 파일을 원래 경로로 원자적으로 교체합니다. 심볼릭 링크를 사용하거나 기존 파일의
+   내용을 직접 덮어쓰면 안 됩니다.
+3. 해당 컨테이너를 다시 만듭니다. WATCH는
+   `staging_compose up -d --no-deps --force-recreate watch`, 터널은
+   `staging_compose up -d --no-deps --force-recreate cloudflared`를 실행합니다.
+4. 상태 점검을 다시 실행해 통과하는지 확인합니다.
+
+bind mount가 교체 전 파일의 inode를 계속 참조할 수 있으므로 `restart`만으로는
+새 토큰이 적용되지 않을 수 있습니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -836,13 +842,15 @@ test "$ROLLBACK_DATABASE_OPERATIONS_IMAGE_REVISION" = "$PREVIOUS_SHA"
 test "$ROLLBACK_MIGRATION_IMAGE_REVISION" = "$PREVIOUS_SHA"
 ~~~
 
-현재 볼륨에 이전 이미지를 바로 덮어 실행하지 마세요. 현재 스키마가
-이전 WATCH와 양방향 호환된다는 것, 이전 마이그레이션 이미지가 현재
-`flyway_schema_history`를 성공적으로 검증한다는 것, 동일한 역할 권한 경계가
-유지된다는 것을 활성 볼륨의 복제본 또는 검증 백업을 복원한 격리 환경에서
-먼저 입증한 경우에만 제자리 애플리케이션 롤백을 허용합니다. 이 호환성 증거가
-있을 때에만 다음을 실행하고 내부 상태, 외부 상태/401/404, 캐시, TLS,
-로그 감사를 반복하세요.
+현재 DB 볼륨을 유지한 채 이전 WATCH 이미지로 되돌리려면 다음 조건을 모두 검증해야 합니다.
+활성 볼륨의 복제본이나 검증된 백업을 복원한 격리 환경에서 확인하세요.
+
+- 현재 스키마와 이전 WATCH가 양방향으로 호환됩니다.
+- 이전 마이그레이션 이미지로 현재 `flyway_schema_history` 검증을 통과합니다.
+- DB 역할별 권한 분리가 유지됩니다.
+
+세 조건을 모두 통과한 경우에만 다음 명령을 실행하고 내부 상태, 외부 상태/401/404,
+캐시, TLS, 로그 감사를 다시 확인하세요.
 
 ~~~bash
 staging_compose stop cloudflared watch-gateway watch
