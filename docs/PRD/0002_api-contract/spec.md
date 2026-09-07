@@ -45,8 +45,8 @@ Compose에는 이 프록시 제한이 적용되지 않는다. NGINX 자체의 �
 다음 경로는 PRD-0003에 따라 구현되어 있다.
 
 - `PUT /api/v1/resource-monitors/{resourceReference}`는 스냅샷을 동기화하고
-  현재 프로젝션과 함께 HTTP 200을 반환한다.
-- `GET /api/v1/resource-monitors/{resourceReference}`는 해당 프로젝션을
+  현재 점검 정보와 함께 HTTP 200을 반환한다.
+- `GET /api/v1/resource-monitors/{resourceReference}`는 해당 점검 정보를
   반환하며, 없으면 HTTP 404를 반환한다.
 
 두 경로 모두 `Authorization: Bearer <token>`이 필요하다. 구성된 토큰은
@@ -61,10 +61,10 @@ Bearer 인증 스킴은 HTTP 인증 의미에 따라 대소문자를 구분하�
 자격 증명 검증에 실패하면 HTTP 401 문제 응답과 함께
 `WWW-Authenticate` Bearer 챌린지를 반환한다.
 
-정확히 일치하는 시스템 상태 GET 경로만 공개된다. `/api/v1/**` 아래에서
-문법적으로 허용되는 그 밖의 모든 요청은 라우팅 전에 무상태 서비스 인증 경계를
-통과한다. 이 경계는 서블릿 컨텍스트를 기준으로 적용되므로 WATCH를 컨텍스트
-경로 아래에 배포하더라도 모니터링 경로가 노출되지 않는다.
+정확히 일치하는 시스템 상태 GET 경로만 인증 없이 공개한다. `/api/v1/**`의
+그 밖의 유효한 요청은 라우팅 전에 서비스 토큰을 검증하며 세션은 사용하지 않는다.
+인증 경로는 서블릿 컨텍스트를 기준으로 판단하므로, 컨텍스트 경로 아래에 배포해도
+점검 API에 인증을 적용한다.
 
 PUT은 `application/json`을 받는다. 정확한 모니터 PUT 경로의 JSON
 본문은 16 KiB까지 허용하며, `Content-Length`가 이 한도를 초과하거나
