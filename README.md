@@ -7,7 +7,7 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 | 기능 | 동작 |
 | --- | --- |
 | 서비스 상태 | `GET /api/v1/system/status` |
-| 모니터 등록·조회 | 인증된 `PUT`·`GET /api/v1/resource-monitors/{resourceReference}`. `ACTIVE`·`INACTIVE`를 동기화하고 이전 리비전의 덮어쓰기를 거부 |
+| 점검 대상 등록·조회 | 인증된 `PUT`·`GET /api/v1/resource-monitors/{resourceReference}`. `ACTIVE`·`INACTIVE`를 동기화하고 이전 리비전의 덮어쓰기를 거부 |
 | 재점검 요청 | 인증된 `POST /api/v1/resource-monitors/{resourceReference}/check-requests`. 기존 점검을 사용하거나 새 일정을 예약 |
 | URL 점검 | GET 응답 헤더로 연결 상태 판단. 응답 본문은 읽거나 저장하지 않음 |
 | 점검 기록 | 일정, 시도·결과, 현재 상태와 상태 변경 이벤트를 PostgreSQL에 저장. 저장한 시도·결과는 변경하지 않음 |
@@ -31,7 +31,7 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 | 배치 | 허용 실행 시간 60초. 시작 시 JDBC·트랜잭션·행 잠금·HTTP 제한을 합산해 검증 |
 | 아웃바운드 요청 | DNS 해석 결과 검증·고정, SSRF 방어, 시간·헤더 제한, 리다이렉트 정책 적용 |
 | 요청 취소 | 전체 시간 초과·호출자 중단·실행기 종료 시 실제 HTTP 요청 취소 |
-| 결과 보존 | 오래된 상태 갱신, 시도·결과 보존 기간 제한. 이벤트는 전달 완료된 건만 삭제 |
+| 결과 보존 | 유효 기간이 지난 점검 상태를 `UNKNOWN`으로 변경. 시도·결과는 보존 기간 제한, 이벤트는 전달 완료된 건만 삭제 |
 
 Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선해 적용합니다.
 점검기의 자원 설정에도 상한을 적용합니다. 대상 점검은 리다이렉트마다 주소를 다시 검증하고,
@@ -77,7 +77,7 @@ WATCH에는 프런트엔드와 메시지 브로커가 없습니다. 외부 메�
 - PostgreSQL 18.6
 - Flyway 13.4.0 마이그레이션 이미지
 
-운영 코드의 의존성은 안쪽을 향합니다.
+코드 의존성은 다음 순서를 따릅니다.
 
 bootstrap -> adapters -> application -> domain
 
@@ -88,9 +88,44 @@ bootstrap -> adapters -> application -> domain
 개발 중에는 [변경 범위별 검증 절차](docs/runbooks/development-validation.md)에 따라 필요한 검사부터 실행합니다.
 `python3 ops/run-validation.py status`로 이전 결과를 확인하고, 같은 도구의 `run` 명령으로 로그와 종료 코드를 보관할 수 있습니다.
 
-저장소에는 공식 SHA-256 체크섬과 함께 9.7.1로 고정된 Gradle Wrapper와 해석된 빌드·테스트 의존성의 SHA-256을 기록한 `gradle/verification-metadata.xml`이 포함되어 있습니다. 의존성을 변경할 때는 `./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache`를 실행하고 새 체크섬과 의존성 변경을 함께 검토해야 합니다. 전체 테스트 작업에는 Docker와 Docker Compose가 필요하며, PostgreSQL 통합 테스트는 건너뛰는 방식으로 성공할 수 없도록 의도적으로 구성되어 있습니다. `WATCH_PERSISTENCE_QUERY_TIMEOUT`과 `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT`으로 기본 5초인 JDBC 구문·트랜잭션 제한을 재정의할 수 있으며, 둘 다 1~30초의 정수 초 단위 기간이어야 합니다.
+### 빌드·검증 조건
 
-HikariCP 풀은 최대 1~32, 최소 유휴 0~32로 제한하고 최소 유휴는 최대 풀 이하여야 합니다. 연결·검증 제한은 각각 250~30000ms이며 검증 제한이 연결 제한보다 작아야 합니다. 유휴 10000~1800000ms와 생존 확인 30000~1800000ms를 허용하며, 가변 풀의 유휴 제한은 최대 수명 30000~3600000ms보다 1000ms 이상 짧고 생존 확인은 최대 수명보다 짧아야 합니다. 초기화 실패 제한은 1~30000ms입니다. pgJDBC의 연결·로그인·취소 제한은 1~30초, 소켓 제한은 1~120초며, `WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다. `SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 하며, 검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다. 환경 변수 이름과 로컬 기본값은 [.env.example](.env.example)을 참고하세요.
+- Gradle Wrapper는 9.7.1로 고정하고 공식 SHA-256 체크섬으로 검증합니다.
+- 빌드·테스트 의존성의 SHA-256은 `gradle/verification-metadata.xml`에 기록합니다.
+- 전체 테스트에는 Docker와 Docker Compose가 필요합니다. PostgreSQL 통합 테스트를 건너뛰면 검증에 실패합니다.
+
+의존성을 변경하면 다음 명령을 실행하고, 새 체크섬과 의존성 변경을 함께 검토하세요.
+
+```bash
+./gradlew --write-verification-metadata sha256 --refresh-dependencies clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
+```
+
+### DB 연결·실행 제한
+
+아래 기본값은 [.env.example](.env.example) 기준입니다.
+
+| 설정 | 환경 변수 | 기본값 | 허용 범위·조건 |
+| --- | --- | --- | --- |
+| JDBC 구문 제한 | `WATCH_PERSISTENCE_QUERY_TIMEOUT` | 5s | 1~30초, 정수 초 단위 |
+| JDBC 트랜잭션 제한 | `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT` | 5s | 1~30초, 정수 초 단위 |
+| HikariCP 최대 연결 수 | `WATCH_DB_MAXIMUM_POOL_SIZE` | 8 | 1~32 |
+| 최소 유휴 연결 수 | `WATCH_DB_MINIMUM_IDLE` | 2 | 0~32, 최대 연결 수 이하 |
+| 연결 대기 제한 | `WATCH_DB_CONNECTION_TIMEOUT_MILLIS` | 3000ms | 250~30000ms |
+| 연결 검증 제한 | `WATCH_DB_VALIDATION_TIMEOUT_MILLIS` | 1000ms | 250~30000ms, 연결 대기 제한보다 짧게 |
+| 유휴 연결 유지 시간 | `WATCH_DB_IDLE_TIMEOUT_MILLIS` | 600000ms | 10000~1800000ms. 가변 풀에서는 최대 수명보다 1000ms 이상 짧게 |
+| 연결 최대 수명 | `WATCH_DB_MAX_LIFETIME_MILLIS` | 1800000ms | 30000~3600000ms |
+| 연결 생존 확인 주기 | `WATCH_DB_KEEPALIVE_TIME_MILLIS` | 120000ms | 30000~1800000ms, 최대 수명보다 짧게 |
+| 초기화 실패 제한 | `WATCH_DB_INITIALIZATION_FAIL_TIMEOUT_MILLIS` | 5000ms | 1~30000ms |
+| pgJDBC 연결 제한 | `WATCH_DB_CONNECT_TIMEOUT_SECONDS` | 3초 | 1~30초 |
+| pgJDBC 로그인 제한 | `WATCH_DB_LOGIN_TIMEOUT_SECONDS` | 5초 | 1~30초 |
+| pgJDBC 취소 요청 제한 | `WATCH_DB_CANCEL_SIGNAL_TIMEOUT_SECONDS` | 3초 | 1~30초 |
+| pgJDBC 소켓 제한 | `WATCH_DB_SOCKET_TIMEOUT_SECONDS` | 10초 | 1~120초 |
+
+`WATCH_DB_TCP_KEEP_ALIVE`는 Spring이 지원하는 불리언 표현을 허용합니다.
+`SPRING_DATASOURCE_URL`은 `jdbc:postgresql://` 계층형 형식이어야 합니다.
+검증된 상한을 우회할 수 있는 JDBC URL 쿼리 매개변수는 허용하지 않습니다.
+
+### 점검·전달 주기
 
 점검·전달 폴링 주기는 최소 1초, 유지보수 주기는 최소 1분입니다. 일반 점검 간격은 최소 1분, 내부 실패 재시도는 최소 30초이며, 이벤트 전달의 최초·최대 재시도 지연은 각각 최소 5초입니다. 이보다 짧은 값은 시작 시 Spring 설정 속성 검증에서 거부됩니다.
 
@@ -146,7 +181,7 @@ Compose에 고정된 공식 PostgreSQL·NGINX·cloudflared 이미지의 CycloneD
 생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. 공식 이미지의
 원래 라이선스는 유지됩니다.
 CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 사용하므로 배포
-호스트에서 다시 빌드한 플랫폼별 이미지도 보관 증거로 만든 정확한 아카이브를 같은
+호스트에서 다시 빌드한 플랫폼별 이미지도 검증용으로 보관한 이미지 아카이브를 동일한
 기준으로 검사합니다. 한 산출물에서 취약점이 발견되어도 나머지 취약점·라이선스
 검사를 끝까지 수행한 뒤 전체 결과를 실패로 처리합니다.
 부트 JAR SBOM은 Trivy 표준 라이선스 스캐너와 명시적 허용 목록도 통과해야 합니다.
