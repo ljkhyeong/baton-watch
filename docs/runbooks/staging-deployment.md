@@ -29,7 +29,9 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 - 로컬에서 빌드하고 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관한
   `baton-watch-database-operations:<full-git-sha>` 데이터베이스 작업 이미지,
   `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
-  `baton-watch:<full-git-sha>` 런타임 이미지
+  `baton-watch:<full-git-sha>` 런타임 이미지,
+  `baton-watch-postgres:<full-git-sha>` PostgreSQL 이미지,
+  `baton-watch-cloudflared:<full-git-sha>` 터널 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
 - Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 필수 비밀
   파일 세 개, 선택한 오버레이의 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
@@ -81,7 +83,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   상태·모니터 요청량을 분리해 제한합니다. `cloudflared`는 `watch-ingress`에만
   참여하므로 WATCH·DB에 직접 연결하지 못합니다. 호스트 포트는 공개하지 않습니다.
 - `cloudflared`의 원격 인그레스는 `http://watch-gateway:8080`으로 향해야 합니다.
-  기존 `http://watch:8080` 주소를 그대로 쓰면 연결에 실패합니다. 공식 이미지의 UID/GID `65532`가
+  기존 `http://watch:8080` 주소를 그대로 쓰면 연결에 실패합니다. 터널 이미지의 UID/GID `65532`가
   file-source bind mount를 읽을 수 있도록 터널 토큰만 `0444`로 두되, 호스트의
   상위 비밀 디렉터리는 운영자 소유 `0700`으로 유지합니다.
 - Mac에는 인바운드 방화벽이나 라우터 포트 포워딩이 필요하지 않습니다. QUIC용
@@ -373,12 +375,9 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 
 ## 정확한 로컬 리비전 빌드
 
-다이제스트로 고정된 PostgreSQL과 Cloudflare Tunnel 이미지는 Compose 정의를
-정본으로 삼아 가져옵니다. Flyway를 포함한 빌드 기반 이미지는 Dockerfile의
-다이제스트 고정값을 `docker build --pull`이 가져옵니다. 데이터베이스
-작업·마이그레이션·WATCH 이미지는 세 개 모두 `pull_policy: never`를 사용하므로
-배포 중에 로컬에서 빌드한 SHA 태그 이미지를 레지스트리 이미지로 몰래 대체할 수
-없습니다.
+NGINX는 Compose에 고정한 공식 이미지 다이제스트로 가져옵니다. PostgreSQL·데이터베이스
+작업·마이그레이션·cloudflared·WATCH는 Dockerfile의 고정된 소스로 빌드합니다. 이 다섯
+이미지는 `pull_policy: never`와 전체 Git SHA 태그로 검증한 로컬 이미지를 선택합니다.
 
 모든 작업에서 터널 오버레이를 사용합니다. 별도 전달 런북에 따라 BATON 콜백을
 명시한 경우에만 이벤트 전달 오버레이를 추가하도록 헬퍼 하나를 먼저 정의합니다.
@@ -406,7 +405,11 @@ VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
 ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
-staging_compose pull postgres watch-gateway cloudflared
+staging_compose pull watch-gateway
+docker build --pull --target postgres \
+  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
+  --tag "baton-watch-postgres:${WATCH_IMAGE_REVISION}" \
+  .
 docker build --pull --target database-operations \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_DATABASE_OPERATIONS_IMAGE" \
@@ -415,32 +418,15 @@ docker build --pull --target migrations \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_MIGRATION_IMAGE" \
   .
+docker build --pull --target cloudflared \
+  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
+  --tag "baton-watch-cloudflared:${WATCH_IMAGE_REVISION}" \
+  .
 docker build --pull --target runtime \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_IMAGE" \
   .
-EXPECTED_LICENSE_DIGEST="$(shasum -a 256 LICENSE | awk '{print $1}')"
-for BUILT_IMAGE in \
-  "$WATCH_DATABASE_OPERATIONS_IMAGE" \
-  "$WATCH_MIGRATION_IMAGE" \
-  "$WATCH_IMAGE"; do
-  test "$(docker image inspect "$BUILT_IMAGE" \
-    --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = \
-    "$DEPLOY_SHA"
-  test "$(docker image inspect "$BUILT_IMAGE" \
-    --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')" = \
-    'https://github.com/ljkhyeong/baton-watch'
-  test "$(docker image inspect "$BUILT_IMAGE" \
-    --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')" = \
-    '0.1.0-SNAPSHOT'
-  test "$(docker image inspect "$BUILT_IMAGE" \
-    --format '{{ index .Config.Labels "org.opencontainers.image.licenses" }}')" = \
-    'Apache-2.0'
-  BUILT_LICENSE_DIGEST="$(docker run --rm --entrypoint sha256sum \
-    "$BUILT_IMAGE" /usr/share/licenses/baton-watch/LICENSE | awk '{print $1}')"
-  test "$BUILT_LICENSE_DIGEST" = "$EXPECTED_LICENSE_DIGEST"
-done
-unset BUILT_IMAGE BUILT_LICENSE_DIGEST EXPECTED_LICENSE_DIGEST
+python3 ops/verify-runtime-images.py
 ./ops/tests/staging-database-operation-postgres-test.sh
 ./ops/staging-image-evidence.sh archive
 WATCH_RENDERED_CONFIG="$(staging_compose config --format json)"
@@ -482,9 +468,9 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `staging-url-policy-test.sh`,
 `staging-event-delivery-preflight-test.sh`, `staging-public-smoke-test.sh`,
 `staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
-비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 세 이미지의 OCI
+비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 다섯 이미지의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. 공용 공급망 검사 스크립트는
-독립 부트 JAR, 세 자체 이미지와 Compose에 고정된 공식 PostgreSQL·NGINX·cloudflared
+독립 부트 JAR, 자체 이미지 5개와 Compose에 고정된 공식 NGINX
 이미지의 CycloneDX SBOM 일곱 개를 만들고
 부트 JAR의 라이선스를 명시적 허용
 목록으로 검사하며, 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다.
@@ -816,11 +802,12 @@ unset AUDIT_DIR
 ## 롤백
 
 롤백에는 이전에 검증한 전체 커밋 SHA와 그 SHA로 이미 빌드하여 보관한
-데이터베이스 작업·마이그레이션·WATCH 이미지 세 개를 모두 사용합니다. 다른 작업 트리에서 이전
-태그를 다시 빌드하지 마세요.
+PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH 이미지 다섯 개를 사용합니다. 다른 작업 트리에서 이전
+태그를 다시 빌드하지 마세요. 이미지가 세 개였던 이전 리비전은 해당 리비전의
+Compose 파일과 이미지 보관 도구로 복원해야 합니다.
 
 NGINX 이미지 다이제스트와 `ops/nginx/watch-gateway.conf`도 배포 커밋 기준으로
-함께 보관하고 복원해야 합니다. 이 설정은 세 애플리케이션 이미지 보관 도구의
+함께 보관하고 복원해야 합니다. 이 설정은 자체 이미지 보관 도구의
 대상이 아닙니다. NGINX 도입 전 리비전으로 롤백할 때는
 [요청 제한 롤백 절차](request-rate-limit.md#롤백)에 따라 터널을 먼저 중지하고,
 요청 제한 대안 없이 공개 서비스를 재개하지 마세요.
@@ -866,7 +853,7 @@ staging_compose ps -a
 새 릴리스가 스키마를 전진시켰거나 호환성을 입증하지 못했다면 이전
 애플리케이션만 활성 볼륨에 연결하지 마세요. 위의 복원 테스트를 통과한
 마지막 백업을 선택하여 명시적으로 이름을 지정한 새 볼륨에 복원합니다.
-이 경로에서도 이전 데이터베이스 작업·마이그레이션·WATCH 이미지 세 개의
+이 경로에서도 이전 PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH 이미지의
 SHA 태그를 모두 검증해야 합니다.
 
 ~~~bash

@@ -52,7 +52,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 | 운영 도구 테스트 | 작업자 미실행 경보·PromQL·`promtool`, `0600` DB 백업·임시 PostgreSQL 복원, URL·비밀값을 제외한 진단 CLI 검증 |
 | GitHub Actions | 의존성 체크섬·라이선스, CodeQL·ShellCheck, JAR·이미지 CycloneDX SBOM, 심각도별 취약점 검사. 검사 실패·미실행 시 CI 실패 처리 |
 
-이미지 검사는 자체 배포 이미지 세 개와 공식 이미지 세 개를 포함합니다. 의존성 변경은
+이미지 검사는 자체 배포 이미지 다섯 개와 공식 NGINX 이미지를 포함합니다. 의존성 변경은
 허용 라이선스도 검토합니다. 자세한 실행 명령과 범위는 아래 빌드·검증 절차를 따릅니다.
 
 ### 운영에 필요한 별도 작업
@@ -173,13 +173,14 @@ readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Doc
 주기를 바꾸면 [조회 구간과 시작 유예](docs/runbooks/monitoring-alerts.md)도 검토해야 합니다.
 
 전체 Gradle 검증은 실행 가능한 부트 JAR의 `META-INF/LICENSE`가 저장소 `LICENSE`와
-정확히 일치하는지도 확인합니다. Dockerfile의 데이터베이스 작업·마이그레이션·WATCH
+정확히 일치하는지도 확인합니다. Dockerfile의 PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH
 이미지는 같은 라이선스를 `/usr/share/licenses/baton-watch/LICENSE`에 포함하고
-`Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 세 이미지의
-레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 세 개와
-Compose에 고정된 공식 PostgreSQL·NGINX·cloudflared 이미지의 CycloneDX SBOM 일곱 개를
+`Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 [이미지 검증 도구](ops/verify-runtime-images.py)로
+레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 다섯 개와
+Compose에 고정된 NGINX 이미지의 CycloneDX SBOM 일곱 개를
 생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. 공식 이미지의
-원래 라이선스는 유지됩니다.
+원래 라이선스는 유지됩니다. PostgreSQL의 OS 패키지와 cloudflared의 Go 의존성은
+수정 버전으로 빌드합니다. [cloudflared 빌드 입력](ops/cloudflared/README.md)은 공식 소스와 변경한 의존성을 기록합니다.
 CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 사용하므로 배포
 호스트에서 다시 빌드한 플랫폼별 이미지도 검증용으로 보관한 이미지 아카이브를 동일한
 기준으로 검사합니다. 한 산출물에서 취약점이 발견되어도 나머지 취약점·라이선스
@@ -223,7 +224,7 @@ curl http://localhost:8080/api/v1/system/status
 
 [선택적 이벤트 전달 오버레이](compose.staging-event-delivery.yml)는 BATON 콜백 사전 검사가 끝난 경우에만 전달을 활성화하고 토큰을 `configtree` 비밀 파일로 주입합니다. 이 오버레이를 선택하지 않으면 기본 스테이징은 이벤트 전달을 수행하지 않습니다.
 
-스테이징 배포 설정은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch` 이미지 세 개를 사용합니다. 운영 런북은 세 이미지의 ID·OCI 리비전·아카이브 SHA-256을 보관하고, 소유자·런타임 비밀번호를 SQL이나 명령행에 노출하지 않고 별도로 교체·원복하는 절차를 제공합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다.
+스테이징 배포 설정은 데이터베이스 소유자와 WATCH 런타임 역할을 분리하고, 같은 Git SHA로 태그한 `baton-watch-postgres`, `baton-watch-database-operations`, `baton-watch-migrations`, `baton-watch-cloudflared`, `baton-watch` 이미지 다섯 개를 사용합니다. 운영 런북은 이 이미지들의 ID·OCI 리비전·아카이브 SHA-256을 보관하고, 소유자·런타임 비밀번호를 SQL이나 명령행에 노출하지 않고 별도로 교체·원복하는 절차를 제공합니다. 일회성 역할 초기화와 Flyway 마이그레이션이 완료된 뒤에만 런타임을 시작합니다.
 
 점검 대상을 동기화하려면 다음 명령을 사용합니다.
 
