@@ -13,10 +13,13 @@ import com.personal.baton.watch.application.monitoring.service.GetEventDeliveryB
 import com.personal.baton.watch.application.monitoring.service.PurgeDeliveredEventsService;
 import com.personal.baton.watch.application.monitoring.service.RunEventDeliveriesService;
 import java.time.Clock;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Condition;
+import org.springframework.context.annotation.ConditionContext;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 import tools.jackson.databind.ObjectMapper;
@@ -39,7 +42,7 @@ class EventDeliveryConfiguration {
     }
 
     @Bean
-    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
+    @Conditional(EnabledCondition.class)
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
@@ -68,14 +71,14 @@ class EventDeliveryConfiguration {
 
     @Bean
     @Primary
-    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
+    @Conditional(EnabledCondition.class)
     HealthChangeEventSender meteredHealthChangeEventSender(
             ApacheHealthChangeEventSender sender, MonitoringMetrics metrics) {
         return new MeteredHealthChangeEventSender(sender, metrics);
     }
 
     @Bean
-    @ConditionalOnBooleanProperty(prefix = "watch.event-delivery", name = "enabled")
+    @Conditional(EnabledCondition.class)
     RunEventDeliveriesUseCase runEventDeliveriesUseCase(
             HealthChangeEventDeliveryPersistencePort persistence,
             HealthChangeEventSender sender,
@@ -117,4 +120,11 @@ class EventDeliveryConfiguration {
         return new GetEventDeliveryBacklogService(persistence, clock);
     }
 
+    static final class EnabledCondition implements Condition {
+
+        @Override
+        public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
+            return context.getEnvironment().getProperty("watch.event-delivery.enabled", Boolean.class, false);
+        }
+    }
 }

@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.awaitility.Awaitility;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -342,21 +343,16 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
         return eventId;
     }
 
-    private void awaitLockWait(int backendPid) throws InterruptedException {
-        long deadline = System.nanoTime()
-                + TimeUnit.SECONDS.toNanos(CONCURRENCY_TIMEOUT_SECONDS);
-        while (System.nanoTime() < deadline) {
-            Boolean waiting = jdbc.queryForObject("""
-                    SELECT wait_event_type = 'Lock'
-                    FROM pg_stat_activity
-                    WHERE pid = ?
-                    """, Boolean.class, backendPid);
-            if (Boolean.TRUE.equals(waiting)) {
-                return;
-            }
-            Thread.sleep(20);
-        }
-        throw new AssertionError("completion did not wait for the backlog summary lock");
+    private void awaitLockWait(int backendPid) {
+        Awaitility.await("백로그 요약 행 잠금 대기")
+                .pollDelay(0, TimeUnit.MILLISECONDS)
+                .pollInterval(20, TimeUnit.MILLISECONDS)
+                .atMost(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(jdbc.queryForObject("""
+                        SELECT wait_event_type = 'Lock'
+                        FROM pg_stat_activity
+                        WHERE pid = ?
+                        """, Boolean.class, backendPid)).isTrue());
     }
 
     private static void await(CountDownLatch latch) {

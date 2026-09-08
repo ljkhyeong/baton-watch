@@ -52,19 +52,13 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
-        Duration maximumScheduleDelay = Duration.ZERO;
-        while (claimed < batchSize) {
+        while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
             Optional<ClaimedCheck> nextClaim = persistence.claimDueCheck(leaseDuration);
             if (nextClaim.isEmpty()) {
                 break;
             }
             ClaimedCheck claimedCheck = nextClaim.orElseThrow();
             claimed++;
-            Duration scheduleDelay = Duration.between(
-                    claimedCheck.scheduledAt(), claimedCheck.claimedAt());
-            if (scheduleDelay.compareTo(maximumScheduleDelay) > 0) {
-                maximumScheduleDelay = scheduleDelay;
-            }
             CheckObservation observation = check(claimedCheck);
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
@@ -86,8 +80,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                 case STALE_CLAIM -> staleClaims++;
             }
         }
-        return new DueCheckBatchResult(
-                claimed, applied, alreadyFinalized, staleClaims, maximumScheduleDelay);
+        return new DueCheckBatchResult(claimed, applied, alreadyFinalized, staleClaims);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

@@ -2,6 +2,7 @@ package com.personal.baton.watch.application.monitoring.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
@@ -24,6 +25,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RunEventDeliveriesServiceTest {
 
@@ -55,6 +58,33 @@ class RunEventDeliveriesServiceTest {
         assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
         assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
         assertNull(persistence.finalization.nextAttemptAt());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void preservesInterruptionAndStopsClaimingMoreEvents(boolean interruptedBeforeStart) {
+        List<String> calls = new ArrayList<>();
+        RecordingPersistence persistence = new RecordingPersistence(calls, claimed(1));
+        RunEventDeliveriesService service = service(persistence, event -> {
+            calls.add("send");
+            Thread.currentThread().interrupt();
+            return EventDeliveryObservation.internalFailure();
+        });
+
+        try {
+            if (interruptedBeforeStart) {
+                Thread.currentThread().interrupt();
+            }
+
+            EventDeliveryBatchResult result = service.runEventDeliveries();
+
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "send", "finalize"), calls);
+            int completed = interruptedBeforeStart ? 0 : 1;
+            assertEquals(new EventDeliveryBatchResult(completed, 0, completed, 0, 0), result);
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test

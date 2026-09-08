@@ -28,7 +28,7 @@ class ApacheResponseLifecycleTest {
         HttpGet request = new HttpGet("https://example.com/");
 
         String result = ApacheResponseLifecycle.execute(
-                client, TARGET, request, ignored -> "handled");
+                client, TARGET, request, CloseMode.GRACEFUL, ignored -> "handled");
 
         assertEquals("handled", result);
         assertEquals(CloseMode.GRACEFUL, closeMode.get());
@@ -42,7 +42,7 @@ class ApacheResponseLifecycleTest {
 
         assertThrows(
                 ContentTooLongException.class,
-                () -> ApacheResponseLifecycle.execute(client, TARGET, request, ignored -> {
+                () -> ApacheResponseLifecycle.execute(client, TARGET, request, CloseMode.GRACEFUL, ignored -> {
                     throw new ContentTooLongException("response exceeded byte limit");
                 }));
 

@@ -13,5 +13,7 @@ public interface CheckWorkPersistencePort {
 
     CheckFinalizationStatus finalizeCheck(CheckFinalization finalization);
 
+    Duration getOldestDueCheckDelay();
+
     int purgeAttempts(Instant completedBefore, int limit);
 }

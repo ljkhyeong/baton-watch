@@ -129,7 +129,7 @@ class SafeEventDeliveryEngineTest {
     void mapsTransportFailuresToBoundedOutcomes(
             OutboundHttpFailure.Kind kind, EventDeliveryOutcome expected) throws Exception {
         DeliveryTransport transport = (request, remaining) -> {
-            throw new OutboundHttpFailure(kind, 0);
+            throw new OutboundHttpFailure(kind);
         };
 
         EventDeliveryObservation observation = engine(

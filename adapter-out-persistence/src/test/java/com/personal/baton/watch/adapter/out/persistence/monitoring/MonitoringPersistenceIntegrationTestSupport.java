@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -32,13 +33,14 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     @BeforeEach
     void initializeMonitoringPersistenceAdapters() {
         TransactionOperations transactions = newTransactionOperations();
-        monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbc, transactions);
-        checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbc, transactions);
+        JdbcClient jdbcClient = JdbcClient.create(jdbc);
+        monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbcClient, transactions);
+        checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
     }
 
     protected JdbcCheckWorkPersistenceAdapter newCheckWorkPersistenceAdapter() {
         return new JdbcCheckWorkPersistenceAdapter(
-                new JdbcTemplate(testDataSource), newTransactionOperations());
+                JdbcClient.create(new JdbcTemplate(testDataSource)), newTransactionOperations());
     }
 
     protected TransactionOperations newTransactionOperations() {

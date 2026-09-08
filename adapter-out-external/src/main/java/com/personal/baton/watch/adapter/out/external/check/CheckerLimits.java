@@ -9,7 +9,6 @@ public record CheckerLimits(
         Duration connectTimeout,
         Duration responseTimeout,
         Duration totalTimeout,
-        long maxResponseBytes,
         int maxRedirects,
         int maxHeaderCount,
         int maxHeaderLineLength) {
@@ -19,8 +18,6 @@ public record CheckerLimits(
         OutboundResourceBounds.requirePositiveDuration(responseTimeout, "responseTimeout");
         OutboundResourceBounds.requirePositiveDuration(totalTimeout, "totalTimeout");
         OutboundResourceBounds.requireNanosRepresentable(totalTimeout, "totalTimeout");
-        OutboundResourceBounds.requireResponseBytes(
-                maxResponseBytes, OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES);
         Args.checkRange(maxRedirects, 0, 3, "maxRedirects");
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }

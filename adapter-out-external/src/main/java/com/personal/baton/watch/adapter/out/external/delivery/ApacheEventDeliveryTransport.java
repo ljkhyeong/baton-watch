@@ -15,6 +15,7 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
+import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 
 /** 이미 검증되고 DNS에 고정된 POST 하나를 리다이렉트나 클라이언트 상태 없이 실행한다. */
@@ -37,9 +38,11 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
     @Override
     public int execute(ApprovedDeliveryRequest request, Duration remainingTime)
             throws OutboundHttpFailure {
+        HttpPost httpRequest = new HttpPost(request.endpoint().uri());
         return requestExecutor.execute(
+                httpRequest,
                 remainingTime,
-                progress -> executeBlocking(request, remainingTime, progress));
+                onResponseStarted -> executeBlocking(request, httpRequest, remainingTime, onResponseStarted));
     }
 
     @Override
@@ -49,8 +52,9 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
     private int executeBlocking(
             ApprovedDeliveryRequest delivery,
+            HttpPost request,
             Duration remainingTime,
-            ApacheHttpRequestExecutor.Progress progress)
+            Runnable onResponseStarted)
             throws IOException {
         ApacheHttpClientLimits clientLimits = ApacheHttpClientLimits.cappedBy(
                 limits.connectTimeout(),
@@ -61,21 +65,17 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
         try (CloseableHttpClient client = clientFactory.open(
                 delivery.endpoint().hostname(), delivery.addresses(), clientLimits)) {
-            HttpPost request = new HttpPost(delivery.endpoint().uri());
             request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + delivery.bearerToken());
             request.setHeader(IDEMPOTENCY_KEY, delivery.idempotencyKey());
             request.setHeader(HttpHeaders.ACCEPT_ENCODING, "identity");
             request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
 
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(delivery.endpoint().uri()), request, response -> {
-                        progress.responseStarted();
+                    client, HttpHost.create(delivery.endpoint().uri()), request, CloseMode.GRACEFUL, response -> {
+                        onResponseStarted.run();
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {
-                            bodyDiscarder.discard(
-                                    entity,
-                                    limits.maxResponseBytes(),
-                                    progress::responseBytes);
+                            bodyDiscarder.discard(entity, limits.maxResponseBytes());
                         }
                         return response.getCode();
                     });

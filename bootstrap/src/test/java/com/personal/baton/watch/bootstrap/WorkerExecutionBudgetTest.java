@@ -9,24 +9,8 @@ class WorkerExecutionBudgetTest {
 
     private static final Duration EXECUTION_BUDGET = Duration.ofSeconds(60);
     private static final Duration TOTAL_TIMEOUT = Duration.ofSeconds(5);
-    private static final DatabaseRuntimeProperties DATABASE = new DatabaseRuntimeProperties(
-            4,
-            1,
-            3_000,
-            1_000,
-            600_000,
-            1_800_000,
-            300_000,
-            1_000,
-            3,
-            3,
-            10,
-            3,
-            true);
-    private static final PersistenceProperties PERSISTENCE = new PersistenceProperties(
-            Duration.ofSeconds(3),
-            Duration.ofSeconds(5),
-            Duration.ofSeconds(1));
+    private static final DatabaseRuntimeProperties DATABASE = BootstrapTestFixtures.databaseRuntimeProperties();
+    private static final PersistenceProperties PERSISTENCE = BootstrapTestFixtures.persistenceProperties();
 
     @Test
     void acceptsDefaultCheckAndDeliveryBudgets() {

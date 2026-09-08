@@ -7,6 +7,7 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD}
 watch:
   api-token: ${WATCH_API_TOKEN}
+  check-enabled: ${WATCH_CHECK_ENABLED:true}
   database:
     maximum-pool-size: ${WATCH_DB_MAXIMUM_POOL_SIZE:8}
     minimum-idle: ${WATCH_DB_MINIMUM_IDLE:2}
@@ -74,3 +75,8 @@ watch:
 management:
   server:
     port: 8081
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState,db

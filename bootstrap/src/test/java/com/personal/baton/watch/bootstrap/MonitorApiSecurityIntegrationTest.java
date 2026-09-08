@@ -7,6 +7,8 @@ import com.personal.baton.watch.adapter.in.web.monitoring.ResourceMonitorControl
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.system.SystemStatusController;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
+import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
+import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
@@ -53,6 +55,8 @@ import tools.jackson.databind.ObjectMapper;
         properties = {
             "server.servlet.context-path=/watch",
             "management.server.port=-1",
+            // DB를 제외한 보안 전용 조립이므로 기본 준비 상태만 사용한다.
+            "management.endpoint.health.group.readiness.include=readinessState",
             "server.max-http-request-header-size=64KB",
             "server.tomcat.max-http-response-header-size=64KB",
             "server.tomcat.max-connections=4096",
@@ -328,6 +332,17 @@ class MonitorApiSecurityIntegrationTest {
                 MediaType.APPLICATION_JSON_VALUE);
     }
 
+    @Test
+    void checkRequestsRequireAuthenticationAndDoNotRequireCsrf() throws Exception {
+        String path = "/api/v1/resource-monitors/resource-1/check-requests";
+        assertUnauthorized(post(path, null));
+        assertUnauthorized(post(path, "wrong-token"));
+        HttpResponse<String> response = post(path, API_TOKEN);
+        assertThat(response.statusCode()).isEqualTo(202);
+        assertThat(objectMapper.readTree(response.body()).required("status").stringValue())
+                .isEqualTo("SCHEDULED");
+    }
+
     private HttpResponse<String> get(String path, String token) throws Exception {
         return get(path, token, MediaType.APPLICATION_JSON_VALUE);
     }
@@ -473,6 +488,12 @@ class MonitorApiSecurityIntegrationTest {
         @Bean
         SynchronizeMonitorUseCase synchronizeMonitorUseCase() {
             return command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+        }
+
+        @Bean
+        RequestMonitorCheckUseCase requestMonitorCheckUseCase() {
+            return reference -> new MonitorCheckRequestResult(
+                    MonitorCheckRequestResult.Status.SCHEDULED, NOW, 0);
         }
 
         @Bean

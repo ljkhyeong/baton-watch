@@ -7,7 +7,26 @@ WORKDIR /workspace
 COPY . .
 RUN chmod +x gradlew && ./gradlew --no-daemon :bootstrap:bootJar
 
-FROM postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2 AS database-operations
+FROM postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2 AS postgres
+ARG OCI_SOURCE
+ARG OCI_VERSION
+ARG OCI_REVISION
+LABEL org.opencontainers.image.title="BATON WATCH PostgreSQL" \
+      org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+RUN apk add --no-cache \
+        "libcrypto3=3.5.8-r0" \
+        "libssl3=3.5.8-r0" \
+        "libuuid=2.42.3-r1" \
+        "su-exec=0.3-r0" \
+    && rm /usr/local/bin/gosu \
+    && sed -i 's/exec gosu postgres /exec su-exec postgres /' /usr/local/bin/docker-entrypoint.sh
+COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
+RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch
+
+FROM postgres AS database-operations
 ARG OCI_SOURCE
 ARG OCI_VERSION
 ARG OCI_REVISION
@@ -17,13 +36,6 @@ LABEL org.opencontainers.image.title="BATON WATCH 데이터베이스 운영 작�
       org.opencontainers.image.version="${OCI_VERSION}" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0"
-RUN apk add --no-cache \
-        "libcrypto3=3.5.8-r0" \
-        "libssl3=3.5.8-r0" \
-        "su-exec=0.3-r0" \
-    && rm /usr/local/bin/gosu
-COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
-RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch
 COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-operation.sh
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "70", "70", "/opt/watch/staging-database-operation.sh", "configure-runtime-role"]
@@ -55,7 +67,7 @@ LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
 RUN apk add --no-cache \
         "bash=5.3.9-r1" \
         "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.3-r0" \
+        "libexpat=2.8.4-r0" \
         "libssl3=3.5.8-r0" \
         "openssl=3.5.8-r0" \
         "p11-kit=0.26.2-r0" \
@@ -72,6 +84,40 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
 
+FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS cloudflared-build
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
+WORKDIR /src
+ADD --checksum=sha256:04cd85af52c2c012f08212c878b4c403eadf410865f2356a80f361d475d2fc92 \
+    https://codeload.github.com/cloudflare/cloudflared/tar.gz/refs/tags/2026.8.3 /tmp/cloudflared.tar.gz
+RUN tar -xzf /tmp/cloudflared.tar.gz --strip-components=1 -C /src \
+    && rm /tmp/cloudflared.tar.gz
+COPY ops/cloudflared/go.mod ops/cloudflared/go.sum ./
+COPY ops/cloudflared/licenses.sha256 ops/cloudflared/copy-licenses.sh ./
+RUN go test -mod=readonly ./cmd/cloudflared/cliutil ./tunnelrpc/... \
+    && go build -mod=readonly -trimpath \
+    -ldflags="-X main.Version=2026.8.3-watch.1 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
+    -o /cloudflared ./cmd/cloudflared \
+    && sh /src/copy-licenses.sh
+
+FROM scratch AS cloudflared
+ARG OCI_SOURCE
+ARG OCI_VERSION
+ARG OCI_REVISION
+LABEL org.opencontainers.image.title="BATON WATCH cloudflared" \
+      org.opencontainers.image.source="${OCI_SOURCE}" \
+      org.opencontainers.image.version="${OCI_VERSION}" \
+      org.opencontainers.image.revision="${OCI_REVISION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+ENV PATH=/usr/local/bin HOME=/home/nonroot
+COPY --from=cloudflared-build /cloudflared /usr/local/bin/cloudflared
+COPY --from=cloudflared-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=cloudflared-build /src/LICENSE /usr/share/licenses/cloudflared/LICENSE
+COPY --from=cloudflared-build /licenses /usr/share/licenses/cloudflared/modules
+COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
+USER 65532:65532
+ENTRYPOINT ["cloudflared", "--no-autoupdate"]
+CMD ["version"]
+
 FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS runtime
 ARG OCI_SOURCE
 ARG OCI_VERSION
@@ -85,6 +131,7 @@ LABEL org.opencontainers.image.title="BATON WATCH" \
 RUN command -v wget >/dev/null \
     && apk add --no-cache \
         "libcrypto3=3.5.8-r0" \
+        "libexpat=2.8.4-r0" \
         "libssl3=3.5.8-r0" \
         "su-exec=0.3-r0"
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE

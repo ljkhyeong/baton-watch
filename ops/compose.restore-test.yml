@@ -1,0 +1,28 @@
+# 운영 볼륨·호스트 포트·외부 네트워크를 사용하지 않는 폐기 가능한 복원 시험 환경이다.
+services:
+  postgres:
+    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    network_mode: none
+    environment:
+      POSTGRES_DB: baton_watch
+      POSTGRES_USER: watch_restore
+      # 네트워크가 없는 임시 DB의 컨테이너 내부 소켓에서만 사용한다.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    read_only: true
+    tmpfs:
+      - /var/lib/postgresql:rw,nosuid,nodev,size=1g
+      - /var/run/postgresql:rw,nosuid,nodev,size=16m
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "watch_restore", "-d", "baton_watch"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1536m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: none

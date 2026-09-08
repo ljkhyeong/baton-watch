@@ -7,7 +7,6 @@ import java.io.ByteArrayInputStream;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.io.entity.BasicHttpEntity;
@@ -20,34 +19,30 @@ class ResponseBodyDiscarderTest {
 
     @Test
     void discardsAnUnknownLengthBodyBelowTheLimitWithoutRetainingIt() throws Exception {
-        AtomicLong progress = new AtomicLong();
+        CountingInputStream input = new CountingInputStream(
+                new ByteArrayInputStream(new byte[63]));
         BasicHttpEntity entity = new BasicHttpEntity(
-                new ByteArrayInputStream(new byte[63]), -1, ContentType.APPLICATION_OCTET_STREAM);
+                input, -1, ContentType.APPLICATION_OCTET_STREAM);
 
-        long consumed = discarder.discard(entity, 64, progress::set);
+        discarder.discard(entity, 64);
 
-        assertEquals(63, consumed);
-        assertEquals(63, progress.get());
+        assertEquals(63, input.bytesRead());
     }
 
     @Test
     void acceptsAnExactDeclaredLengthWithoutReadingAProbeByte() throws Exception {
-        AtomicLong progress = new AtomicLong();
         CountingInputStream input = new CountingInputStream(
                 new ByteArrayInputStream(new byte[65]));
         BasicHttpEntity entity = new BasicHttpEntity(
                 input, 64, ContentType.APPLICATION_OCTET_STREAM);
 
-        long consumed = discarder.discard(entity, 64, progress::set);
+        discarder.discard(entity, 64);
 
-        assertEquals(64, consumed);
-        assertEquals(64, progress.get());
         assertEquals(64, input.bytesRead());
     }
 
     @Test
     void stopsAnUnknownLengthBodyAtTheCapWithoutReadingAProbeByte() {
-        AtomicLong progress = new AtomicLong();
         CountingInputStream input = new CountingInputStream(
                 new ByteArrayInputStream(new byte[65]));
         BasicHttpEntity entity = new BasicHttpEntity(
@@ -55,9 +50,8 @@ class ResponseBodyDiscarderTest {
 
         assertThrows(
                 ContentTooLongException.class,
-                () -> discarder.discard(entity, 64, progress::set));
+                () -> discarder.discard(entity, 64));
 
-        assertEquals(64, progress.get());
         assertEquals(64, input.bytesRead());
     }
 
@@ -67,15 +61,7 @@ class ResponseBodyDiscarderTest {
 
         assertThrows(
                 ContentTooLongException.class,
-                () -> discarder.discard(entity, 64, ignored -> {}));
-    }
-
-    @Test
-    void acceptsADeclaredEmptyBodyWhenNoByteBudgetRemains() throws Exception {
-        BasicHttpEntity entity = new BasicHttpEntity(
-                new ByteArrayInputStream(new byte[0]), 0, ContentType.APPLICATION_OCTET_STREAM);
-
-        assertEquals(0, discarder.discard(entity, 0, ignored -> {}));
+                () -> discarder.discard(entity, 64));
     }
 
     private static final class CountingInputStream extends FilterInputStream {

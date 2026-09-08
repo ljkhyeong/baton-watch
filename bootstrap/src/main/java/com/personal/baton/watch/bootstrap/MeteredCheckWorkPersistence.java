@@ -38,6 +38,11 @@ final class MeteredCheckWorkPersistence implements CheckWorkPersistencePort {
     }
 
     @Override
+    public Duration getOldestDueCheckDelay() {
+        return delegate.getOldestDueCheckDelay();
+    }
+
+    @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
         return delegate.purgeAttempts(completedBefore, limit);
     }

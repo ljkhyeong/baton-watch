@@ -1,0 +1,154 @@
+rule_files:
+  - watch-alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: 실행 횟수가 멈춘 작업자와 복구
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="watch",event_delivery_enabled="true"}
+        values: '1x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="watch"}
+        values: '900+60x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="checkDueMonitors",outcome="SUCCESS"}
+        values: '100x8 100+60x12'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryScheduler",code_function="deliverPendingEvents",outcome="SUCCESS"}
+        values: '100x8 100+60x12'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 점검 작업 미실행}
+      - eval_time: 7m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 이벤트 전달 작업 미실행}
+      - eval_time: 12m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts: []
+  - name: 시작 유예와 타이머 전체 누락 및 전달 비활성
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="watch",event_delivery_enabled="false"}
+        values: '1x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="watch"}
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 13m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, event_delivery_enabled: 'false', severity: warning}
+            exp_annotations: {summary: WATCH 점검 작업 미실행}
+      - eval_time: 13m
+        alertname: WatchMaintenanceStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, event_delivery_enabled: 'false', severity: warning}
+            exp_annotations: {summary: WATCH 유지보수 작업 미실행}
+      - eval_time: 20m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts: []
+  - name: 유휴 배치와 카운터 초기화 및 다른 인스턴스의 중단
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="idle",event_delivery_enabled="true"}
+        values: '1x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="idle"}
+        values: '900+60x10 0+60x9'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="idle",code_namespace="com.personal.baton.watch.bootstrap.MonitoringScheduler",code_function="checkDueMonitors",outcome="SUCCESS"}
+        values: '100+60x10 0+60x9'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="idle",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryScheduler",code_function="deliverPendingEvents",outcome="SUCCESS"}
+        values: '100+60x10 0+60x9'
+      - series: up{job="baton-watch",instance="stalled"}
+        values: '1x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="stalled"}
+        values: '900+60x20'
+      - series: up{job="baton-watch",instance="down",event_delivery_enabled="true"}
+        values: '0x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="down"}
+        values: '900x20'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: stalled, severity: warning}
+            exp_annotations: {summary: WATCH 점검 작업 미실행}
+      - eval_time: 15m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: stalled, severity: warning}
+            exp_annotations: {summary: WATCH 점검 작업 미실행}
+      - eval_time: 15m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts: []
+  - name: 유지보수 여섯 작업 중 하나의 중단과 오류 레이블 중복 집계 방지
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="watch"}
+        values: '1x20'
+      - series: process_uptime_seconds{job="baton-watch",instance="watch"}
+        values: '900+60x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="markStaleProjections",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="purgeAttemptHistory",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="updateDatabaseClockOffset",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.MonitoringMaintenanceScheduler",code_function="refreshCheckScheduleDelay",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryMaintenanceScheduler",code_function="purgeDeliveredEventHistory",outcome="SUCCESS"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryMaintenanceScheduler",code_function="purgeDeliveredEventHistory",outcome="ERROR",error="DataAccessException"}
+        values: '0+1x20'
+      - series: tasks_scheduled_execution_seconds_count{job="baton-watch",instance="watch",code_namespace="com.personal.baton.watch.bootstrap.EventDeliveryMaintenanceScheduler",code_function="refreshEventDeliveryBacklog",outcome="SUCCESS"}
+        values: '0+1x4 4x5 4+1x11'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: WatchMaintenanceStalled
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WatchMaintenanceStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: watch, severity: warning}
+            exp_annotations: {summary: WATCH 유지보수 작업 미실행}
+      - eval_time: 13m
+        alertname: WatchMaintenanceStalled
+        exp_alerts: []
+  - name: 점검 비활성은 점검 경보만 제외하고 전달과 유지보수 경보 유지
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="paused",check_enabled="false",event_delivery_enabled="true"}
+        values: '1x15'
+      - series: process_uptime_seconds{job="baton-watch",instance="paused"}
+        values: '900+60x15'
+      - series: baton_watch_check_schedule_delay_seconds{job="baton-watch",instance="paused",check_enabled="false"}
+        values: '300x15'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WatchCheckWorkerStalled
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WatchCheckScheduleDelayed
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WatchMaintenanceStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: paused, check_enabled: 'false', event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 유지보수 작업 미실행}
+      - eval_time: 10m
+        alertname: WatchEventDeliveryWorkerStalled
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: paused, check_enabled: 'false', event_delivery_enabled: 'true', severity: warning}
+            exp_annotations: {summary: WATCH 이벤트 전달 작업 미실행}

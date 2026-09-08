@@ -1,0 +1,32 @@
+# 승인된 기존 Prometheus에 병합할 예시다. 자리표시자를 바꾸기 전에는 적용하지 않는다.
+global:
+  scrape_interval: 60s
+  scrape_timeout: 8s
+rule_files:
+  - watch-ingress-alerts.yml
+scrape_configs:
+  - job_name: baton-watch-ingress
+    metrics_path: /probe
+    scrape_interval: 60s
+    scrape_timeout: 8s
+    static_configs:
+      - targets: [http://watch-gateway:8080/api/v1/system/status]
+        labels:
+          instance: watch-gateway
+          route: gateway
+          __param_module: watch_gateway
+      - targets: [https://watch.example.invalid/api/v1/system/status]
+        labels:
+          instance: watch-public
+          route: public
+          __param_module: watch_public
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - target_label: __address__
+        replacement: blackbox-exporter:9115
+    # URL·인증서 식별자가 포함될 수 있는 나머지 측정값은 수집하지 않는다.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: probe_success|probe_http_status_code|probe_duration_seconds
+        action: keep

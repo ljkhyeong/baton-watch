@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -65,6 +66,8 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
             future.cancel(true);
             Thread.currentThread().interrupt();
             throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
+        } catch (CancellationException exception) {
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         } catch (ExecutionException exception) {
             if (exception.getCause() instanceof UnknownHostException) {
                 throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
@@ -75,7 +78,11 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
     @Override
     public void close() {
-        executor.shutdownNow();
+        for (Runnable queued : executor.shutdownNow()) {
+            if (queued instanceof Future<?> future) {
+                future.cancel(false);
+            }
+        }
     }
 
     private static ExecutorService createExecutor(int threadCount, int queueCapacity) {

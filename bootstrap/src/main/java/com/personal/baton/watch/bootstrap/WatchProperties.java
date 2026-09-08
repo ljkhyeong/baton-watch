@@ -12,12 +12,14 @@ import java.util.regex.Pattern;
 import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties("watch")
 public record WatchProperties(
         String apiToken,
+        @DefaultValue("true") boolean checkEnabled,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,

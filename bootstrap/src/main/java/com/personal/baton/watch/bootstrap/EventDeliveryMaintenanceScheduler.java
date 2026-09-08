@@ -33,7 +33,7 @@ final class EventDeliveryMaintenanceScheduler {
         int purged = purgeDeliveredEvents.purgeDeliveredEvents();
         metrics.recordPurgedDeliveredEvents(purged);
         if (purged > 0) {
-            log.info("health-change delivery maintenance completed purged={}", purged);
+            log.info("상태 변경 이벤트 전달 이력 정리 완료 purged={}", purged);
         }
     }
 

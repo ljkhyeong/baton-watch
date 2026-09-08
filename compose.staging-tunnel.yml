@@ -1,6 +1,55 @@
 services:
+  watch-gateway:
+    image: nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6
+    user: "101:101"
+    entrypoint: ["nginx"]
+    command: ["-g", "daemon off;"]
+    volumes:
+      - type: bind
+        source: ./ops/nginx/watch-gateway.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      watch:
+        condition: service_healthy
+        restart: true
+    networks:
+      - watch-edge
+      - watch-ingress
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    stop_signal: SIGQUIT
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 32
+    deploy:
+      resources:
+        limits:
+          cpus: 0.25
+          memory: 64M
+          pids: 32
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   cloudflared:
-    image: cloudflare/cloudflared:2026.7.3@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    image: "baton-watch-cloudflared:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
+    pull_policy: never
     user: "65532:65532"
     command:
       - tunnel
@@ -15,11 +64,11 @@ services:
       - source: cloudflare-tunnel-token
         target: cloudflare-tunnel-token
     depends_on:
-      watch:
+      watch-gateway:
         condition: service_healthy
         restart: true
     networks:
-      - watch-edge
+      - watch-ingress
     healthcheck:
       test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
       interval: 10s
@@ -48,6 +97,11 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  watch-ingress:
+    driver: bridge
+    internal: false
 
 secrets:
   cloudflare-tunnel-token:

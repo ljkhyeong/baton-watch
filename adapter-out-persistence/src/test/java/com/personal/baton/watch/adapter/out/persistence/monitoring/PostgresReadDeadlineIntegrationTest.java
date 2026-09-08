@@ -26,7 +26,7 @@ class PostgresReadDeadlineIntegrationTest
     void boundsTheNonTransactionalProjectionRead() throws Exception {
         JdbcTemplate boundedJdbc = boundedJdbc();
         JdbcMonitorPersistenceAdapter boundedReads = new JdbcMonitorPersistenceAdapter(
-                boundedJdbc, newTransactionOperations());
+                JdbcClient.create(boundedJdbc), newTransactionOperations());
 
         assertReadTimesOutWhileTableIsLocked(
                 "LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE",

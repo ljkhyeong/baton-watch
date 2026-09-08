@@ -5,6 +5,6 @@ import java.time.Duration;
 
 interface HttpHopTransport {
 
-    HttpHopResponse execute(ApprovedTarget target, Duration remainingTime, long remainingBytes)
+    HttpHopResponse execute(ApprovedTarget target, Duration remainingTime)
             throws OutboundHttpFailure;
 }

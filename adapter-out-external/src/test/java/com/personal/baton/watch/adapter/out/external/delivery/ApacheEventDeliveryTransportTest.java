@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
+import com.personal.baton.watch.adapter.out.external.http.StreamingHttpTestServer;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -139,14 +140,34 @@ class ApacheEventDeliveryTransportTest {
         }
     }
 
+    @Test
+    void cancelsAStreamingResponseAtTheDeadlineAndDeliversTheNextRequest() throws Exception {
+        byte[] payload = "{}".getBytes(StandardCharsets.UTF_8);
+        try (var streaming = new StreamingHttpTestServer();
+                var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
+            OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
+                    () -> transport.execute(request(streaming.uri("delivery.test", "/stream"), payload),
+                            Duration.ofSeconds(2)));
+
+            assertEquals(OutboundHttpFailure.Kind.READ_TIMEOUT, failure.kind());
+            assertEquals(204, transport.execute(
+                    request(streaming.uri("delivery.test", "/quick"), payload), Duration.ofSeconds(1)));
+            assertTrue(streaming.awaitDisconnected());
+        }
+    }
+
     private HttpServer server() throws Exception {
         return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
     }
 
     private ApprovedDeliveryRequest request(String path, byte[] payload) throws Exception {
         int port = server.getAddress().getPort();
+        return request(URI.create("http://delivery.test:" + port + path), payload);
+    }
+
+    private static ApprovedDeliveryRequest request(URI uri, byte[] payload) {
         ValidatedDeliveryEndpoint endpoint = new ValidatedDeliveryEndpoint(
-                URI.create("http://delivery.test:" + port + path), "delivery.test");
+                uri, "delivery.test");
         return new ApprovedDeliveryRequest(
                 endpoint,
                 List.of(InetAddress.getLoopbackAddress()),

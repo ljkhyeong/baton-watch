@@ -4,13 +4,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.config.MeterFilter;
+import io.micrometer.core.instrument.simple.SimpleConfig;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class MeteredHealthChangeEventSenderTest {
 
@@ -80,13 +86,17 @@ class MeteredHealthChangeEventSenderTest {
                         .count());
     }
 
-    @Test
-    void telemetryFailureCannotTurnAnAcknowledgedDeliveryIntoARetry() {
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "baton.watch.event.delivery.attempts",
+            "baton.watch.event.delivery.duration"
+    })
+    void telemetryFailureCannotTurnAnAcknowledgedDeliveryIntoARetry(String failingMeter) {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         registry.config().meterFilter(new MeterFilter() {
             @Override
             public Meter.Id map(Meter.Id id) {
-                if (id.getName().equals("baton.watch.event.delivery.attempts")) {
+                if (id.getName().equals(failingMeter)) {
                     throw new IllegalStateException("registry unavailable");
                 }
                 return id;
@@ -99,5 +109,24 @@ class MeteredHealthChangeEventSenderTest {
         EventDeliveryObservation observation = sender.send(null);
 
         assertEquals(EventDeliveryOutcome.DELIVERED, observation.outcome());
+        assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
+    }
+
+    @Test
+    void timerStartFailureDoesNotBlockDeliveryOrLeaveAnInFlightCount() {
+        Clock clock = mock(Clock.class);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, clock);
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+        when(clock.monotonicTime()).thenThrow(new IllegalStateException("clock unavailable"));
+        EventDeliveryObservation expected = EventDeliveryObservation.forHttpStatus(204);
+        MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
+                ignored -> expected, metrics);
+
+        assertSame(expected, sender.send(null));
+        assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
+        assertEquals(1.0, registry.get("baton.watch.event.delivery.attempts")
+                .tag("outcome", "delivered")
+                .counter()
+                .count());
     }
 }
