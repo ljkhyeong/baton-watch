@@ -3,7 +3,7 @@
 상태: 채택됨
 
 날짜: 2026-08-01
-수정일: 2026-09-05
+수정일: 2026-09-08
 
 구현 상태: 완료; 이벤트 전달은 PRD-0004에서 별도로 구현됨
 
@@ -161,6 +161,9 @@ HTTP 요청 스레드 4개를 초과할 수 없다. 검사 선점은 100개, 유
 - `DESTINATION_REJECTED`, `DNS_FAILURE`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`,
   `TLS_FAILURE`, `REDIRECT_REJECTED`, `TOO_MANY_REDIRECTS`,
   `RESPONSE_TOO_LARGE`, `NETWORK_FAILURE` 또는 `INTERNAL_FAILURE`
+
+HTTP 결과에는 해당 범위의 상태 코드가 필수이며, 나머지 결과에는 상태 코드를 저장하지 않는다.
+V6 DB 제약은 필수 상태 코드가 `NULL`인 결과도 거부한다.
 
 상태는 `INTERNAL_FAILURE`를 제외한 점검 결과와 연속 실패 횟수로 판단한다.
 
