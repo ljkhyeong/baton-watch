@@ -54,12 +54,12 @@
 
 | 항목 | 마지막 확인과 다음 조건 |
 | --- | --- |
-| WATCH 원격 `main` | 9월 5일 `5836328`. 로컬 병합 `e799504` 푸시는 필수 `verify` 실패로 거부됨 |
-| PR #32 보안 검사 | [실행 33957066002](https://github.com/ljkhyeong/baton-watch/actions/runs/33957066002): 기능 검사·CodeQL 통과, Tomcat과 이미지 취약점으로 실패. 이미지·의존성·검사 DB가 바뀌면 해당 보고서부터 재확인 |
-| 공식 cloudflared 후보 | `2026.8.3`도 `x/crypto 0.53.0`·gRPC `1.83.0`을 포함해 단순 교체로 해결되지 않음. 공식 수정 릴리스 또는 승인된 별도 해결 방안이 재개 조건 |
+| WATCH 원격 `main` | 9월 8일 `5836328` 확인. 작업 커밋 `67a4d18`을 충돌 없이 반영할 수 있지만 필수 `verify` 실패로 병합 보류 |
+| 최신 필수 CI | [실행 34171365485](https://github.com/ljkhyeong/baton-watch/actions/runs/34171365485): 기능·DB·복구 검사 통과, Tomcat과 WATCH·PostgreSQL·NGINX·cloudflared·DB 작업 이미지의 취약점 검사 실패. SBOM 산출물에 패키지별 수정 버전 기록. 이미지·의존성·검사 DB 변경 후 실패 보고서부터 확인 |
+| 공식 cloudflared 후보 | 9월 8일 최신 `2026.8.3`의 `go.mod` 확인. `x/crypto 0.53.0`·gRPC `1.83.0`으로 검사에서 요구한 `0.55.0`·`1.83.1` 미포함. 공식 수정 릴리스 또는 승인된 별도 해결 방안이 재개 조건 |
 | 공식 이미지 패치 확인 | 기존 `MVP 이후 우선순위 정리` 작업에 매일 오전 9시 확인이 설정돼 있음. 새 자동화 추가 전 기존 설정을 조회하며, 같은 후보의 다운로드·검사를 중복 수행하지 않음 |
 | 공개 스테이징 | `watch-staging.b4ton.com` DNS·스테이징 환경과 실제 연동 설정이 준비되면 [공개 검증 절차](docs/runbooks/baton-resource-health-verification.md) 재개 |
-| BATON 원격 `main` | 9월 5일 `ef39f1fc` 반영 확인. `/Users/lim/devProject/personal/manager`의 별도 미푸시 작업은 보존 |
+| BATON 원격 `main` | 9월 8일 `a9d1feb9` 병합·푸시와 원격 참조 확인. 최신 화면·문구와 WATCH 상태 조회·재점검을 함께 유지. 원본 체크아웃의 별도 작업은 보존 |
 
 현재 상태 재확인 요청이 없다면 위 조건이 그대로인 작업은 재시도하지 않는다.
 이 기록은 당시 확인 결과이며 현재 원격 상태나 배포 완료를 보장하지 않는다.
