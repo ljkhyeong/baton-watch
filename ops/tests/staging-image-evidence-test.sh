@@ -85,6 +85,8 @@ chmod 0700 "$TEMP_DIR/bin/docker"
 write_image_state "baton-watch-database-operations:$REVISION" "sha256:$(printf 'a%.0s' {1..64})"
 write_image_state "baton-watch-migrations:$REVISION" "sha256:$(printf 'b%.0s' {1..64})"
 write_image_state "baton-watch:$REVISION" "sha256:$(printf 'c%.0s' {1..64})"
+write_image_state "baton-watch-postgres:$REVISION" "sha256:$(printf 'e%.0s' {1..64})"
+write_image_state "baton-watch-cloudflared:$REVISION" "sha256:$(printf 'f%.0s' {1..64})"
 
 run_evidence() {
     PATH="$TEMP_DIR/bin:$PATH" WATCH_TEST_IMAGE_STATE="$TEMP_DIR/state" WATCH_IMAGE_REVISION="$REVISION" WATCH_IMAGE_ARCHIVE_DIR="$ARCHIVE_DIR" "$REPOSITORY_ROOT/ops/staging-image-evidence.sh" "$1"

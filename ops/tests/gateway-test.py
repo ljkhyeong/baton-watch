@@ -19,7 +19,10 @@ class GatewayTest(unittest.TestCase):
         cls.project = "watch-gateway-test-" + uuid.uuid4().hex[:12]
         cls.command = ["docker", "compose", "--project-name", cls.project, "--file",
                        str(Path(__file__).with_name("compose.gateway-test.yml"))]
-        cls.environment = os.environ | {"WATCH_TUNNEL_TOKEN_FILE": "/dev/null"}
+        cls.environment = os.environ | {
+            "WATCH_TUNNEL_TOKEN_FILE": "/dev/null",
+            "WATCH_IMAGE_REVISION": "0000000000000000000000000000000000000001",
+        }
         cls.addClassCleanup(cls.compose, "down", "--volumes", "--remove-orphans")
         cls.compose("config", "--quiet")
         cls.compose("up", "--detach", "--wait", "--wait-timeout", "60")

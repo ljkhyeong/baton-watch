@@ -2,7 +2,8 @@ name: "${WATCH_COMPOSE_PROJECT_NAME:-baton-watch-staging}"
 
 services:
   postgres:
-    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    image: "baton-watch-postgres:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
+    pull_policy: never
     environment:
       POSTGRES_DB: "${WATCH_DB_NAME:-baton_watch}"
       POSTGRES_USER: "${WATCH_DB_OWNER_USER:-baton_watch_owner}"

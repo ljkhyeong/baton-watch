@@ -178,66 +178,16 @@ jobs:
 
       - name: 고정된 런타임 이미지 빌드
         run: |
+          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target postgres --tag "baton-watch-postgres:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target migrations --tag "baton-watch-migrations:${GITHUB_SHA}" .
+          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target cloudflared --tag "baton-watch-cloudflared:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target runtime --tag "baton-watch:${GITHUB_SHA}" .
 
       - name: 런타임 이미지 라이선스와 OCI 메타데이터 검증
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import subprocess
-
-          images = {
-              f"baton-watch-database-operations:{os.environ['GITHUB_SHA']}": "BATON WATCH 데이터베이스 운영 작업",
-              f"baton-watch-migrations:{os.environ['GITHUB_SHA']}": "BATON WATCH 마이그레이션",
-              f"baton-watch:{os.environ['GITHUB_SHA']}": "BATON WATCH",
-          }
-          common_labels = {
-              "org.opencontainers.image.source": "https://github.com/ljkhyeong/baton-watch",
-              "org.opencontainers.image.version": "0.1.0-SNAPSHOT",
-              "org.opencontainers.image.revision": os.environ["GITHUB_SHA"],
-              "org.opencontainers.image.licenses": "Apache-2.0",
-          }
-
-          for image, title in images.items():
-              inspected = json.loads(
-                  subprocess.check_output(["docker", "image", "inspect", image], text=True)
-              )[0]
-              labels = inspected.get("Config", {}).get("Labels") or {}
-              expected = common_labels | {"org.opencontainers.image.title": title}
-              invalid = {
-                  key: {"expected": value, "actual": labels.get(key)}
-                  for key, value in expected.items()
-                  if labels.get(key) != value
-              }
-              if invalid:
-                  raise SystemExit(f"{image}의 OCI 레이블이 올바르지 않습니다: {invalid}")
-
-              if image.startswith("baton-watch:"):
-                  runtime_user = inspected.get("Config", {}).get("User")
-                  if runtime_user != "10001:10001":
-                      raise SystemExit(
-                          f"WATCH 이미지 기본 사용자가 올바르지 않습니다: {runtime_user}"
-                      )
-          PY
-
-          expected_license_digest="$(sha256sum LICENSE | awk '{print $1}')"
-          for image in \
-            "baton-watch-database-operations:${GITHUB_SHA}" \
-            "baton-watch-migrations:${GITHUB_SHA}" \
-            "baton-watch:${GITHUB_SHA}"
-          do
-            actual_license_digest="$(
-              docker run --rm --entrypoint sha256sum "${image}" /usr/share/licenses/baton-watch/LICENSE \
-                | awk '{print $1}'
-            )"
-            if [ "${actual_license_digest}" != "${expected_license_digest}" ]; then
-              echo "${image}의 LICENSE가 저장소 LICENSE와 다릅니다." >&2
-              exit 1
-            fi
-          done
+        env:
+          WATCH_IMAGE_REVISION: ${{ github.sha }}
+        run: python3 ops/verify-runtime-images.py
 
       - name: 실제 PostgreSQL 데이터베이스 작업 검증
         run: ./ops/tests/staging-database-operation-postgres-test.sh
@@ -275,9 +225,7 @@ jobs:
             printf '%s\n' "${staging_config}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["cloudflared"]["image"])'
           )"
-          for external_image in "${postgres_image}" "${gateway_image}" "${cloudflared_image}"; do
-            docker pull "${external_image}"
-          done
+          docker pull "${gateway_image}"
           image_archive_dir="build/image-evidence/${GITHUB_SHA}"
           ./ops/scan-supply-chain.sh \
             build/supply-chain \

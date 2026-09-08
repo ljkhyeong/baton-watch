@@ -23,11 +23,8 @@ require_revision() {
 
 image_tag() {
     case "$1" in
-        database-operations)
-            printf 'baton-watch-database-operations:%s' "$REVISION"
-            ;;
-        migrations)
-            printf 'baton-watch-migrations:%s' "$REVISION"
+        database-operations|migrations|postgres|cloudflared)
+            printf 'baton-watch-%s:%s' "$1" "$REVISION"
             ;;
         runtime)
             printf 'baton-watch:%s' "$REVISION"
@@ -108,11 +105,11 @@ verify_archive_dir() {
     if [ ! -f "$manifest" ] || [ "$(sed -n '1p' "$manifest")" != "$expected_revision_line" ]; then
         fail "이미지 보관 명세의 리비전이 올바르지 않습니다"
     fi
-    if [ "$(wc -l < "$manifest" | tr -d '[:space:]')" != "4" ]; then
+    if [ "$(wc -l < "$manifest" | tr -d '[:space:]')" != "6" ]; then
         fail "이미지 보관 명세 항목 수가 올바르지 않습니다"
     fi
 
-    for kind in database-operations migrations runtime; do
+    for kind in database-operations migrations runtime postgres cloudflared; do
         entry="$(manifest_entry "$evidence_dir" "$kind")"
         IFS="$TAB" read -r record actual_kind tag image_id archive checksum extra <<EOF
 $entry
@@ -149,7 +146,7 @@ archive_images() {
     manifest="$temp_dir/manifest.tsv"
     printf 'revision\t%s\n' "$REVISION" > "$manifest"
 
-    for kind in database-operations migrations runtime; do
+    for kind in database-operations migrations runtime postgres cloudflared; do
         tag="$(image_tag "$kind")"
         if ! image_id="$(inspect_image_id "$tag")"; then
             fail "배포 이미지를 확인할 수 없습니다: $tag"
@@ -183,7 +180,7 @@ verify_images() {
 
 restore_images() {
     verify_archive_dir "$ARCHIVE_DIR" false
-    for kind in database-operations migrations runtime; do
+    for kind in database-operations migrations runtime postgres cloudflared; do
         docker image load --input "$ARCHIVE_DIR/$(archive_name "$kind")" >/dev/null
     done
     verify_archive_dir "$ARCHIVE_DIR" true

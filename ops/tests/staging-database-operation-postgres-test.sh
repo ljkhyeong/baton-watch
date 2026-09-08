@@ -13,6 +13,8 @@ readonly PROJECT_NAME="baton-watch-db-test-$$-${RANDOM}"
 readonly POSTGRES_VOLUME="${PROJECT_NAME}-postgres"
 TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR
+owner_password_file="$TEMP_DIR/postgres-owner-password"
+runtime_password_file="$TEMP_DIR/postgres-runtime-password"
 readonly OWNER_SECRET="owner-password-0123456789-abcdef"
 readonly RUNTIME_SECRET="runtime-password-0123456789-abcdef"
 readonly NEW_OWNER_SECRET="new-owner-password-0123456789-abcdef"
@@ -31,8 +33,8 @@ staging_compose() {
         WATCH_COMPOSE_PROJECT_NAME="$PROJECT_NAME" \
         WATCH_IMAGE_REVISION="$IMAGE_REVISION" \
         WATCH_POSTGRES_VOLUME_NAME="$POSTGRES_VOLUME" \
-        WATCH_DB_OWNER_PASSWORD_FILE="$TEMP_DIR/postgres-owner-password" \
-        WATCH_DB_RUNTIME_PASSWORD_FILE="$TEMP_DIR/postgres-runtime-password" \
+        WATCH_DB_OWNER_PASSWORD_FILE="$owner_password_file" \
+        WATCH_DB_RUNTIME_PASSWORD_FILE="$runtime_password_file" \
         WATCH_API_TOKEN_FILE="$TEMP_DIR/watch-api-token" \
         WATCH_DB_NAME="$DATABASE_NAME" \
         WATCH_DB_OWNER_USER="$OWNER_ROLE" \
@@ -143,6 +145,7 @@ chmod 0600 \
 chmod 0444 "$TEMP_DIR/cloudflare-tunnel-token"
 
 for image in \
+    "baton-watch-postgres:${IMAGE_REVISION}" \
     "baton-watch-database-operations:${IMAGE_REVISION}" \
     "baton-watch-migrations:${IMAGE_REVISION}" \
     "baton-watch:${IMAGE_REVISION}"; do
@@ -274,26 +277,26 @@ fi
 rotate_database_password rotate-runtime-password "$TEMP_DIR/new-runtime-password"
 assert_credential_rejected "이전-런타임" "$RUNTIME_ROLE" "$TEMP_DIR/postgres-runtime-password"
 printf 'SELECT 1;\n' | credential_psql "$RUNTIME_ROLE" "$TEMP_DIR/new-runtime-password" >/dev/null
-cp "$TEMP_DIR/new-runtime-password" "$TEMP_DIR/postgres-runtime-password"
+runtime_password_file="$TEMP_DIR/new-runtime-password"
 
 rotate_database_password rotate-owner-password "$TEMP_DIR/new-owner-password"
 assert_credential_rejected "이전-소유자" "$OWNER_ROLE" "$TEMP_DIR/postgres-owner-password"
 printf 'SELECT 1;\n' | credential_psql "$OWNER_ROLE" "$TEMP_DIR/new-owner-password" >/dev/null
-cp "$TEMP_DIR/new-owner-password" "$TEMP_DIR/postgres-owner-password"
+owner_password_file="$TEMP_DIR/new-owner-password"
 
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/rollback-runtime-password"
 chmod 0600 "$TEMP_DIR/rollback-runtime-password"
 rotate_database_password rotate-runtime-password "$TEMP_DIR/rollback-runtime-password"
 assert_credential_rejected "교체된-런타임" "$RUNTIME_ROLE" "$TEMP_DIR/new-runtime-password"
 printf 'SELECT 1;\n' | credential_psql "$RUNTIME_ROLE" "$TEMP_DIR/rollback-runtime-password" >/dev/null
-cp "$TEMP_DIR/rollback-runtime-password" "$TEMP_DIR/postgres-runtime-password"
+runtime_password_file="$TEMP_DIR/rollback-runtime-password"
 
 printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/rollback-owner-password"
 chmod 0600 "$TEMP_DIR/rollback-owner-password"
 rotate_database_password rotate-owner-password "$TEMP_DIR/rollback-owner-password"
 assert_credential_rejected "교체된-소유자" "$OWNER_ROLE" "$TEMP_DIR/new-owner-password"
 printf 'SELECT 1;\n' | credential_psql "$OWNER_ROLE" "$TEMP_DIR/rollback-owner-password" >/dev/null
-cp "$TEMP_DIR/rollback-owner-password" "$TEMP_DIR/postgres-owner-password"
+owner_password_file="$TEMP_DIR/rollback-owner-password"
 
 printf '%s\n' \
     "INSERT INTO public.watch_monitor (" \
