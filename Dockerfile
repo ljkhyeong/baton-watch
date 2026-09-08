@@ -92,10 +92,12 @@ ADD --checksum=sha256:04cd85af52c2c012f08212c878b4c403eadf410865f2356a80f361d475
 RUN tar -xzf /tmp/cloudflared.tar.gz --strip-components=1 -C /src \
     && rm /tmp/cloudflared.tar.gz
 COPY ops/cloudflared/go.mod ops/cloudflared/go.sum ./
+COPY ops/cloudflared/licenses.sha256 ops/cloudflared/copy-licenses.sh ./
 RUN go test -mod=readonly ./cmd/cloudflared/cliutil ./tunnelrpc/... \
     && go build -mod=readonly -trimpath \
     -ldflags="-X main.Version=2026.8.3-watch.1 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
-    -o /cloudflared ./cmd/cloudflared
+    -o /cloudflared ./cmd/cloudflared \
+    && sh /src/copy-licenses.sh
 
 FROM scratch AS cloudflared
 ARG OCI_SOURCE
@@ -110,6 +112,7 @@ ENV PATH=/usr/local/bin HOME=/home/nonroot
 COPY --from=cloudflared-build /cloudflared /usr/local/bin/cloudflared
 COPY --from=cloudflared-build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=cloudflared-build /src/LICENSE /usr/share/licenses/cloudflared/LICENSE
+COPY --from=cloudflared-build /licenses /usr/share/licenses/cloudflared/modules
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 USER 65532:65532
 ENTRYPOINT ["cloudflared", "--no-autoupdate"]

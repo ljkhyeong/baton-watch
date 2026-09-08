@@ -5,6 +5,14 @@ fail-on-scopes:
   - development
 vulnerability-check: true
 license-check: true
+# 이 액션은 예외의 버전을 무시하므로 cloudflared 빌드에서 버전·라이선스 원문을 별도 검증한다.
+# BSD-3-Clause 본문과 Go PATENTS 체크섬: ops/cloudflared/licenses.sha256
+allow-dependencies-licenses:
+  - pkg:golang/golang.org/x/net@v0.57.0
+  - pkg:golang/golang.org/x/sync@v0.22.0
+  - pkg:golang/golang.org/x/sys@v0.47.0
+  - pkg:golang/golang.org/x/term@v0.45.0
+  - pkg:golang/google.golang.org/protobuf@v1.36.11
 allow-licenses:
   - 0BSD
   - Apache-2.0
