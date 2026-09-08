@@ -63,7 +63,7 @@ final class SafeUrlCheckEngine {
                 } catch (DnsLookupException exception) {
                     return switch (exception.reason()) {
                         case DNS_FAILURE -> failure(CheckOutcome.DNS_FAILURE, startedAt, redirectCount);
-                        case INTERNAL_FAILURE -> internalFailure(startedAt, redirectCount);
+                        case INTERNAL_FAILURE -> failure(CheckOutcome.INTERNAL_FAILURE, startedAt, redirectCount);
                     };
                 }
 
@@ -114,7 +114,7 @@ final class SafeUrlCheckEngine {
                 current = next;
             }
         } catch (RuntimeException exception) {
-            return internalFailure(startedAt, redirectCount);
+            return failure(CheckOutcome.INTERNAL_FAILURE, startedAt, redirectCount);
         }
     }
 
@@ -136,23 +136,12 @@ final class SafeUrlCheckEngine {
             case NETWORK_FAILURE -> CheckOutcome.NETWORK_FAILURE;
             case INTERNAL_FAILURE -> CheckOutcome.INTERNAL_FAILURE;
         };
-        return outcome == CheckOutcome.INTERNAL_FAILURE
-                ? internalFailure(startedAt, redirectCount)
-                : failure(outcome, startedAt, redirectCount);
+        return failure(outcome, startedAt, redirectCount);
     }
 
     private CheckObservation failure(CheckOutcome outcome, long startedAt, int redirectCount) {
         return CheckObservation.failure(
                 outcome, elapsed(startedAt), 0, redirectCount);
-    }
-
-    private CheckObservation internalFailure(long startedAt, int redirectCount) {
-        return new CheckObservation(
-                CheckOutcome.INTERNAL_FAILURE,
-                null,
-                elapsed(startedAt),
-                0,
-                redirectCount);
     }
 
     private Duration remaining(long startedAt) {

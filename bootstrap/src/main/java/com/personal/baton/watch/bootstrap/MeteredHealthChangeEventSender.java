@@ -18,12 +18,7 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
 
     @Override
     public EventDeliveryObservation send(HealthChangeEventPayload payload) {
-        Timer.Sample sample = null;
-        try {
-            sample = metrics.eventDeliveryStarted();
-        } catch (RuntimeException ignored) {
-            // 텔레메트리 실패가 이벤트 전달을 막아서는 안 된다.
-        }
+        Timer.Sample sample = metrics.eventDeliveryStarted();
         EventDeliveryObservation observation = null;
         try {
             observation = delegate.send(payload);
@@ -32,11 +27,7 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
             EventDeliveryOutcome recordedOutcome = observation == null
                     ? EventDeliveryOutcome.INTERNAL_FAILURE
                     : observation.outcome();
-            if (sample != null) {
-                Timer.Sample completedSample = sample;
-                BestEffortMetrics.record(() ->
-                        metrics.eventDeliveryFinished(completedSample, recordedOutcome));
-            }
+            metrics.eventDeliveryFinished(sample, recordedOutcome);
             metrics.recordEventDeliveryAttempt(recordedOutcome);
         }
     }

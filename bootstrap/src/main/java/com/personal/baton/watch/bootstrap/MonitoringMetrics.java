@@ -97,17 +97,18 @@ final class MonitoringMetrics {
     }
 
     void recordCheckFinalization(CheckFinalizationStatus status) {
-        increment(CHECK_FINALIZATIONS, "status", status.name().toLowerCase(Locale.ROOT), 1);
+        increment(CHECK_FINALIZATIONS, 1, "status", status.name().toLowerCase(Locale.ROOT));
     }
 
     void recordCheckFinalizationFailure() {
-        increment(CHECK_FINALIZATIONS, "status", "failure", 1);
+        increment(CHECK_FINALIZATIONS, 1, "status", "failure");
     }
 
     void recordCheckAttempt(CheckObservation observation) {
         String outcome = observation.outcome().name().toLowerCase(Locale.ROOT);
-        increment(CHECK_ATTEMPTS, "outcome", outcome, 1);
-        registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
+        increment(CHECK_ATTEMPTS, 1, "outcome", outcome);
+        record(() ->
+                registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration()));
     }
 
     void recordEventDeliveryClaim(ClaimedHealthChangeEvent claimed) {
@@ -127,48 +128,51 @@ final class MonitoringMetrics {
             case ALREADY_DELIVERED -> "already_delivered";
             case STALE_CLAIM -> "stale_claim";
         };
-        increment(DELIVERY_FINALIZATIONS, "status", metricStatus, 1);
+        increment(DELIVERY_FINALIZATIONS, 1, "status", metricStatus);
     }
 
     void recordEventDeliveryFinalizationFailure() {
-        increment(DELIVERY_FINALIZATIONS, "status", "failure", 1);
+        increment(DELIVERY_FINALIZATIONS, 1, "status", "failure");
     }
 
     void recordEventDeliveryAttempt(EventDeliveryOutcome outcome) {
-        increment(DELIVERY_ATTEMPTS, "outcome", outcome.name().toLowerCase(Locale.ROOT), 1);
+        increment(DELIVERY_ATTEMPTS, 1, "outcome", outcome.name().toLowerCase(Locale.ROOT));
     }
 
     Timer.Sample eventDeliveryStarted() {
         inFlightDeliveries.incrementAndGet();
         try {
             return Timer.start(registry);
-        } catch (RuntimeException exception) {
+        } catch (RuntimeException ignored) {
             inFlightDeliveries.decrementAndGet();
-            throw exception;
+            return null;
         }
     }
 
     void eventDeliveryFinished(Timer.Sample sample, EventDeliveryOutcome outcome) {
+        if (sample == null) {
+            return;
+        }
         try {
-            sample.stop(registry.timer(
+            record(() -> sample.stop(registry.timer(
                     DELIVERY_DURATION,
                     "outcome",
-                    outcome.name().toLowerCase(Locale.ROOT)));
+                    outcome.name().toLowerCase(Locale.ROOT))));
         } finally {
             inFlightDeliveries.decrementAndGet();
         }
     }
 
     void recordStaleProjections(int staleProjections) {
-        increment(MAINTENANCE_ITEMS, "operation", "stale_projection", staleProjections);
+        increment(MAINTENANCE_ITEMS, staleProjections, "operation", "stale_projection");
     }
 
     void recordPurgedAttempts(int purgedAttempts) {
-        increment(MAINTENANCE_ITEMS, "operation", "attempt_purged", purgedAttempts);
+        increment(MAINTENANCE_ITEMS, purgedAttempts, "operation", "attempt_purged");
     }
 
     void recordPurgedDeliveredEvents(int purgedEvents) {
-        increment(MAINTENANCE_ITEMS, "operation", "delivered_event_purged", purgedEvents);
+        increment(MAINTENANCE_ITEMS, purgedEvents, "operation", "delivered_event_purged");
     }
 
     void updateEventDeliveryBacklog(EventDeliveryBacklog backlog) {
@@ -182,17 +186,17 @@ final class MonitoringMetrics {
         databaseClockOffsetMillis.set(offset.toMillis());
     }
 
-    private void increment(String name, double amount) {
+    private void increment(String name, double amount, String... tags) {
         if (amount > 0) {
-            BestEffortMetrics.record(() -> registry.counter(name).increment(amount));
+            record(() -> registry.counter(name, tags).increment(amount));
         }
     }
 
-    private void increment(String name, String tagName, String tagValue, double amount) {
-        if (amount > 0) {
-            BestEffortMetrics.record(() ->
-                    registry.counter(name, tagName, tagValue).increment(amount));
+    private static void record(Runnable recording) {
+        try {
+            recording.run();
+        } catch (RuntimeException ignored) {
+            // 메트릭 기록 실패가 업무 결과나 재시도 여부를 바꾸어서는 안 된다.
         }
     }
-
 }

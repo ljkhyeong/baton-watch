@@ -39,14 +39,11 @@ public record CheckObservation(
 
     public static CheckObservation failure(
             CheckOutcome outcome, Duration duration, long responseBytes, int redirectCount) {
-        if (!outcome.isConclusive()) {
-            throw new IllegalArgumentException("outcome requires different observation metadata");
-        }
         return new CheckObservation(outcome, null, duration, responseBytes, redirectCount);
     }
 
     public static CheckObservation internalFailure() {
-        return new CheckObservation(CheckOutcome.INTERNAL_FAILURE, null, Duration.ZERO, 0, 0);
+        return failure(CheckOutcome.INTERNAL_FAILURE, Duration.ZERO, 0, 0);
     }
 
     private static void validateStatus(CheckOutcome outcome, Integer status) {

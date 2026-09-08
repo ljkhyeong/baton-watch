@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import java.util.function.Function;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.ObjectWriter;
 import tools.jackson.databind.SerializationFeature;
@@ -22,10 +21,6 @@ final class HealthChangeEventJsonSerializer implements Function<HealthChangeEven
 
     @Override
     public byte[] apply(HealthChangeEventPayload payload) {
-        try {
-            return writer.writeValueAsBytes(HealthChangeEventRequest.from(payload));
-        } catch (JacksonException ignored) {
-            throw new IllegalStateException("health-change event serialization failed");
-        }
+        return writer.writeValueAsBytes(HealthChangeEventRequest.from(payload));
     }
 }

@@ -201,14 +201,17 @@ class SafeUrlCheckEngineTest {
             OutboundHttpFailure.Kind transportKind, CheckOutcome expected) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
-        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ofMillis(5));
         OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(transportKind);
+        transport.add(redirect(302, "/next"));
         transport.add(scriptedFailure);
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl("https://failure.example/secret?token=value"));
 
         assertEquals(expected, observation.outcome());
+        assertEquals(Duration.ofMillis(10), observation.duration());
+        assertEquals(1, observation.redirectCount());
         assertEquals(0, observation.responseBytes());
         assertNull(observation.httpStatusCode());
     }
