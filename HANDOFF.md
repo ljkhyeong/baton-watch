@@ -4,8 +4,8 @@
 
 ## 현재 작업
 
-- 대시보드 제목 6개에 점검 대상·단위를 명시하고 README의 DB 설정을 표로 정리했다.
-  상태 판정·전달 순서·검증 안내의 문구만 수정했으며 쿼리·설정값·동작은 유지한다.
+- `d6b0ca1`에서 메트릭 예외 처리와 카운터 기록을 합치고, 단독 보조 클래스와 JSON 직렬화 예외 재포장을 제거했다.
+  점검 실패 생성 경로도 통합해 테스트를 제외한 코드 40줄을 줄였다. 상태 판정·입력 제한·메트릭 이름과 레이블은 유지한다.
 - 작업 브랜치: `codex/grafana-cloud-free`. `3739149`에서
   [Grafana Cloud Free 연결 설정](ops/prometheus/watch-cloud-free.yml)을 추가했다.
   WATCH 지표만 60초마다 전송하며 한 번의 수집은 1MB·2,000개 샘플로 제한한다.
@@ -25,6 +25,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 중복 코드 정리 `d6b0ca1` | 관련 테스트 69개 통과. `./gradlew test` 436개 중 424개 실행·domain 12개 기존 결과 재사용. 마지막 보조 클래스 통합 후 `:bootstrap:test` 91개 재검증 통과. 실패·건너뜀 없음. 메트릭 시작·기록 실패 시 전달 성공 유지, 리다이렉트 후 오류의 시간·횟수 보존 확인 |
 | 문구 정리 | 대시보드 JSON 정상, 제목 외 쿼리·단위·설정 동일 확인. 변경 문서 링크·형식과 `git diff --check` 통과. 문구만 바뀌어 Java·PromQL·배포 검사는 반복하지 않음 |
 | 무료 메트릭 연결 `3739149` | `./ops/tests/prometheus-rules-test.sh` 통과. 새 설정 문법·기존 대시보드·경보 검사. 계정·수집기 정보가 없어 실제 인증·전송·수신은 미실행. Java·배포 이미지 변경이 없어 해당 검사는 반복하지 않음 |
 | 테스트 준비 코드 정리 | `WorkerExecutionBudgetTest`·`ApacheHttpHopTransportTest`·`ApacheEventDeliveryTransportTest` 15개 실행·통과. 실패·건너뜀 없음. 테스트 보조 코드만 바뀌어 관련 검사만 실행 |
@@ -43,6 +44,8 @@
 테스트 준비 코드 정리 로그는 `.gradle/agent-validation/20260905T135604532497Z-test-support-cleanup/`에 있다.
 무료 메트릭 연결 로그는 `.gradle/agent-validation/20260906T154649360265Z-grafana-cloud-free/`에 있다.
 문구 검증 로그는 `.gradle/agent-validation/20260907T225732881196Z-clear-copy/`에 있다.
+이번 코드 정리 로그는 `.gradle/agent-validation/20260908T010228367490Z-cleanup-full/`,
+최종 bootstrap 로그는 `.gradle/agent-validation/20260908T010354287577Z-cleanup-bootstrap-final/`에 있다.
 
 ## 이번 세션의 도구 상태
 
