@@ -28,7 +28,7 @@
 요청 수를 각각 제한한다. 초기값은 상태 경로 초당 10건·버스트 20건,
 나머지 API 초당 5건·버스트 10건이며, 승인된 운영 처리량을 뜻하지 않는다.
 제한 초과는 WATCH 인증 전에 HTTP 429, `application/problem+json`,
-`Cache-Control: no-store`와 다음 고정 응답을 반환한다.
+`Cache-Control: no-store`, `Retry-After: 1`과 다음 고정 응답을 반환한다.
 
 ~~~json
 {"type":"urn:baton-watch:problem:rate-limited","title":"요청이 너무 많습니다","status":429,"code":"RATE_LIMITED"}
@@ -38,6 +38,8 @@
 인증 후 16 KiB 본문 제한은 기존 WATCH 계약을 유지한다. 내부 직접 접근과 로컬
 Compose에는 이 프록시 제한이 적용되지 않는다. NGINX 자체의 잘못된 HTTP 요청,
 연결 실패 등 다른 프록시 오류는 WATCH의 Problem Details 응답으로 보장하지 않는다.
+호출자는 최소 1초 뒤 재시도하며, 계속 혼잡하면 다시 429를 받을 수 있다.
+WATCH가 반환한 수동 재점검 429·DB 장애 503의 `Retry-After`는 원래 값으로 전달한다.
 구성과 공개 배포 전 검증은 [요청 제한 런북](../../runbooks/request-rate-limit.md)을 따른다.
 
 ### 모니터 동기화와 조회
