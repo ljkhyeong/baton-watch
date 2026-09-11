@@ -14,12 +14,14 @@ import stat
 import subprocess
 import sys
 import time
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 import uuid
 
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 MAX_SNAPSHOTS = 10_000
 MAX_RESPONSE_BYTES = 8_192
+MAX_BATCH_RESPONSE_BYTES = 32 * 1024
+BATCH_SIZE = 20
 FIELDS = {"resourceReference", "sourceRevision", "monitoringState", "targetUrl"}
 SPEC = importlib.util.spec_from_file_location("url_policy", Path(__file__).with_name("staging-url-policy.py"))
 URL_POLICY = importlib.util.module_from_spec(SPEC)
@@ -106,11 +108,19 @@ class WatchClient:
         self.last_request = None
 
     def request(self, method, reference, payload=None):
+        return self._request(method, f"/api/v1/resource-monitors/{quote(reference, safe='')}", payload)
+
+    def get_batch(self, references):
+        query = urlencode({"resourceReference": references}, doseq=True)
+        return self._request("GET", f"/api/v1/resource-monitors?{query}",
+                             max_response_bytes=MAX_BATCH_RESPONSE_BYTES)
+
+    def _request(self, method, path, payload=None, max_response_bytes=MAX_RESPONSE_BYTES):
         if self.last_request is not None:
             time.sleep(max(0, self.interval - (time.monotonic() - self.last_request)))
         address = public_address(self.host)
         pinned = f"[{address}]" if ":" in address else address
-        url = f"{self.origin}/api/v1/resource-monitors/{quote(reference, safe='')}"
+        url = self.origin + path
         config = [f"url = {json.dumps(url)}", f"header = {json.dumps('Authorization: Bearer ' + self.token)}",
                   'header = "Accept: application/json, application/problem+json"']
         if payload is not None:
@@ -118,14 +128,14 @@ class WatchClient:
                        f"data = {json.dumps(json.dumps(payload, ensure_ascii=True, separators=(',', ':')))}"]
         command = ["curl", "--disable", "--config", "-", "--silent", "--noproxy", "*",
                    "--proto", "=https", "--tlsv1.2", "--connect-timeout", "3", "--max-time", "10",
-                   "--max-filesize", str(MAX_RESPONSE_BYTES), "--max-redirs", "0",
+                   "--max-filesize", str(max_response_bytes), "--max-redirs", "0",
                    "--resolve", f"{self.host}:443:{pinned}", "--request", method,
                    "--write-out", "\n%{http_code}"]
         self.last_request = time.monotonic()
         try:
             response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=True)
             body, code = response.stdout.rsplit(b"\n", 1)
-            if len(body) > MAX_RESPONSE_BYTES:
+            if len(body) > max_response_bytes:
                 raise ValueError()
             return int(code), json.loads(body) if body else None
         except (OSError, subprocess.SubprocessError, ValueError):
@@ -138,6 +148,10 @@ def inspect_remote(client, snapshot):
         return "MISSING", None
     if status != 200 or not isinstance(body, dict):
         return "LOOKUP_FAILED", None
+    return compare_projection(snapshot, body)
+
+
+def compare_projection(snapshot, body):
     revision = body.get("sourceRevision")
     if body.get("resourceReference") != snapshot["resourceReference"] or type(revision) is not int or revision < 1:
         return "LOOKUP_FAILED", None
@@ -152,11 +166,57 @@ def inspect_remote(client, snapshot):
     return "REVISION_MATCH_UNVERIFIED", revision
 
 
+def inspect_remote_batch(client, snapshots):
+    requested = [snapshot["resourceReference"] for snapshot in snapshots]
+    status, body = client.get_batch(requested)
+    if status != 200 or not isinstance(body, dict):
+        return None
+    monitors, missing = body.get("monitors"), body.get("missingResourceReferences")
+    if not isinstance(monitors, list) or not isinstance(missing, list):
+        return None
+    if any(not isinstance(monitor, dict) for monitor in monitors):
+        return None
+    received = [monitor.get("resourceReference") for monitor in monitors] + missing
+    if (any(not isinstance(reference, str) for reference in received)
+            or len(received) != len(requested) or set(received) != set(requested)):
+        return None
+    projections = {reference: None for reference in missing}
+    projections.update({monitor["resourceReference"]: monitor for monitor in monitors})
+    return projections
+
+
+def report(snapshot, status, remote_revision):
+    return {"resourceReference": snapshot["resourceReference"], "sourceRevision": snapshot["sourceRevision"],
+            "remoteRevision": remote_revision, "status": status}
+
+
+def audit(client, snapshots):
+    for start in range(0, len(snapshots), BATCH_SIZE):
+        batch = snapshots[start:start + BATCH_SIZE]
+        try:
+            projections = inspect_remote_batch(client, batch)
+        except RecoveryError:
+            for snapshot in batch:
+                yield report(snapshot, "LOOKUP_OR_REPLAY_FAILED", None)
+            continue
+        for snapshot in batch:
+            if projections is None:
+                status, remote_revision = "LOOKUP_FAILED", None
+            elif projections[snapshot["resourceReference"]] is None:
+                status, remote_revision = "MISSING", None
+            else:
+                status, remote_revision = compare_projection(snapshot, projections[snapshot["resourceReference"]])
+            yield report(snapshot, status, remote_revision)
+
+
 def reconcile(client, snapshots, apply=False):
+    if not apply:
+        yield from audit(client, snapshots)
+        return
     for snapshot in snapshots:
         try:
             status, remote_revision = inspect_remote(client, snapshot)
-            if apply and status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
+            if status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
                 payload = {key: value for key, value in snapshot.items() if key != "resourceReference"}
                 http_status, body = client.request("PUT", snapshot["resourceReference"], payload)
                 if (http_status == 200 and isinstance(body, dict)
@@ -172,8 +232,7 @@ def reconcile(client, snapshots, apply=False):
                     status = "REPLAY_FAILED"
         except RecoveryError:
             status, remote_revision = "LOOKUP_OR_REPLAY_FAILED", None
-        yield {"resourceReference": snapshot["resourceReference"], "sourceRevision": snapshot["sourceRevision"],
-               "remoteRevision": remote_revision, "status": status}
+        yield report(snapshot, status, remote_revision)
 
 
 def main(argv=None):
