@@ -72,6 +72,10 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
                 throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
             }
             throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
+        } finally {
+            if (future.isCancelled() && executor instanceof ThreadPoolExecutor pool) {
+                pool.purge();
+            }
         }
     }
 

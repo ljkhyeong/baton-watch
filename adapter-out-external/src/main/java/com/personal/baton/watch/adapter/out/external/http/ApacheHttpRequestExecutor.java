@@ -67,6 +67,9 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
                 // 스레드 인터럽트만으로는 플랫폼 스레드의 소켓 읽기를 중단할 수 없다.
                 if (isCancelled()) {
                     request.cancel();
+                    if (executor instanceof ThreadPoolExecutor pool) {
+                        pool.purge();
+                    }
                 }
                 requests.remove(this);
             }

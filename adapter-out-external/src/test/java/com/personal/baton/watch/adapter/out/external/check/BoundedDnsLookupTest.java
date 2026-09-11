@@ -20,6 +20,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class BoundedDnsLookupTest {
 
@@ -179,6 +181,67 @@ class BoundedDnsLookupTest {
             caller.interrupt();
             caller.join(1_000);
             lookup.close();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void releasesCancelledQueueCapacityBeforeTheBusyWorkerFinishes(boolean interruptCaller) throws Exception {
+        var queue = new ArrayBlockingQueue<Runnable>(1);
+        var worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, queue);
+        CountDownLatch occupied = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        worker.execute(() -> {
+            occupied.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        AtomicBoolean resolverCalled = new AtomicBoolean();
+        AtomicBoolean interruptRestored = new AtomicBoolean();
+        AtomicReference<DnsLookupException.Reason> reason = new AtomicReference<>();
+        try (var lookup = new BoundedDnsLookup(worker, hostname -> {
+            resolverCalled.set(true);
+            return new InetAddress[] {InetAddress.getLoopbackAddress()};
+        })) {
+            Thread caller = Thread.ofPlatform().unstarted(() -> {
+                try {
+                    lookup.resolve("cancelled.example",
+                            interruptCaller ? Duration.ofSeconds(10) : Duration.ofMillis(200));
+                } catch (DnsLookupException failure) {
+                    reason.set(failure.reason());
+                    interruptRestored.set(Thread.currentThread().isInterrupted());
+                }
+            });
+            try {
+                assertTrue(occupied.await(1, TimeUnit.SECONDS));
+                caller.start();
+                Runnable queued = queue.poll(1, TimeUnit.SECONDS);
+                assertNotNull(queued);
+                queue.add(queued);
+                if (interruptCaller) {
+                    caller.interrupt();
+                }
+                caller.join(1_500);
+                assertFalse(caller.isAlive());
+                assertEquals(interruptCaller ? DnsLookupException.Reason.INTERNAL_FAILURE
+                        : DnsLookupException.Reason.DNS_FAILURE, reason.get());
+                assertEquals(interruptCaller, interruptRestored.get());
+                assertFalse(resolverCalled.get());
+                // 기존 작업자가 계속 점유 중이어도 새 작업을 대기열에 넣을 수 있어야 한다.
+                Future<String> next = worker.submit(() -> "accepted");
+                release.countDown();
+                assertEquals("accepted", next.get(1, TimeUnit.SECONDS));
+            } finally {
+                caller.interrupt();
+                caller.join(1_000);
+            }
+        } finally {
+            release.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(1, TimeUnit.SECONDS));
         }
     }
 
