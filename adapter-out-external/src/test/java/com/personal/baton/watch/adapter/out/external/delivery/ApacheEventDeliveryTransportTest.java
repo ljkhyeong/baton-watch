@@ -13,14 +13,25 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class ApacheEventDeliveryTransportTest {
+
+    private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
+    private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
     private HttpServer server;
 
@@ -54,11 +65,11 @@ class ApacheEventDeliveryTransportTest {
         byte[] payload = "{\"eventId\":\"event-1\"}".getBytes(StandardCharsets.UTF_8);
 
         try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
-            int statusCode = transport.execute(
+                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
+            DeliveryResponse response = transport.execute(
                     request("/callback", payload), Duration.ofSeconds(2));
 
-            assertEquals(204, statusCode);
+            assertEquals(204, response.statusCode());
         }
         assertEquals("POST", method.get());
         assertEquals("Bearer 0123456789abcdef0123456789abcdef", authorization.get());
@@ -85,14 +96,59 @@ class ApacheEventDeliveryTransportTest {
         server.start();
 
         try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
-            int statusCode = transport.execute(
+                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
+            DeliveryResponse response = transport.execute(
                     request("/start", "{}".getBytes(StandardCharsets.UTF_8)),
                     Duration.ofSeconds(2));
 
-            assertEquals(302, statusCode);
+            assertEquals(302, response.statusCode());
         }
         assertFalse(redirectedTargetCalled.get());
+    }
+
+    @ParameterizedTest
+    @MethodSource("retryAfterResponses")
+    void readsRetryAfterWithoutWaitingOrRetryingInTheClient(
+            int statusCode, List<String> headerValues, Instant expectedRetryTime) throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        server = server();
+        server.createContext("/callback", exchange -> {
+            requests.incrementAndGet();
+            headerValues.forEach(value -> exchange.getResponseHeaders().add("Retry-After", value));
+            exchange.sendResponseHeaders(statusCode, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try (var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
+            DeliveryResponse response = transport.execute(
+                    request("/callback", "{}".getBytes(StandardCharsets.UTF_8)), Duration.ofSeconds(2));
+
+            assertEquals(statusCode, response.statusCode());
+            assertEquals(expectedRetryTime, response.retryNotBefore());
+            assertEquals(1, requests.get());
+        }
+    }
+
+    private static Stream<Arguments> retryAfterResponses() {
+        return Stream.of(
+                Arguments.of(429, List.of("120"), NOW.plusSeconds(120)),
+                Arguments.of(503, List.of("120"), NOW.plusSeconds(120)),
+                Arguments.of(503, List.of("Sat, 01 Aug 2026 00:03:00 GMT"), NOW.plusSeconds(180)),
+                Arguments.of(503, List.of("Fri, 31 Jul 2026 23:59:00 GMT"), NOW.minusSeconds(60)),
+                Arguments.of(503, List.of("0"), NOW),
+                Arguments.of(503, List.of(), null),
+                Arguments.of(503, List.of("not-a-date"), null),
+                Arguments.of(503, List.of("-1"), null),
+                Arguments.of(503, List.of("+10"), null),
+                Arguments.of(503, List.of("1.5"), null),
+                Arguments.of(503, List.of("9223372036854775807"), null),
+                Arguments.of(503, List.of("999999999999999999999999"), null),
+                Arguments.of(503, List.of("10", "20"), null),
+                Arguments.of(503, List.of("10,20"), null),
+                Arguments.of(204, List.of("120"), null),
+                Arguments.of(302, List.of("120"), null),
+                Arguments.of(500, List.of("120"), null));
     }
 
     @Test
@@ -107,7 +163,7 @@ class ApacheEventDeliveryTransportTest {
         server.start();
 
         try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8), 1, 1)) {
+                new ApacheEventDeliveryTransport(testLimits(8), 1, 1, CLOCK)) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
                     () -> transport.execute(
@@ -129,7 +185,7 @@ class ApacheEventDeliveryTransportTest {
         server.start();
 
         try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1)) {
+                new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1, CLOCK)) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
                     () -> transport.execute(
@@ -144,14 +200,14 @@ class ApacheEventDeliveryTransportTest {
     void cancelsAStreamingResponseAtTheDeadlineAndDeliversTheNextRequest() throws Exception {
         byte[] payload = "{}".getBytes(StandardCharsets.UTF_8);
         try (var streaming = new StreamingHttpTestServer();
-                var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1)) {
+                var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
             OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
                     () -> transport.execute(request(streaming.uri("delivery.test", "/stream"), payload),
                             Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.READ_TIMEOUT, failure.kind());
             assertEquals(204, transport.execute(
-                    request(streaming.uri("delivery.test", "/quick"), payload), Duration.ofSeconds(1)));
+                    request(streaming.uri("delivery.test", "/quick"), payload), Duration.ofSeconds(1)).statusCode());
             assertTrue(streaming.awaitDisconnected());
         }
     }

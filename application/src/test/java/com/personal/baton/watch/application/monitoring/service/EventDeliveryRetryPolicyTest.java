@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class EventDeliveryRetryPolicyTest {
 
@@ -26,9 +28,19 @@ class EventDeliveryRetryPolicyTest {
         EventDeliveryRetryPolicy policy = new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(10), Duration.ofSeconds(60));
 
-        assertEquals(COMPLETED_AT.plusSeconds(10), policy.nextAttemptAt(COMPLETED_AT, 1));
-        assertEquals(COMPLETED_AT.plusSeconds(40), policy.nextAttemptAt(COMPLETED_AT, 3));
-        assertEquals(COMPLETED_AT.plusSeconds(60), policy.nextAttemptAt(COMPLETED_AT, Integer.MAX_VALUE));
+        assertEquals(COMPLETED_AT.plusSeconds(10), policy.nextAttemptAt(COMPLETED_AT, 1, null));
+        assertEquals(COMPLETED_AT.plusSeconds(40), policy.nextAttemptAt(COMPLETED_AT, 3, null));
+        assertEquals(COMPLETED_AT.plusSeconds(60), policy.nextAttemptAt(COMPLETED_AT, Integer.MAX_VALUE, null));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-60, 10", "0, 10", "5, 10", "45, 45", "60, 60", "3600, 60"})
+    void combinesServerRetryTimeWithBackoffAndMaximum(long serverDelay, long expectedDelay) {
+        EventDeliveryRetryPolicy policy = new EventDeliveryRetryPolicy(
+                Duration.ofSeconds(10), Duration.ofSeconds(60));
+
+        assertEquals(COMPLETED_AT.plusSeconds(expectedDelay), policy.nextAttemptAt(
+                COMPLETED_AT, 1, COMPLETED_AT.plusSeconds(serverDelay)));
     }
 
     @Test

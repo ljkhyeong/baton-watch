@@ -4,6 +4,7 @@ import static com.personal.baton.watch.adapter.out.external.delivery.EventDelive
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
+import java.time.Clock;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -66,11 +67,11 @@ class ApacheHealthChangeEventSenderTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHealthChangeEventSender(
-                        endpoint, token, DEFAULT_LIMITS, 0, 8, 1, 1, objectMapper));
+                        endpoint, token, DEFAULT_LIMITS, 0, 8, 1, 1, objectMapper, Clock.systemUTC()));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHealthChangeEventSender(
-                        endpoint, token, DEFAULT_LIMITS, 2, 8, 0, 1, objectMapper));
+                        endpoint, token, DEFAULT_LIMITS, 2, 8, 0, 1, objectMapper, Clock.systemUTC()));
     }
 
     private static ApacheHealthChangeEventSender sender(URI endpoint, String bearerToken) {
@@ -82,6 +83,6 @@ class ApacheHealthChangeEventSenderTest {
                 8,
                 1,
                 1,
-                new ObjectMapper());
+                new ObjectMapper(), Clock.systemUTC());
     }
 }

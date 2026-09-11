@@ -63,7 +63,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
                     : observedAt;
             Instant nextAttemptAt = observation.outcome().isDelivered()
                     ? null
-                    : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt());
+                    : retryPolicy.nextAttemptAt(completedAt, event.deliveryAttempt(), observation.retryNotBefore());
             EventDeliveryFinalizationStatus status = persistence.finalizeDelivery(
                     new EventDeliveryFinalization(
                             event.payload().eventId(),
