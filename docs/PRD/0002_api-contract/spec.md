@@ -111,11 +111,13 @@ HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 인증된 JSON PUT의 1
 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
 안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 오류는 안정적인 `type`,
 `title`, `status`, `code` 필드를 포함하는 `application/problem+json`을
-사용한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
+사용한다. `title`은 원인을 설명하는 한국어 문구이며 클라이언트는 `code`로 오류를 구분한다.
+예를 들어 `STALE_SOURCE_REVISION`은 "저장된 리비전보다 오래된 요청입니다",
+`SOURCE_REVISION_CONFLICT`는 "같은 리비전에 다른 내용이 등록되어 있습니다"로 안내한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
 인가 결정을 포함해서는 안 된다.
 
 인증에 성공한 뒤 본문 제한 필터나 Spring MVC가 요청을 거부할 때도
-다음과 같이 동일한 안정적 문제 계약을 사용한다.
+다음과 같이 같은 오류 응답 형식을 사용한다.
 
 - 잘못된 JSON 또는 요청 검증 실패: HTTP 400,
   `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`
@@ -155,7 +157,7 @@ MVC 예외 응답과 인증·본문 제한·방화벽 오류 응답은 같은 �
 
 Spring Security의 엄격한 HTTP 방화벽이 경로 일치 전에 거부한 요청은 이러한
 인증 우선 순서의 바깥에 있다. 모호한 구분자, 매트릭스 구문 및 그 밖의 의심스러운
-경로 형식은 인증 전에 안전한 방향으로 거부되며 HTTP 400,
+경로 형식은 인증 전에 거부되며 HTTP 400,
 `application/problem+json`, `urn:baton-watch:problem:request-rejected` 및
 `REQUEST_REJECTED`를 반환한다. 이 응답은 동일한 고정 비식별 `instance`를
 사용하며 원시 경로, 리소스 참조 또는 방화벽 예외를 절대로 포함하지 않는다.

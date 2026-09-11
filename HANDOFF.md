@@ -1,9 +1,13 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-09-08
+최종 수정일: 2026-09-11
 
 ## 현재 작업
 
+- `codex/clear-copy-20260911`에서 문서·API 오류·운영 안내를 간결한 한국어로 정리했다.
+  기준은 9월 11일 확인한 `origin/main`의 `e2ad4b0`이다. `42fd631`은 API 오류 제목,
+  메트릭·대시보드 설명과 셸 안내 문구만 바꿨다. 오류 코드·상태·처리 로직·쿼리·단위는 유지한다.
+  README·PRD·ADR·운영 절차·보안 정책의 긴 문장도 나누고 추상적인 표현을 구체화했다.
 - `304bd0c`에서 필수 CI를 막던 배포 의존성·이미지 취약점을 수정했다. Tomcat은 11.0.25,
   PostgreSQL의 OpenSSL은 3.5.8-r0, libuuid는 2.42.3-r1로 고정하고 gosu를 su-exec으로 교체했다.
   NGINX는 수정된 공식 다이제스트를 사용한다. cloudflared는 공식 2026.8.3 소스를
@@ -12,7 +16,7 @@
 - `454360b`에서 V6 마이그레이션으로 점검 결과·전달 결과·전달 완료 상태의 DB 제약 3개를 보강했다.
   수정 전에는 필수 값이 `NULL`인 잘못된 조합 9가지가 저장됐다. 이제 `CASE`와 `IS TRUE`로 거부한다.
   운영 DB 적용은 미실행이다. 기존 불완전한 이력이 있으면 V6 적용이 실패하며, 이력을 자동 수정·삭제하지 않는다.
-- 작업 브랜치: `codex/grafana-cloud-free`. `3739149`에서
+- 이전 작업 브랜치: `codex/grafana-cloud-free`. `3739149`에서
   [Grafana Cloud Free 연결 설정](ops/prometheus/watch-cloud-free.yml)을 추가했다.
   WATCH 지표만 60초마다 전송하며 한 번의 수집은 1MB·2,000개 샘플로 제한한다.
 - 실제 Free 계정·전송 주소·비밀 파일·수집기는 미설정이다. 외부 전송과 계정 인증은 실행하지 않았다.
@@ -31,13 +35,14 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 문구 정리 `42fd631` | web 전체 22개와 bootstrap 인증·메트릭 19개, 총 41개 테스트 통과. 실패·건너뜀 없음. 이미지 보관·공개 상태 검사 스크립트의 기존 테스트 2종 통과. Java·셸은 안내 문구만 변경, 대시보드는 제목·설명 외 쿼리·단위·설정 동일 확인. 변경 문서 링크 72개·코드 예제 보존·형식 확인. 전체 Java·이미지 빌드·실제 배포 검사는 문구 변경 범위에 해당하지 않아 미실행 |
 | 보안 수정 `304bd0c` | `./gradlew test :bootstrap:verifyBootJarLicense` 통과. 447개 중 web·bootstrap 113개 실행, 나머지 334개 기존 결과 재사용. 실패·건너뜀 없음. 실제 JAR의 Tomcat 세 개 모두 11.0.25 확인 |
 | 최종 배포 이미지 | linux/arm64 이미지 5개 빌드, OCI·LICENSE·cloudflared 실행·CLI/RPC 테스트 통과. 기존 정책으로 JAR·이미지 SBOM 7개에서 수정 가능한 HIGH·CRITICAL 0건. gosu 완전 삭제 후 바뀐 PostgreSQL·DB 작업 이미지 2개만 재검사하고 나머지 이미지 ID·아카이브 일치 확인 |
 | 운영 검증 | Compose 정책·이미지 보관/복원·NGINX 검사 통과. 실제 PostgreSQL V1~V6 적용, 최소 권한, 비밀번호 교체·원복, WATCH 기동·재시작 통과. Docker Desktop 파일 공유 캐시 때문에 비밀 파일 덮어쓰기 대신 단계별 파일 경로를 사용하는 테스트로 수정 |
 | Go 라이선스 분류 보정 | 사용하지 않는 테스트 모듈 5개 제거 후 빌드·CLI/RPC 통과. BSD 본문과 Go PATENTS를 확인한 모듈 5개는 Dependency Review 메타데이터 예외와 별도 버전·원문 체크섬 검사 적용. 정상 입력 통과, 버전·체크섬 변경 거부 확인. 최종 cloudflared 공급망 검사 통과 |
 | DB 결과 정합성 `454360b` | 회귀·V5 업그레이드 테스트 11개 통과. `./gradlew test` 447개 중 159개 실행·288개 기존 결과 재사용, 실패·건너뜀 없음. 정상 이력 보존과 불완전한 이력의 적용 거부 확인 |
 | 중복 코드 정리 `d6b0ca1` | 관련 테스트 69개 통과. `./gradlew test` 436개 중 424개 실행·domain 12개 기존 결과 재사용. 마지막 보조 클래스 통합 후 `:bootstrap:test` 91개 재검증 통과. 실패·건너뜀 없음. 메트릭 시작·기록 실패 시 전달 성공 유지, 리다이렉트 후 오류의 시간·횟수 보존 확인 |
-| 문구 정리 | 대시보드 JSON 정상, 제목 외 쿼리·단위·설정 동일 확인. 변경 문서 링크·형식과 `git diff --check` 통과. 문구만 바뀌어 Java·PromQL·배포 검사는 반복하지 않음 |
+| 이전 문구 정리 | 대시보드 JSON 정상, 제목 외 쿼리·단위·설정 동일 확인. 변경 문서 링크·형식과 `git diff --check` 통과. 문구만 바뀌어 Java·PromQL·배포 검사는 반복하지 않음 |
 | 무료 메트릭 연결 `3739149` | `./ops/tests/prometheus-rules-test.sh` 통과. 새 설정 문법·기존 대시보드·경보 검사. 계정·수집기 정보가 없어 실제 인증·전송·수신은 미실행. Java·배포 이미지 변경이 없어 해당 검사는 반복하지 않음 |
 | 테스트 준비 코드 정리 | `WorkerExecutionBudgetTest`·`ApacheHttpHopTransportTest`·`ApacheEventDeliveryTransportTest` 15개 실행·통과. 실패·건너뜀 없음. 테스트 보조 코드만 바뀌어 관련 검사만 실행 |
 | 공용 HTTP 정리 `8bf0546` | 당시 `:adapter-out-external:test` 210개 실행·통과, 실패·건너뜀 없음. 본문·헤더 제한, TLS·DNS 고정, 취소·종료·타임아웃 확인 |
@@ -50,6 +55,12 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+이번 문구 변경은 `./gradlew :adapter-in-web:test :bootstrap:test --tests '*MonitorApiSecurityIntegrationTest' --tests '*MonitoringMetricsTest'`로 검증했다.
+로그는 `.gradle/agent-validation/20260911T141447754615Z-clear-copy-api/`에 있다.
+운영 스크립트 로그는 `20260911T141443213796Z-clear-copy-image-messages/`와
+`20260911T141443256900Z-clear-copy-public-messages/`, 동작 보존 확인은
+`20260911T141428892410Z-clear-copy-structure/`에 있으며 모두 같은 로그 디렉터리 아래에 있다.
+이후 문서 수정에는 링크·형식 검사만 적용하고 위 코드 검증 결과를 재사용한다.
 점검 코드 정리의 전체 로그는 `.gradle/agent-validation/20260905T132821057159Z-cleanup-full/`에 있다.
 공용 HTTP 모듈 로그는 `.gradle/agent-validation/20260905T134006130498Z-http-module/`에 있다.
 테스트 준비 코드 정리 로그는 `.gradle/agent-validation/20260905T135604532497Z-test-support-cleanup/`에 있다.
@@ -65,17 +76,18 @@ DB 결과 정합성 검증 로그는 `.gradle/agent-validation/20260908T01191084
 로컬 검증 이미지는 `e9d8e03`에 미커밋 수정을 반영한 후보였다. 배포용 이미지는 최종 커밋에서
 새로 빌드·검증한다. 원격 linux/amd64 결과는 [PR #37](https://github.com/ljkhyeong/baton-watch/pull/37)에서 확인한다.
 
-## 이번 세션의 도구 상태
+## 검증 환경
 
 - 기본·번들 Python에는 `yaml`이 없다. YAML 검사는 PyYAML 6.0.3이 설치된
   `/private/tmp/baton-watch-skill-validation-20260905/bin/python`으로 통과했다. 다음 사용 전 경로 존재 여부를 확인한다.
-- `actionlint`·ShellCheck는 PATH에 없었다. 이번 CI 변경은 YAML 구문과 등록 명령을 확인했으며 원격 워크플로 전체를 실행한 결과는 아니다.
+- `actionlint`·ShellCheck는 PATH에 없었다. 로컬에서는 YAML 구문과 등록 명령을 확인했다.
+  원격 CI 결과는 아래 병합 기록에 별도로 남겼다.
 
 ## 차단 상태와 다시 확인할 조건
 
 | 항목 | 마지막 확인과 다음 조건 |
 | --- | --- |
-| WATCH 원격 병합 | PR #37의 최신 필수 `verify` 결과로 판단한다. 이전 [실행 34222194403](https://github.com/ljkhyeong/baton-watch/actions/runs/34222194403)의 기능·DB·복구 검사는 통과했고, 공급망 실패 항목은 `304bd0c`에서 수정·로컬 검증했다 |
+| WATCH 원격 병합 | 9월 8일 [필수 CI](https://github.com/ljkhyeong/baton-watch/actions/runs/34228797671) 통과 후 PR #37을 `main`에 병합했다. 병합 커밋은 `e2ad4b0`이며 당시 로컬·원격 main이 일치함을 확인했다 |
 | 공식 cloudflared 후보 | 2026.8.3 공식 이미지에는 필요한 의존성 수정이 없어 공식 소스를 패치 버전의 의존성으로 빌드한다. 필요한 수정이 포함된 공식 이미지가 나오면 같은 공급망 검사를 통과한 뒤 별도 빌드를 제거할 수 있다 |
 | 공식 이미지 패치 확인 | 기존 `MVP 이후 우선순위 정리` 작업에 매일 오전 9시 확인이 설정돼 있음. 새 자동화 추가 전 기존 설정을 조회하며, 같은 후보의 다운로드·검사를 중복 수행하지 않음 |
 | 공개 스테이징 | `watch-staging.b4ton.com` DNS·스테이징 환경과 실제 연동 설정이 준비되면 [공개 검증 절차](docs/runbooks/baton-resource-health-verification.md) 재개 |
@@ -84,7 +96,7 @@ DB 결과 정합성 검증 로그는 `.gradle/agent-validation/20260908T01191084
 현재 상태 재확인 요청이 없다면 위 조건이 그대로인 작업은 재시도하지 않는다.
 이 기록은 당시 확인 결과이며 현재 원격 상태나 배포 완료를 보장하지 않는다.
 
-## 구현과 다음 진입점
+## 구현과 후속 작업
 
 - 대상 GET은 헤더만 확인하고 본문을 읽지 않는다. 인증된 수동 재점검 API는 기존 일정·리스를 유지하며
   새 예약에 30초 간격을 적용한다. V5 마이그레이션이 필요하다.
