@@ -2,7 +2,7 @@
 
 상태: 유지 관리 계약
 
-수정일: 2026-09-05
+수정일: 2026-09-12
 
 ## 시스템 상태
 
@@ -91,6 +91,7 @@ PUT과 GET은 `application/json`을 반환한다.
   "resourceReference": "role-resource-123",
   "sourceRevision": 42,
   "monitoringState": "ACTIVE",
+  "checkStatus": "QUEUED",
   "health": "UNKNOWN",
   "consecutiveFailures": 0,
   "lastOutcome": null,
@@ -99,6 +100,23 @@ PUT과 GET은 `application/json`을 반환한다.
   "nextCheckAt": "2026-08-01T00:00:00Z"
 }
 ~~~
+
+`checkStatus`는 응답 생성 시각의 점검 진행 상태이며 링크의 연결 상태인 `health`와 구분한다.
+
+| `checkStatus` | 의미 | 조건 |
+| --- | --- | --- |
+| `INACTIVE` | 비활성 | 비활성 모니터 |
+| `SCHEDULED` | 예약 | 유효한 리스가 없고 다음 점검 시각 전 |
+| `QUEUED` | 대기 | 유효한 리스가 없고 다음 점검 시각이 됐거나 지남 |
+| `IN_PROGRESS` | 진행 중 | 만료 전인 리스가 있음 |
+
+리스가 유효하면 다음 점검 시각과 관계없이 `IN_PROGRESS`다. 리스 만료 시각부터는 일정으로
+판단한다. 중단된 작업자의 리스도 만료 전까지 유효하므로 실제 작업자 생존이나 시작 시각을
+보장하는 값은 아니다. 작업자 실행을 설정으로 꺼도 활성 모니터의 도래한 일정은 `QUEUED`로 표시한다.
+리스 만료 시각·토큰·시도 ID는 응답에 포함하지 않는다.
+
+기존 응답 필드는 유지하고 `checkStatus`만 추가한다. 클라이언트는 알 수 없는 응답 필드를
+허용해야 한다. 수동 재점검 POST의 `status`는 요청 접수 결과이며 이 진행 상태와 구분한다.
 
 `lastCheckedAt`은 결과 분류와 관계없이 마지막으로 완료 처리한 점검 시각이다.
 `lastConclusiveAt`은 상태 도출에 반영할 수 있는 마지막 확정 결과의 완료 시각이며,
