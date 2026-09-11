@@ -153,7 +153,8 @@ def inspect_remote(client, snapshot):
 
 def compare_projection(snapshot, body):
     revision = body.get("sourceRevision")
-    if body.get("resourceReference") != snapshot["resourceReference"] or type(revision) is not int or revision < 1:
+    if (body.get("resourceReference") != snapshot["resourceReference"]
+            or type(revision) is not int or not 0 <= revision <= 2**63 - 1):
         return "LOOKUP_FAILED", None
     if body.get("monitoringState") not in ("ACTIVE", "INACTIVE"):
         return "LOOKUP_FAILED", None
@@ -219,13 +220,14 @@ def reconcile(client, snapshots, apply=False):
             if status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
                 payload = {key: value for key, value in snapshot.items() if key != "resourceReference"}
                 http_status, body = client.request("PUT", snapshot["resourceReference"], payload)
+                remote_revision = None
                 if (http_status == 200 and isinstance(body, dict)
                         and body.get("resourceReference") == snapshot["resourceReference"]
                         and type(body.get("sourceRevision")) is int
                         and body["sourceRevision"] == snapshot["sourceRevision"]
                         and body.get("monitoringState") == snapshot["monitoringState"]):
                     # PUT의 200은 같은 리비전의 원본 URL까지 동일하다는 계약 확인이다.
-                    status = "REPLAYED"
+                    status, remote_revision = "REPLAYED", body["sourceRevision"]
                 elif http_status == 409 and isinstance(body, dict) and body.get("code") in ("STALE_SOURCE_REVISION", "SOURCE_REVISION_CONFLICT"):
                     status = "REMOTE_AHEAD" if body["code"] == "STALE_SOURCE_REVISION" else "PAYLOAD_CONFLICT"
                 else:

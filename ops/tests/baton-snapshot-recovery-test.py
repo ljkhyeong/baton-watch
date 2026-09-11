@@ -38,9 +38,11 @@ class SnapshotRecoveryTest(unittest.TestCase):
     def test_audit_does_not_mutate_missing_older_matching_or_conflicting_monitors(self):
         """조회 모드는 누락·낮은 리비전·일치·충돌을 구분하고 PUT을 보내지 않는다."""
         for response, expected in [(batch_response(missing=[REFERENCE]), "MISSING"),
+                                   (batch_response(remote(0)[1]), "REMOTE_BEHIND"),
                                    (batch_response(remote(6)[1]), "REMOTE_BEHIND"),
                                    (batch_response(remote()[1]), "REVISION_MATCH_UNVERIFIED"),
                                    (batch_response(remote(8)[1]), "REMOTE_AHEAD"),
+                                   (batch_response(remote(2**63 - 1)[1]), "REMOTE_AHEAD"),
                                    (batch_response(remote(7, "INACTIVE")[1]), "PAYLOAD_CONFLICT")]:
             with self.subTest(expected=expected):
                 client = Mock()
@@ -82,23 +84,26 @@ class SnapshotRecoveryTest(unittest.TestCase):
 
     def test_invalid_projection_in_a_batch_is_reported_as_lookup_failure(self):
         """조회된 항목의 리비전·상태가 잘못됐으면 해당 항목을 실패로 남긴다."""
-        for projection in [remote(True)[1], remote(0)[1], remote(7, "INVALID")[1]]:
+        for projection in [remote(True)[1], remote(-1)[1], remote(2**63)[1], remote(7, "INVALID")[1]]:
             client = Mock()
             client.get_batch.return_value = batch_response(projection)
             self.assertEqual(list(recovery.reconcile(client, [SNAPSHOT]))[0]["status"], "LOOKUP_FAILED")
 
     def test_replay_uses_exact_snapshot_and_never_overrides_ahead_or_conflicting_state(self):
         """복구는 같은 본문과 리비전을 재전송하고 더 높은 리비전·상태 충돌은 건드리지 않는다."""
-        for first in [(404, {"code": "MONITOR_NOT_FOUND"}), remote(6), remote()]:
+        for first in [(404, {"code": "MONITOR_NOT_FOUND"}), remote(0), remote(6), remote()]:
             client = Mock()
             client.request.side_effect = [first, remote()]
-            self.assertEqual(list(recovery.reconcile(client, [SNAPSHOT], True))[0]["status"], "REPLAYED")
+            result = list(recovery.reconcile(client, [SNAPSHOT], True))[0]
+            self.assertEqual(result["status"], "REPLAYED")
+            self.assertEqual(result["remoteRevision"], 7)
             self.assertEqual(client.request.call_args.args, ("PUT", REFERENCE,
                              {key: value for key, value in SNAPSHOT.items() if key != "resourceReference"}))
         for first in [remote(8), remote(7, "INACTIVE")]:
             client = Mock()
             client.request.return_value = first
-            list(recovery.reconcile(client, [SNAPSHOT], True))
+            result = list(recovery.reconcile(client, [SNAPSHOT], True))[0]
+            self.assertEqual(result["remoteRevision"], first[1]["sourceRevision"])
             client.request.assert_called_once_with("GET", REFERENCE)
 
     def test_equal_revision_url_conflict_and_concurrent_newer_revision_are_reported(self):
@@ -107,9 +112,14 @@ class SnapshotRecoveryTest(unittest.TestCase):
                                ("STALE_SOURCE_REVISION", "REMOTE_AHEAD")]:
             client = Mock()
             client.request.side_effect = [remote(), (409, {"code": code})]
-            self.assertEqual(list(recovery.reconcile(client, [SNAPSHOT], True))[0]["status"], expected)
-        client.request.side_effect = [remote(), (200, {})]
-        self.assertEqual(list(recovery.reconcile(client, [SNAPSHOT], True))[0]["status"], "REPLAY_FAILED")
+            result = list(recovery.reconcile(client, [SNAPSHOT], True))[0]
+            self.assertEqual(result["status"], expected)
+            self.assertIsNone(result["remoteRevision"])
+        for failed_response in [(200, {}), (503, {"code": "SERVICE_UNAVAILABLE"})]:
+            client.request.side_effect = [remote(), failed_response]
+            result = list(recovery.reconcile(client, [SNAPSHOT], True))[0]
+            self.assertEqual(result["status"], "REPLAY_FAILED")
+            self.assertIsNone(result["remoteRevision"])
 
     def test_namespace_duplicates_and_apply_digest_fail_before_network(self):
         """파일 전체의 이름공간·중복과 사전 검토 해시를 확인한 뒤에만 통신한다."""
@@ -118,6 +128,8 @@ class SnapshotRecoveryTest(unittest.TestCase):
             recovery.read_snapshots(raw, "different")
         with self.assertRaises(recovery.RecoveryError):
             recovery.read_snapshots(raw + b"\n" + raw, "pilot")
+        with self.assertRaises(recovery.RecoveryError):
+            recovery.read_snapshots(json.dumps(dict(SNAPSHOT, sourceRevision=0)).encode(), "pilot")
         with tempfile.TemporaryDirectory() as temporary:
             manifest = Path(temporary) / "snapshots.jsonl"
             manifest.write_bytes(raw)
