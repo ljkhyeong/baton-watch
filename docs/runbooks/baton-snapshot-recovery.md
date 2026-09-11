@@ -61,6 +61,9 @@ python3 ops/reconcile-baton-snapshots.py \
 | `PAYLOAD_CONFLICT` | 같은 리비전의 감시 상태 또는 PUT 본문 충돌. 원본과 복원 지점 확인 |
 | `LOOKUP_FAILED`·`LOOKUP_OR_REPLAY_FAILED` | 인증·HTTP 계약·DNS·네트워크 실패 등으로 확인 불가 |
 
+WATCH의 원격 리비전은 API와 같은 음이 아닌 64비트 정수로 비교한다. `0`도 유효하므로
+더 높은 BATON 스냅샷과 비교하면 `REMOTE_BEHIND`다. 입력 파일의 BATON 아웃박스 ID는 기존처럼 1 이상이어야 한다.
+
 대조의 종료 코드 0은 모든 항목의 **리비전·감시 상태 일치**만 뜻한다. URL까지 확인했다는
 의미가 아니다. 조치가 필요한 항목이 있으면 2, 입력 또는 준비 오류는 1이다.
 
@@ -81,6 +84,9 @@ python3 ops/reconcile-baton-snapshots.py \
 정확한 200 응답의 자료 참조·리비전·감시 상태까지 일치하면 `REPLAYED`다. 같은 리비전의 PUT은
 WATCH가 원본 URL의 동일성까지 확인하며, 다른 URL이면 409로 거절한다. 대조 뒤 새 리비전이
 도착한 경합도 409로 보고한다. 기존 점검 결과나 리스를 초기화하려고 리비전을 올리지 않는다.
+
+`remoteRevision`은 조회만 한 항목에는 GET에서 확인한 값을, `REPLAYED`에는 PUT 성공 응답의
+리비전을 표시한다. PUT이 실패하거나 충돌하면 재전송 후 리비전을 확인할 수 없으므로 `null`이다.
 
 전체 `REPLAYED`이면 종료 코드 0, 충돌·확인 불가·`REPLAY_FAILED`가 있으면 2다. 한 항목의
 실패 후에도 나머지를 확인하며 자동 재시도는 하지 않는다. 재실행은 멱등하다. BATON의 아웃박스
