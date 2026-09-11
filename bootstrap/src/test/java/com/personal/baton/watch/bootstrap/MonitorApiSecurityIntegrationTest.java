@@ -156,7 +156,7 @@ class MonitorApiSecurityIntegrationTest {
                 malformed,
                 400,
                 "urn:baton-watch:problem:invalid-request",
-                "Invalid request",
+                "요청 형식이 올바르지 않습니다",
                 "INVALID_REQUEST");
         assertThat(valid.statusCode()).isEqualTo(200);
     }
@@ -202,13 +202,13 @@ class MonitorApiSecurityIntegrationTest {
                 contentLength,
                 413,
                 "urn:baton-watch:problem:payload-too-large",
-                "Payload too large",
+                "요청 본문이 허용 크기를 초과했습니다",
                 "PAYLOAD_TOO_LARGE");
         assertProblem(
                 chunked,
                 413,
                 "urn:baton-watch:problem:payload-too-large",
-                "Payload too large",
+                "요청 본문이 허용 크기를 초과했습니다",
                 "PAYLOAD_TOO_LARGE");
     }
 
@@ -242,7 +242,7 @@ class MonitorApiSecurityIntegrationTest {
                 authenticated,
                 404,
                 "urn:baton-watch:problem:route-not-found",
-                "Route not found",
+                "요청한 API 경로가 없습니다",
                 "ROUTE_NOT_FOUND");
     }
 
@@ -259,7 +259,7 @@ class MonitorApiSecurityIntegrationTest {
                 response,
                 400,
                 "urn:baton-watch:problem:request-rejected",
-                "Request rejected",
+                "허용되지 않는 HTTP 요청입니다",
                 "REQUEST_REJECTED");
         assertThat(response.body())
                 .doesNotContain("raw-value")
@@ -301,14 +301,14 @@ class MonitorApiSecurityIntegrationTest {
                 methodNotAllowed,
                 405,
                 "urn:baton-watch:problem:method-not-allowed",
-                "Method not allowed",
+                "지원하지 않는 HTTP 메서드입니다",
                 "METHOD_NOT_ALLOWED");
         assertHeaderContains(methodNotAllowed, HttpHeaders.ALLOW, "GET");
         assertProblem(
                 unsupportedMediaType,
                 415,
                 "urn:baton-watch:problem:unsupported-media-type",
-                "Unsupported media type",
+                "지원하지 않는 요청 본문 형식입니다",
                 "UNSUPPORTED_MEDIA_TYPE");
         assertHeaderContains(
                 unsupportedMediaType,
@@ -318,13 +318,13 @@ class MonitorApiSecurityIntegrationTest {
                 oversizedUnsupportedMediaType,
                 415,
                 "urn:baton-watch:problem:unsupported-media-type",
-                "Unsupported media type",
+                "지원하지 않는 요청 본문 형식입니다",
                 "UNSUPPORTED_MEDIA_TYPE");
         assertProblem(
                 notAcceptable,
                 406,
                 "urn:baton-watch:problem:not-acceptable",
-                "Not acceptable",
+                "요청한 응답 형식을 지원하지 않습니다",
                 "NOT_ACCEPTABLE");
         assertHeaderContains(
                 notAcceptable,
@@ -418,7 +418,7 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(problem.size()).isEqualTo(4);
         assertThat(problem.required("type").stringValue())
                 .isEqualTo("urn:baton-watch:problem:unauthorized");
-        assertThat(problem.required("title").stringValue()).isEqualTo("Unauthorized");
+        assertThat(problem.required("title").stringValue()).isEqualTo("유효한 인증 토큰이 필요합니다");
         assertThat(problem.required("status").intValue()).isEqualTo(401);
         assertThat(problem.required("code").stringValue()).isEqualTo("UNAUTHORIZED");
     }

@@ -27,7 +27,7 @@ public final class MonitorApiRequestRejectedHandler implements RequestRejectedHa
                 response,
                 HttpStatus.BAD_REQUEST,
                 "request-rejected",
-                "Request rejected",
+                "허용되지 않는 HTTP 요청입니다",
                 "REQUEST_REJECTED",
                 true);
     }

@@ -77,11 +77,11 @@ if [[ "$status_code" != "200" || "$redirect_count" != "0" ]]; then
 fi
 if [[ "$(grep -Eic '^CF-Ray:' "$response_headers" || true)" != "1" ]] \
         || ! grep -Eiq '^CF-Ray:[[:space:]]*[^[:space:]]+' "$response_headers"; then
-    fail "공개 상태 응답에서 Cloudflare 처리 증거를 확인할 수 없습니다"
+    fail "공개 상태 응답의 CF-Ray 헤더가 없거나 올바르지 않습니다"
 fi
 if [[ "$(grep -Eic '^CF-Cache-Status:' "$response_headers" || true)" != "1" ]] \
         || ! grep -Eiq '^CF-Cache-Status:[[:space:]]*(DYNAMIC|BYPASS)[[:space:]]*$' "$response_headers"; then
-    fail "공개 상태 응답이 캐시 비대상 또는 우회 응답이 아닙니다"
+    fail "공개 상태 응답의 CF-Cache-Status는 DYNAMIC 또는 BYPASS여야 합니다"
 fi
 if ! python3 - "$response_body" <<'PY'
 import json

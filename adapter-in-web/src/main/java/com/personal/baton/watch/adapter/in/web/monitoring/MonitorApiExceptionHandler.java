@@ -19,21 +19,21 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
 
     private static final Logger log = LoggerFactory.getLogger(MonitorApiExceptionHandler.class);
     private static final MonitorApiProblem INVALID_REQUEST =
-            MonitorApiProblem.of("invalid-request", "Invalid request", "INVALID_REQUEST");
+            MonitorApiProblem.of("invalid-request", "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     private static final MonitorApiProblem ROUTE_NOT_FOUND =
-            MonitorApiProblem.of("route-not-found", "Route not found", "ROUTE_NOT_FOUND");
+            MonitorApiProblem.of("route-not-found", "요청한 API 경로가 없습니다", "ROUTE_NOT_FOUND");
     private static final MonitorApiProblem METHOD_NOT_ALLOWED =
-            MonitorApiProblem.of("method-not-allowed", "Method not allowed", "METHOD_NOT_ALLOWED");
+            MonitorApiProblem.of("method-not-allowed", "지원하지 않는 HTTP 메서드입니다", "METHOD_NOT_ALLOWED");
     private static final MonitorApiProblem NOT_ACCEPTABLE =
-            MonitorApiProblem.of("not-acceptable", "Not acceptable", "NOT_ACCEPTABLE");
+            MonitorApiProblem.of("not-acceptable", "요청한 응답 형식을 지원하지 않습니다", "NOT_ACCEPTABLE");
     private static final MonitorApiProblem UNSUPPORTED_MEDIA_TYPE = MonitorApiProblem.of(
             "unsupported-media-type",
-            "Unsupported media type",
+            "지원하지 않는 요청 본문 형식입니다",
             "UNSUPPORTED_MEDIA_TYPE");
     private static final MonitorApiProblem REQUEST_REJECTED =
-            MonitorApiProblem.of("request-rejected", "Request rejected", "REQUEST_REJECTED");
+            MonitorApiProblem.of("request-rejected", "허용되지 않는 HTTP 요청입니다", "REQUEST_REJECTED");
     private static final MonitorApiProblem INTERNAL_ERROR =
-            MonitorApiProblem.of("internal-error", "Internal server error", "INTERNAL_ERROR");
+            MonitorApiProblem.of("internal-error", "요청 처리 중 서버 오류가 발생했습니다", "INTERNAL_ERROR");
 
     @ExceptionHandler(MonitorApiException.class)
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {

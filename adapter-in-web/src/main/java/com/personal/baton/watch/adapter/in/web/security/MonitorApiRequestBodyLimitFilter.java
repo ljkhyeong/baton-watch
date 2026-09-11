@@ -78,7 +78,7 @@ public final class MonitorApiRequestBodyLimitFilter extends OncePerRequestFilter
                 response,
                 HttpStatus.CONTENT_TOO_LARGE,
                 "payload-too-large",
-                "Payload too large",
+                "요청 본문이 허용 크기를 초과했습니다",
                 "PAYLOAD_TOO_LARGE",
                 true);
     }

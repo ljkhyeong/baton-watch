@@ -101,7 +101,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))
-                .andExpect(jsonPath("$.title").value("Invalid target URL"))
+                .andExpect(jsonPath("$.title").value("점검할 수 없는 URL입니다"))
                 .andExpect(jsonPath("$.status").value(422))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INVALID_TARGET_URL"));
@@ -192,7 +192,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-request"))
-                .andExpect(jsonPath("$.title").value("Invalid request"))
+                .andExpect(jsonPath("$.title").value("요청 형식이 올바르지 않습니다"))
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
@@ -210,7 +210,7 @@ class ResourceMonitorControllerTest {
                         HttpHeaders.ALLOW,
                         org.hamcrest.Matchers.containsString("PUT")))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:method-not-allowed"))
-                .andExpect(jsonPath("$.title").value("Method not allowed"))
+                .andExpect(jsonPath("$.title").value("지원하지 않는 HTTP 메서드입니다"))
                 .andExpect(jsonPath("$.status").value(405))
                 .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
     }
@@ -226,7 +226,7 @@ class ResourceMonitorControllerTest {
                         HttpHeaders.ACCEPT,
                         org.hamcrest.Matchers.containsString(MediaType.APPLICATION_JSON_VALUE)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:unsupported-media-type"))
-                .andExpect(jsonPath("$.title").value("Unsupported media type"))
+                .andExpect(jsonPath("$.title").value("지원하지 않는 요청 본문 형식입니다"))
                 .andExpect(jsonPath("$.status").value(415))
                 .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
     }
@@ -241,7 +241,7 @@ class ResourceMonitorControllerTest {
                         HttpHeaders.ACCEPT,
                         org.hamcrest.Matchers.containsString(MediaType.APPLICATION_JSON_VALUE)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:not-acceptable"))
-                .andExpect(jsonPath("$.title").value("Not acceptable"))
+                .andExpect(jsonPath("$.title").value("요청한 응답 형식을 지원하지 않습니다"))
                 .andExpect(jsonPath("$.status").value(406))
                 .andExpect(jsonPath("$.code").value("NOT_ACCEPTABLE"));
     }
@@ -253,7 +253,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
                 .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:internal-error"))
-                .andExpect(jsonPath("$.title").value("Internal server error"))
+                .andExpect(jsonPath("$.title").value("요청 처리 중 서버 오류가 발생했습니다"))
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));

@@ -53,7 +53,7 @@ final class MonitoringMetrics {
                         maximumCheckScheduleDelaySeconds,
                         AtomicLong::get)
                 .baseUnit("seconds")
-                .description("현재 가장 오래된 선점 가능 점검의 일정 지연")
+                .description("지금 실행 가능한 점검 중 최대 지연 시간")
                 .register(registry);
         Gauge.builder(
                         "baton.watch.event.delivery.inflight",
@@ -66,7 +66,7 @@ final class MonitoringMetrics {
                 .register(registry);
         Gauge.builder("baton.watch.event.delivery.oldest.age", oldestEventAgeSeconds, AtomicLong::get)
                 .baseUnit("seconds")
-                .description("가장 오래된 미전달 상태 변경 이벤트의 경과 시간")
+                .description("미전달 상태 변경 이벤트의 최대 대기 시간")
                 .register(registry);
         Gauge.builder(
                         "baton.watch.database.clock.offset",
