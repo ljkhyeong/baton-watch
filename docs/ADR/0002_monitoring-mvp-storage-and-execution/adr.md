@@ -121,6 +121,11 @@ HTTP 요청은 실행기에 제출하기 전에 만들고, JDK `FutureTask.done(
 `INTERNAL_FAILURE`로 바꿔 대상의 DNS 장애와 구분한다. 실행 중인 JVM 리졸버를
 강제로 멈추는 별도 구현은 추가하지 않는다.
 
+DNS·HTTP의 `Future` 취소만으로는 실행기 대기열에서 작업이 제거되지 않는다.
+취소 후 JDK `ThreadPoolExecutor.purge()`로 취소된 대기 작업을 제거해,
+실행 중인 작업이 지연돼도 새 요청이 비워진 대기열을 사용할 수 있게 한다.
+별도 정리 스레드는 추가하지 않으며 기존 스레드 수와 대기열 상한을 유지한다.
+
 Bootstrap은 Apache HttpClient의 원본 헤더, wire, 구현과 TLS 로거 범주 및
 Spring JDBC의 `StatementCreatorUtils` 구문 매개변수 로거를 `OFF`로 고정한다.
 외부 설정보다 우선하는 Spring Boot 환경 후처리기 속성
