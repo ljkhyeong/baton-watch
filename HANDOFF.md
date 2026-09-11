@@ -1,9 +1,11 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-09-11
+최종 수정일: 2026-09-12
 
 ## 현재 작업
 
+- `a71c1ad` 이후 장애 진단·복구·부하 시험 문서와 Java 주석의 추상적인 표현을 추가로 정리했다.
+  재점검 응답 3종은 표로 구분했다. 실행 코드·API 응답·명령·수치는 유지한다.
 - `codex/clear-copy-20260911`에서 문서·API 오류·운영 안내를 간결한 한국어로 정리했다.
   기준은 9월 11일 확인한 `origin/main`의 `e2ad4b0`이다. `42fd631`은 API 오류 제목,
   메트릭·대시보드 설명과 셸 안내 문구만 바꿨다. 오류 코드·상태·처리 로직·쿼리·단위는 유지한다.
@@ -35,6 +37,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 추가 문구 정리 | Java 9개 파일은 주석만 변경됨을 확인. 문서의 코드 예제·기술 식별자·수치 보존, 로컬 링크·제목 참조·형식 검사 통과. 문서·주석만 변경해 Java·배포 검사는 재실행하지 않음 |
 | 문구 정리 `42fd631` | web 전체 22개와 bootstrap 인증·메트릭 19개, 총 41개 테스트 통과. 실패·건너뜀 없음. 이미지 보관·공개 상태 검사 스크립트의 기존 테스트 2종 통과. Java·셸은 안내 문구만 변경, 대시보드는 제목·설명 외 쿼리·단위·설정 동일 확인. 변경 문서 링크 72개·코드 예제 보존·형식 확인. 전체 Java·이미지 빌드·실제 배포 검사는 문구 변경 범위에 해당하지 않아 미실행 |
 | 보안 수정 `304bd0c` | `./gradlew test :bootstrap:verifyBootJarLicense` 통과. 447개 중 web·bootstrap 113개 실행, 나머지 334개 기존 결과 재사용. 실패·건너뜀 없음. 실제 JAR의 Tomcat 세 개 모두 11.0.25 확인 |
 | 최종 배포 이미지 | linux/arm64 이미지 5개 빌드, OCI·LICENSE·cloudflared 실행·CLI/RPC 테스트 통과. 기존 정책으로 JAR·이미지 SBOM 7개에서 수정 가능한 HIGH·CRITICAL 0건. gosu 완전 삭제 후 바뀐 PostgreSQL·DB 작업 이미지 2개만 재검사하고 나머지 이미지 ID·아카이브 일치 확인 |
@@ -55,7 +58,9 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
-이번 문구 변경은 `./gradlew :adapter-in-web:test :bootstrap:test --tests '*MonitorApiSecurityIntegrationTest' --tests '*MonitoringMetricsTest'`로 검증했다.
+추가 문구 검사는 `a71c1ad`와 비교했으며 `.gradle/agent-validation/`의 `clear-copy-followup` 기록에
+검증 명령·파일 지문·종료 코드를 남겼다.
+앞선 API 문구 변경은 `./gradlew :adapter-in-web:test :bootstrap:test --tests '*MonitorApiSecurityIntegrationTest' --tests '*MonitoringMetricsTest'`로 검증했다.
 로그는 `.gradle/agent-validation/20260911T141447754615Z-clear-copy-api/`에 있다.
 운영 스크립트 로그는 `20260911T141443213796Z-clear-copy-image-messages/`와
 `20260911T141443256900Z-clear-copy-public-messages/`, 동작 보존 확인은

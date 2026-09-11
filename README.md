@@ -167,7 +167,7 @@ NGINX 검사는 실제 프록시·Blackbox Exporter와 HTTP 대역을 사용하�
 프로젝트에서 실행합니다. 프록시 상태 확인과 실제 요청의 성공·실패·복구를 구분해 검사합니다.
 Prometheus 검사는 경보와 대시보드의 실제 쿼리를 평가하며 요청 실패·수집 실패·지표
 누락이 겹쳐도 요청 실패 경보가 유지되는지 확인합니다. Grafana 서버를
-배포하지 않습니다. 관리 프로브는 컨테이너 루프백의
+배포하지 않습니다. 관리 상태 확인은 컨테이너 루프백의
 `/actuator/health/liveness`와 `/actuator/health/readiness`를 사용합니다.
 readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Docker unhealthy만으로
 자동 재시작이나 실행 중 트래픽 차단이 보장되지는 않습니다.

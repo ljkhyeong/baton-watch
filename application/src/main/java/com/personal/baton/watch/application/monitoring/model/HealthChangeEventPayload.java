@@ -8,7 +8,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-/** 아웃바운드 송신자 경계를 통과할 수 있는 불변 상태 변경 데이터다. */
+/** BATON에 전달할 상태 변경 데이터다. 생성 후에는 변경하지 않는다. */
 public record HealthChangeEventPayload(
         UUID eventId,
         ResourceReference resourceReference,

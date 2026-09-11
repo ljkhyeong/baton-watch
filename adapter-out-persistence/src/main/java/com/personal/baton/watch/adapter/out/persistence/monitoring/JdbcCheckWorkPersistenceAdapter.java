@@ -28,7 +28,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 import org.springframework.util.Assert;
 
-/** 점검 선점, 완료 처리, 제한된 시도 보존을 담당하는 JDBC 어댑터다. */
+/** 점검 점유·완료 처리와 보존 기간이 지난 시도 삭제를 담당한다. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
 
     private final JdbcClient jdbc;

@@ -8,7 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import tools.jackson.databind.ObjectMapper;
 
-/** Spring MVC 바깥의 보안 경계에서 안정적인 문제 응답을 작성한다. */
+/** 보안 필터의 오류 응답을 공통 Problem Details 형식으로 작성한다. */
 final class MonitorApiProblemWriter {
 
     private MonitorApiProblemWriter() {

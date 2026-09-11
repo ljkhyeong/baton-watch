@@ -8,7 +8,7 @@
 
 이 실행 절차서는 현재 Mac을 `https://watch-staging.b4ton.com`의 단일 스테이징
 오리진으로 준비합니다. 의도한 엣지 경로는 원격 관리형 Cloudflare Tunnel에서
-Docker `watch-ingress`의 NGINX를 거쳐 `watch-edge`의 WATCH로 연결됩니다. 터널 오버레이를 사용하면 오리진은
+Docker `watch-ingress`의 NGINX를 거쳐 `watch-edge`의 WATCH로 연결됩니다. 터널용 Compose 설정을 추가하면 오리진은
 호스트 포트를 공개하지 않습니다.
 
 저장소에는 스테이징 Compose 정의와 이 절차가 들어 있지만, 아직 오리진에서
@@ -34,7 +34,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   `baton-watch-cloudflared:<full-git-sha>` 터널 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
 - Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 필수 비밀
-  파일 세 개, 선택한 오버레이의 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
+  파일 세 개, 추가 Compose 설정에서 사용하는 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
   상위 디렉터리 안의 `0444` 터널 토큰 파일
 
 기본 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다.
@@ -46,7 +46,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 
 ## 네트워크 및 영속성 불변 조건
 
-기본 Compose와 터널 오버레이를 적용하면 다음 조건을 충족해야 합니다. 이벤트 전달용 Compose 설정을
+기본 Compose에 터널용 설정을 추가하면 다음 조건을 충족해야 합니다. 이벤트 전달용 Compose 설정을
 추가해도 같은 네트워크 분리와 포트 접근 제한을 유지해야 합니다.
 
 - PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
@@ -379,7 +379,7 @@ NGINX는 Compose에 고정한 공식 이미지 다이제스트로 가져옵니�
 작업·마이그레이션·cloudflared·WATCH는 Dockerfile의 고정된 소스로 빌드합니다. 이 다섯
 이미지는 `pull_policy: never`와 전체 Git SHA 태그로 검증한 로컬 이미지를 선택합니다.
 
-모든 작업에서 터널 오버레이를 사용합니다. 별도 전달 런북에 따라 BATON 콜백을
+모든 작업에 터널용 Compose 설정을 포함합니다. 별도 전달 런북에 따라 BATON 콜백을
 명시한 경우에만 이벤트 전달용 Compose 설정을 추가하도록 헬퍼 하나를 먼저 정의합니다.
 
 ~~~bash
@@ -526,7 +526,7 @@ WATCH의 Compose healthcheck는 `/actuator/health/readiness`로 준비 상태와
 두 경로는 관리 포트의 컨테이너 루프백에서만 사용합니다. Docker unhealthy는
 자동 재시작이나 실행 중인 터널의 자동 트래픽 차단을 뜻하지 않습니다.
 NGINX의 `127.0.0.1:8082/health`는 프록시 생존 확인만 담당합니다.
-프로브와 DB 포함 기준은 [Spring Boot 공식 문서](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes)를 참고하세요.
+상태 확인에 DB 상태를 포함하는 기준은 [Spring Boot 공식 문서](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes)를 참고하세요.
 
 API·유지보수를 유지하면서 점검만 중지하려면 `WATCH_CHECK_ENABLED`를 변경하고
 WATCH 컨테이너만 재생성합니다. 개별 리소스의 점검·전달 실패는 기존 PostgreSQL을

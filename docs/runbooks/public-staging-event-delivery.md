@@ -84,7 +84,7 @@ staging_compose up -d --force-recreate watch cloudflared
 ~~~
 
 헬퍼는 콜백 URL이 있을 때만 `compose.staging-event-delivery.yml`을 추가합니다.
-오버레이는 전달을 명시적으로 활성화하고 토큰을 Compose secret과 Spring
+추가 Compose 설정은 전달을 활성화하고 토큰을 Compose secret과 Spring
 `configtree`로 주입합니다. 렌더링된 환경이나 `docker inspect`에 토큰이 보이면
 실패입니다. 재기동 뒤 공개 상태와 내부 상태를 다시 확인하고 나서 아래 전달 실습을
 시작합니다. 이 활성화만으로 실제 전달 성공을 주장해서는 안 됩니다.
