@@ -8,6 +8,7 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 | --- | --- |
 | 서비스 상태 | `GET /api/v1/system/status` |
 | 점검 대상 등록·조회 | 인증된 `PUT`·`GET /api/v1/resource-monitors/{resourceReference}`. `ACTIVE`·`INACTIVE`를 동기화하고 이전 리비전의 덮어쓰기를 거부 |
+| 여러 대상 조회 | 인증된 `GET /api/v1/resource-monitors?resourceReference=...`. 최대 20개를 한 번에 조회하고 미등록 대상은 별도 반환 |
 | 재점검 요청 | 인증된 `POST /api/v1/resource-monitors/{resourceReference}/check-requests`. 기존 점검을 사용하거나 새 일정을 예약 |
 | URL 점검 | GET 응답 헤더로 연결 상태 판단. 응답 본문은 읽거나 저장하지 않음 |
 | 점검 기록 | 일정, 시도·결과, 현재 상태와 상태 변경 이벤트를 PostgreSQL에 저장. 저장한 시도·결과는 변경하지 않음 |

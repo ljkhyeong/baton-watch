@@ -184,10 +184,55 @@ Spring Security의 엄격한 HTTP 방화벽이 경로 일치 전에 거부한 �
 시도 이력, 인바운드 웹훅 또는 이벤트 전달 경로는 채택하지 않았다.
 수동 재점검은 아래 예약 경로만 제공한다.
 PRD-0004의 직접 전달은 WATCH의 아웃바운드 콜백이며 이러한 인바운드 경로를
-변경하지 않는다. 이후 조회 경로는 구현 전에 커서 페이지네이션을 정의해야 한다.
+변경하지 않는다. 전체 목록이나 시도 이력 조회를 추가할 때는 먼저 커서 페이지네이션을 정의한다.
 
 모든 애플리케이션 경로는 `/api/v1` 아래에 유지하고 이름이 있는 전송 DTO를
 사용하며 인바운드 애플리케이션 포트에 위임한다.
+
+## 여러 점검 대상 조회
+
+`GET /api/v1/resource-monitors`는 `resourceReference` 쿼리 매개변수를 반복해 최대 20개를 조회한다.
+단건 조회와 같은 Bearer 서비스 인증을 사용한다. BATON은 요청 전후에 각 자료의 접근 권한과
+원본 리비전을 확인해야 한다. WATCH는 자료의 소유권이나 공유 권한을 판단하지 않는다.
+
+```text
+GET /api/v1/resource-monitors?resourceReference=role-resource-123&resourceReference=missing-resource
+```
+
+HTTP 200과 `application/json` 응답 예시:
+
+```json
+{
+  "monitors": [
+    {
+      "resourceReference": "role-resource-123",
+      "sourceRevision": 42,
+      "monitoringState": "ACTIVE",
+      "checkStatus": "QUEUED",
+      "health": "UNKNOWN",
+      "consecutiveFailures": 0,
+      "lastOutcome": null,
+      "lastCheckedAt": null,
+      "lastConclusiveAt": null,
+      "nextCheckAt": "2026-08-01T00:00:00Z"
+    }
+  ],
+  "missingResourceReferences": ["missing-resource"]
+}
+```
+
+- `monitors`의 각 항목은 단건 조회와 같은 응답이다. 비활성 대상도 포함한다.
+- 등록되지 않은 대상은 `missingResourceReferences`에 담는다. 모두 미등록이어도 HTTP 200이며
+  `monitors`는 빈 배열이다. DB 조회 실패를 미등록으로 처리하지 않는다.
+- 중복은 한 번만 반환한다. 두 배열은 각각 요청에서 처음 나타난 순서를 유지한다.
+- 입력은 중복 제거 전 1~20개다. 누락·빈 값·잘못된 식별자·20개 초과는 HTTP 400 `INVALID_REQUEST`다.
+  인증을 먼저 확인하므로 자격 증명이 없거나 잘못되면 HTTP 401이다.
+- DB 조회는 한 번이며 모든 항목의 `checkStatus`를 같은 시각으로 판단한다. URL·리스 정보는 반환하지 않는다.
+- 지정한 대상만 조회하므로 커서는 제공하지 않는다. 전체 대상 목록이나 이력을 열거하는 API가 아니다.
+
+묶음 응답을 처리하는 클라이언트는 단건보다 큰 응답을 받을 수 있도록 크기 제한을 검토해야 한다.
+URL 인코딩과 인증 헤더를 포함한 기존 8 KiB 요청 헤더 한도도 계속 적용한다.
+기존 단건 경로와 수동 재점검 경로의 계약은 유지한다.
 
 ## 수동 재점검 요청
 

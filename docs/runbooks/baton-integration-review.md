@@ -87,6 +87,16 @@ UI는 이 인박스를 적용하지 않으므로 역순 이벤트로 최신 상�
 - [BATON 상태 조회 서비스](https://github.com/ljkhyeong/baton/blob/ef39f1fc468e0b58bbc8aee623b58edaa88f110c/application/src/main/java/com/personal/baton/application/workspace/WorkspaceResourceHealthService.java)
 - [BATON 자료 상태 화면](https://github.com/ljkhyeong/baton/blob/ef39f1fc468e0b58bbc8aee623b58edaa88f110c/frontend/src/features/watch/ResourceHealthStatus.tsx)
 
+## 여러 대상 조회 연동 준비
+
+2026-09-12 WATCH에 [최대 20개 대상 조회 API](../PRD/0002_api-contract/spec.md)를 추가했다.
+이 문서의 앞선 BATON 구현은 단건 조회를 사용하며 묶음 조회 전환은 아직 적용하지 않았다.
+
+BATON에 적용할 때는 각 자료의 요청 전후 인가·원본 리비전 확인을 유지하고, 미등록 대상은
+기존 `PENDING` 처리에 연결한다. 요청을 20개 이하로 나누고 단건용 8 KiB 응답 제한도 검토한다.
+조회 실패를 미등록으로 표시하거나 요청한 자료 외의 정보를 전달해서는 안 된다.
+WATCH의 로컬 API·DB 검증과 실제 BATON 화면·공개 HTTPS 연동 검증은 구분한다.
+
 ## WATCH 독립 복원
 
 BATON의 정기 보정은 자체 아웃박스와 원본을 비교한다. WATCH DB만 과거로 복원해 이미 전달한
