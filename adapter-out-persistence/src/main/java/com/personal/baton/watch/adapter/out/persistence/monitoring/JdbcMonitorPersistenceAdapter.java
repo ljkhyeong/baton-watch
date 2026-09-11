@@ -305,7 +305,8 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 Optional.ofNullable(monitor.lastOutcome()),
                 Optional.ofNullable(monitor.lastCheckedAt()),
                 Optional.ofNullable(monitor.lastConclusiveAt()),
-                Optional.ofNullable(monitor.nextCheckAt()));
+                Optional.ofNullable(monitor.nextCheckAt()),
+                Optional.ofNullable(monitor.leaseExpiresAt()));
     }
 
 }

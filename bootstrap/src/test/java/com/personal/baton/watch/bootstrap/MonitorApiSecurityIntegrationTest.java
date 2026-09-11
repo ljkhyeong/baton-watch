@@ -26,7 +26,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
@@ -114,6 +116,7 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(wrong);
         assertThat(valid.statusCode()).isEqualTo(200);
         assertThat(valid.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(objectMapper.readTree(valid.body()).path("checkStatus").asString()).isEqualTo("INACTIVE");
     }
 
     @Test
@@ -460,6 +463,7 @@ class MonitorApiSecurityIntegrationTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -479,6 +483,11 @@ class MonitorApiSecurityIntegrationTest {
 
     @Configuration(proxyBeanMethods = false)
     static class TestWebConfiguration {
+
+        @Bean
+        Clock clock() {
+            return Clock.fixed(NOW, ZoneOffset.UTC);
+        }
 
         @Bean
         WatchProperties watchProperties() {

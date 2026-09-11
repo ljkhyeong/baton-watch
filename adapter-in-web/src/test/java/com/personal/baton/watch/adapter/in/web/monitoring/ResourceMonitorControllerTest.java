@@ -24,12 +24,15 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -76,8 +79,33 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.resourceReference").value("resource-1"))
                 .andExpect(jsonPath("$.sourceRevision").value(42))
                 .andExpect(jsonPath("$.monitoringState").value("ACTIVE"))
+                .andExpect(jsonPath("$.checkStatus").value("QUEUED"))
                 .andExpect(jsonPath("$.health").value("UNKNOWN"))
                 .andExpect(jsonPath("$.nextCheckAt").value("2026-08-01T00:00:00Z"))
+                .andExpect(jsonPath("$.targetUrl").doesNotExist());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "INACTIVE, , , INACTIVE",
+        "ACTIVE, 30, , SCHEDULED",
+        "ACTIVE, 0, , QUEUED",
+        "ACTIVE, 0, 30, IN_PROGRESS"
+    })
+    void exposesCheckStatusWithoutExposingLeaseDetails(
+            MonitoringState state, Long nextOffset, Long leaseOffset, String expected) throws Exception {
+        getMonitor = reference -> Optional.of(projection(state, nextOffset, leaseOffset));
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.monitoringState").value(state.name()))
+                .andExpect(jsonPath("$.checkStatus").value(expected))
+                .andExpect(jsonPath("$.health").value("UNKNOWN"))
+                .andExpect(jsonPath("$.leaseExpiresAt").doesNotExist())
+                .andExpect(jsonPath("$.leaseToken").doesNotExist())
+                .andExpect(jsonPath("$.leaseAttemptId").doesNotExist())
                 .andExpect(jsonPath("$.targetUrl").doesNotExist());
     }
 
@@ -312,7 +340,8 @@ class ResourceMonitorControllerTest {
 
     private void rebuildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceMonitorController(synchronizeMonitor, getMonitor, requestCheck),
+                        new ResourceMonitorController(
+                                synchronizeMonitor, getMonitor, requestCheck, Clock.fixed(NOW, ZoneOffset.UTC)),
                         new FrameworkFailureController())
                 .setControllerAdvice(new MonitorApiExceptionHandler())
                 .build();
@@ -337,14 +366,19 @@ class ResourceMonitorControllerTest {
     }
 
     private static MonitorProjection projection() {
+        return projection(MonitoringState.ACTIVE, 0L, null);
+    }
+
+    private static MonitorProjection projection(MonitoringState state, Long nextOffset, Long leaseOffset) {
         return new MonitorProjection(
                 new ResourceReference("resource-1"),
                 new SourceRevision(42),
-                MonitoringState.ACTIVE,
+                state,
                 new HealthDerivation(Health.UNKNOWN, 0),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(NOW.minusSeconds(60)),
-                Optional.of(NOW));
+                Optional.ofNullable(nextOffset).map(NOW::plusSeconds),
+                Optional.ofNullable(leaseOffset).map(NOW::plusSeconds));
     }
 }

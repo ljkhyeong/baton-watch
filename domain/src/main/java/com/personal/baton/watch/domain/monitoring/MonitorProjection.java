@@ -12,7 +12,8 @@ public record MonitorProjection(
         Optional<CheckOutcome> lastOutcome,
         Optional<Instant> lastCheckedAt,
         Optional<Instant> lastConclusiveAt,
-        Optional<Instant> nextCheckAt) {
+        Optional<Instant> nextCheckAt,
+        Optional<Instant> leaseExpiresAt) {
 
     public MonitorProjection {
         Objects.requireNonNull(resourceReference, "resourceReference");
@@ -23,9 +24,24 @@ public record MonitorProjection(
         Objects.requireNonNull(lastCheckedAt, "lastCheckedAt");
         Objects.requireNonNull(lastConclusiveAt, "lastConclusiveAt");
         Objects.requireNonNull(nextCheckAt, "nextCheckAt");
-        if (monitoringState == MonitoringState.INACTIVE && nextCheckAt.isPresent()) {
-            throw new IllegalArgumentException("inactive monitor cannot have a next check time");
+        Objects.requireNonNull(leaseExpiresAt, "leaseExpiresAt");
+        if (monitoringState == MonitoringState.ACTIVE && nextCheckAt.isEmpty()) {
+            throw new IllegalArgumentException("활성 점검 대상에는 다음 점검 시각이 필요합니다");
         }
+        if (monitoringState == MonitoringState.INACTIVE && (nextCheckAt.isPresent() || leaseExpiresAt.isPresent())) {
+            throw new IllegalArgumentException("비활성 점검 대상에는 일정이나 실행 중인 리스가 없어야 합니다");
+        }
+    }
+
+    public CheckStatus checkStatusAt(Instant observedAt) {
+        Objects.requireNonNull(observedAt, "observedAt");
+        if (monitoringState == MonitoringState.INACTIVE) {
+            return CheckStatus.INACTIVE;
+        }
+        if (leaseExpiresAt.filter(expiresAt -> expiresAt.isAfter(observedAt)).isPresent()) {
+            return CheckStatus.IN_PROGRESS;
+        }
+        return nextCheckAt.orElseThrow().isAfter(observedAt) ? CheckStatus.SCHEDULED : CheckStatus.QUEUED;
     }
 
     public Health health() {

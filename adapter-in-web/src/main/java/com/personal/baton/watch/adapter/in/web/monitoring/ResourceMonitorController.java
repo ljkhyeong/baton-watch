@@ -6,6 +6,7 @@ import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonito
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import jakarta.validation.Valid;
+import java.time.Clock;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,14 +24,17 @@ public final class ResourceMonitorController {
     private final SynchronizeMonitorUseCase synchronizeMonitor;
     private final GetMonitorProjectionUseCase getMonitorProjection;
     private final RequestMonitorCheckUseCase requestMonitorCheck;
+    private final Clock clock;
 
     public ResourceMonitorController(
             SynchronizeMonitorUseCase synchronizeMonitor,
             GetMonitorProjectionUseCase getMonitorProjection,
-            RequestMonitorCheckUseCase requestMonitorCheck) {
+            RequestMonitorCheckUseCase requestMonitorCheck,
+            Clock clock) {
         this.synchronizeMonitor = synchronizeMonitor;
         this.getMonitorProjection = getMonitorProjection;
         this.requestMonitorCheck = requestMonitorCheck;
+        this.clock = clock;
     }
 
     @PutMapping(path = "/{resourceReference}", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -39,7 +43,7 @@ public final class ResourceMonitorController {
             @Valid @RequestBody SynchronizeMonitorRequest request) {
         SynchronizationResult result = synchronizeMonitor.synchronize(request.toCommand(resourceReference));
         return switch (result.status()) {
-            case APPLIED, UNCHANGED -> MonitorResponse.from(result.projection());
+            case APPLIED, UNCHANGED -> MonitorResponse.from(result.projection(), clock.instant());
             case STALE_REVISION -> throw MonitorApiException.staleRevision();
             case REVISION_CONFLICT -> throw MonitorApiException.revisionConflict();
         };
@@ -48,7 +52,7 @@ public final class ResourceMonitorController {
     @GetMapping("/{resourceReference}")
     public MonitorResponse get(@PathVariable ResourceReference resourceReference) {
         return getMonitorProjection.get(resourceReference)
-                .map(MonitorResponse::from)
+                .map(projection -> MonitorResponse.from(projection, clock.instant()))
                 .orElseThrow(MonitorApiException::notFound);
     }
 
