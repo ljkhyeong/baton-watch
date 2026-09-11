@@ -19,6 +19,7 @@ import java.util.function.LongSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -55,6 +56,46 @@ class SafeUrlCheckEngineTest {
         assertEquals("https://Example.COM/next", transport.targets.get(1).target().uri().toString());
         assertEquals(publicAnswer(), transport.targets.get(0).addresses());
         assertEquals(publicAnswer(), transport.targets.get(1).addresses());
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', textBlock = """
+            https://Example.COM/docs/page?old=1 | ?page=2 | https://Example.COM/docs/page?page=2
+            https://Example.COM/docs/page | ?page=2 | https://Example.COM/docs/page?page=2
+            https://Example.COM/docs/a%2Fb?old=%2F | ?next=%2f%3F&tag=a+b | https://Example.COM/docs/a%2Fb?next=%2f%3F&tag=a+b
+            https://Example.COM/docs/page?old=1 | ? | https://Example.COM/docs/page?
+            """)
+    void preservesThePathWhenARedirectOnlyChangesTheQuery(String target, String location, String expected)
+            throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        transport.add(redirect(302, location));
+        transport.add(finalStatus(200));
+
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock).check(new TargetUrl(target));
+
+        assertEquals(CheckOutcome.SUCCESS, observation.outcome());
+        assertEquals(1, observation.redirectCount());
+        assertEquals(expected, transport.targets.get(1).target().uri().toString());
+        assertEquals(List.of("Example.COM", "Example.COM"), dns.hostnames);
+        assertEquals(publicAnswer(), transport.targets.get(1).addresses());
+    }
+
+    @Test
+    void rejectsAQueryOnlyRedirectToTheSamePageBeforeAnotherConnection() throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        transport.add(redirect(302, "?page=2"));
+
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
+                .check(new TargetUrl("https://example.com/docs/page?page=2"));
+
+        assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
+        assertEquals(0, observation.redirectCount());
+        assertEquals(List.of("example.com"), dns.hostnames);
+        assertEquals(1, transport.targets.size());
     }
 
     @Test
@@ -97,7 +138,9 @@ class SafeUrlCheckEngineTest {
         "/%0d%0aHost:internal",
         "/%5c%5cevil.example",
         "%0d/../safe",
-        "%5c/../safe"
+        "%5c/../safe",
+        "?next=%0d%0aHost:internal",
+        "?next=%5c%5cevil.example"
     })
     void rejectsEncodedControlOrBackslashRedirectsBeforeASecondConnection(String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
