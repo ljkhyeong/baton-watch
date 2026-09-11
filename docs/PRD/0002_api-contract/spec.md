@@ -127,12 +127,43 @@ PUT과 GET은 `application/json`을 반환한다.
 HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 인증된 JSON PUT의 16 KiB
 본문 한도 초과는 HTTP 413, 존재하지 않는 모니터는 HTTP 404,
 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
-안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 오류는 안정적인 `type`,
+안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 일시적 DB 장애는 아래 HTTP 503 계약을 따른다.
+오류는 안정적인 `type`,
 `title`, `status`, `code` 필드를 포함하는 `application/problem+json`을
 사용한다. `title`은 원인을 설명하는 한국어 문구이며 클라이언트는 `code`로 오류를 구분한다.
 예를 들어 `STALE_SOURCE_REVISION`은 "저장된 리비전보다 오래된 요청입니다",
 `SOURCE_REVISION_CONFLICT`는 "같은 리비전에 다른 내용이 등록되어 있습니다"로 안내한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
 인가 결정을 포함해서는 안 된다.
+
+### 일시적 DB 장애
+
+단건·묶음 조회, 모니터 PUT과 수동 재점검 POST에서 DB 연결 실패·시간 초과·일시적 경합이
+발생하면 HTTP 503과 `Retry-After: 5`를 반환한다. 본문은 `application/problem+json`이다.
+
+```json
+{
+  "type": "urn:baton-watch:problem:service-unavailable",
+  "title": "일시적으로 요청을 처리할 수 없습니다",
+  "status": 503,
+  "instance": "urn:baton-watch:request",
+  "code": "SERVICE_UNAVAILABLE"
+}
+```
+
+Spring이 분류한 `TransientDataAccessException`, `DataAccessResourceFailureException`,
+`RecoverableDataAccessException`, `TransactionTimedOutException`을 처리한다.
+`CannotCreateTransactionException`은 원인에 JDBC `SQLException`이 있을 때만 503으로 처리한다.
+데이터 제약 위반·잘못된 API 사용·그 밖의 서버 오류는 기존 500을 유지하며 재시도 헤더를 붙이지 않는다.
+
+인증과 요청 검증 순서는 유지한다. 오류 응답과 로그에는 SQL·연결 정보·예외 원문을 포함하지 않고
+로그에는 기존처럼 예외 클래스만 남긴다. 서버 안에서 실패한 요청을 자동 재실행하지 않는다.
+
+호출자는 최소 5초 뒤 재시도한다. 5초는 대기 안내이며 복구 완료나 DB 미반영을 보장하지 않는다.
+PUT을 다시 보낼 때는 같은 리비전·본문을 사용한다. POST는 기존 일정·리스 합류와 429 제한을 따른다.
+HTTP 의미는 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.6.4), 예외 분류는
+[Spring 데이터 접근 예외](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/dao/TransientDataAccessException.html)를 따른다.
+
+### 프레임워크 오류
 
 인증에 성공한 뒤 본문 제한 필터나 Spring MVC가 요청을 거부할 때도
 다음과 같이 같은 오류 응답 형식을 사용한다.
@@ -263,6 +294,7 @@ HTTP 202와 `application/json` 응답 예시:
 | 404 | `MONITOR_NOT_FOUND` | `monitor-not-found` | 모니터 없음 |
 | 409 | `MONITOR_INACTIVE` | `monitor-inactive` | 비활성 모니터 |
 | 429 | `CHECK_REQUEST_RATE_LIMITED` | `check-request-rate-limited` | 직전 새 수동 예약 이후 30초 이내에 다시 앞당기려는 요청 |
+| 503 | `SERVICE_UNAVAILABLE` | `service-unavailable` | 일시적 DB 장애. `Retry-After: 5` 반환 |
 
 `type` 접두사는 `urn:baton-watch:problem:`이다. 429의 `Retry-After`는 남은 시간을
 올림한 양의 정수 초다. 30초 정각부터 허용한다. 대기·실행 중 작업에 합류할 때는

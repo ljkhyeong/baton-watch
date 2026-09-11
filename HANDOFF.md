@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- 작업 브랜치 `codex/api-temporary-failures`의 `dc83cf7`에서 일시적 DB 장애를 `503 SERVICE_UNAVAILABLE`로 구분했다.
+  단건·묶음 조회, PUT·재점검 POST에 `Retry-After: 5`를 제공한다. Spring 표준 예외로 분류하고
+  SQL 원인이 없는 트랜잭션 생성 실패·데이터 제약 위반·코드 오류는 500을 유지한다.
+  오류 원문은 노출하지 않고 서버 내부 재시도는 추가하지 않았다. 기존 런타임의 `spring-tx 7.0.9`를
+  웹 모듈에 명시했으며 라이브러리 버전·DB 변경·추가 비용은 없다. 운영 배포는 미실행이다.
 - 작업 브랜치 `codex/batch-monitor-query`의 `1baac29`에서 최대 20개 대상의 묶음 조회 API를 추가했다.
   인증된 `GET /api/v1/resource-monitors?resourceReference=...`는 한 번의 DB 조회로 처리하고,
   요청 순서대로 중복을 제거한다. 미등록 대상은 `missingResourceReferences`로 구분한다.
@@ -50,6 +55,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 일시적 DB 장애 응답 `dc83cf7` | web 전체 46개·bootstrap 인증 20개, 총 66개 실행·통과. 실패·건너뜀 없음. 모의 DB 예외와 실제 로컬 HTTP로 503·5초 안내, 기존 500 분류, 인증 우선순위·민감정보 제외·서버 내부 재시도 없음 확인. `:bootstrap:verifyBootJarLicense` 통과, 실행 JAR의 `spring-tx 7.0.9` 확인. HTTP 오류 응답만 바꿔 전체 Java·이미지·DB 강제 중단·실제 배포 검사는 미실행 |
 | 여러 대상 조회 `1baac29` | 관련 59개와 `./gradlew test` 확인. 전체 503개 중 480개 실행·변경 없는 domain 23개 결과 재사용, 최종 실패·건너뜀 없음. 첫 API 테스트의 배열 단언 2개를 수정해 해당 범위부터 재검증했다. 실제 PostgreSQL의 요청 대상 선택·중복 제거·리스 매핑과 HTTP의 입력 1~20개·최대 길이·인증 우선순위·미등록 구분 확인. 이미지·공급망·실제 BATON 연동·배포는 변경 범위 밖이거나 연결 정보가 없어 미실행 |
 | 점검 진행 상태 `45e518a` | 관련 60개와 `./gradlew test` 통과. 전체 492개 중 466개 실행·앞선 web 26개 결과 재사용, 실패·건너뜀 없음. 고정 시계로 예약·리스 만료 경계, 실제 PostgreSQL의 점유·완료·비활성 전환과 HTTP 응답·인증·내부 정보 미노출 확인. 의존성·이미지 변경이 없어 이미지 빌드·공급망·배포 검사는 미실행 |
 | 콜백 재시도 `ec521db` | 관련 89개와 `./gradlew test` 통과. 전체 476개 중 464개 실행·도메인 12개 결과 재사용, 실패·건너뜀 없음. 실제 로컬 HTTP의 초·날짜·잘못된 헤더, PostgreSQL의 예약 시각·재점유·페이로드 보존 확인. 마지막 한국어 오류 문구 수정은 모델 테스트 11개만 재검사. 의존성·이미지 변경이 없어 이미지 빌드·공급망·배포 검사는 미실행 |
@@ -74,6 +80,10 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+일시적 장애 응답은 `./gradlew :adapter-in-web:test :bootstrap:test --tests '*MonitorApiSecurityIntegrationTest' :bootstrap:verifyBootJarLicense`로 검증했다.
+로그는 `.gradle/agent-validation/20260911T224050182451Z-api-temporary-failures/`에 있다.
+검증한 코드·의존성 선언은 `dc83cf7`과 같고 이후 변경은 문서뿐이다.
+변경 문서 4개의 로컬 링크 58개·API JSON 예제 7개와 형식 검사도 통과했다.
 묶음 조회 로그는 `.gradle/agent-validation/20260911T222255884891Z-batch-query-targeted/`,
 `20260911T222331145986Z-batch-query-response-tests/`, `20260911T222352483361Z-batch-query-full/`에 있다.
 뒤 경로도 같은 로그 디렉터리 아래다. 전체 검사 중 문서 5개를 수정했으나 코드·테스트·설정은
