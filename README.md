@@ -331,5 +331,6 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 ## BATON 원본 스냅샷으로 독립 복원
 
 WATCH DB만 복원한 뒤에는 [BATON 스냅샷 대조·재전송 절차](docs/runbooks/baton-snapshot-recovery.md)를
-사용한다. 기본 실행은 조회이며 같은 리비전의 불변 스냅샷으로만 재전송한다. 더 높은 WATCH
+사용한다. 기본 실행은 최대 20개씩 묶어 조회하며, 재전송은 각 항목을 다시 확인한 뒤
+같은 리비전의 불변 스냅샷으로 처리한다. 더 높은 WATCH
 리비전과 같은 리비전의 다른 본문은 충돌로 보고하며 원본 URL·토큰은 결과에 남기지 않는다.
