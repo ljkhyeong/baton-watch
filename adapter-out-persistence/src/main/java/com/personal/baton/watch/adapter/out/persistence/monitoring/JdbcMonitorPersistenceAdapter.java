@@ -65,6 +65,20 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
     }
 
     @Override
+    public List<MonitorProjection> findProjections(List<ResourceReference> resourceReferences) {
+        if (resourceReferences.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.sql("SELECT " + MONITOR_COLUMNS
+                        + " FROM watch_monitor WHERE resource_reference IN (:references)")
+                .param("references", resourceReferences.stream().map(ResourceReference::value).toList())
+                .query(MonitoringJdbcRows::mapMonitor)
+                .list().stream()
+                .map(this::toProjection)
+                .toList();
+    }
+
+    @Override
     public MonitorCheckRequestResult requestCheck(
             ResourceReference resourceReference, Instant requestedAt, Duration minimumInterval) {
         return transactions.execute(ignored -> {

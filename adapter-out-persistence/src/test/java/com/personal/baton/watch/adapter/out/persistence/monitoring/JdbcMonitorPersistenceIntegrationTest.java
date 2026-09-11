@@ -38,6 +38,25 @@ import org.springframework.transaction.support.DefaultTransactionDefinition;
 class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
     @Test
+    void batchLookupReturnsOnlyRequestedMonitorsWithCurrentLeaseAndNoDuplicates() {
+        synchronize("resource:batch-active", 1, "https://example.com/active", BASE_TIME);
+        claimOne();
+        monitorPersistence.synchronize(SynchronizeMonitorCommand.inactive(
+                new ResourceReference("resource:batch-inactive"), new SourceRevision(2)), BASE_TIME);
+        synchronize("resource:unrelated", 1, "https://example.com/unrelated", BASE_TIME);
+
+        List<MonitorProjection> found = monitorPersistence.findProjections(List.of(
+                new ResourceReference("resource:batch-inactive"),
+                new ResourceReference("resource:batch-active"),
+                new ResourceReference("resource:missing"),
+                new ResourceReference("resource:batch-active")));
+
+        assertThat(found).containsExactlyInAnyOrder(
+                projection("resource:batch-active"), projection("resource:batch-inactive"));
+        assertThat(monitorPersistence.findProjections(List.of())).isEmpty();
+    }
+
+    @Test
     void projectionReflectsCheckClaimCompletionAndDeactivation() {
         String reference = "resource:progress";
         SynchronizationResult created = synchronize(reference, 1, "https://example.com/path", BASE_TIME);

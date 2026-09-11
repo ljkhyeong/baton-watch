@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
@@ -69,6 +70,11 @@ class MonitoringMaintenanceServicesTest {
 
         @Override
         public Optional<MonitorProjection> findProjection(ResourceReference resourceReference) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public List<MonitorProjection> findProjections(List<ResourceReference> references) {
             throw new UnsupportedOperationException();
         }
 

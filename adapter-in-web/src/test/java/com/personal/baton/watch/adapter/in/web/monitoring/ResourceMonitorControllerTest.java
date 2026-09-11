@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -15,6 +16,7 @@ import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequest
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
@@ -27,12 +29,17 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -52,6 +59,7 @@ class ResourceMonitorControllerTest {
 
     private SynchronizeMonitorUseCase synchronizeMonitor;
     private GetMonitorProjectionUseCase getMonitor;
+    private GetMonitorProjectionsUseCase getMonitors;
     private RequestMonitorCheckUseCase requestCheck;
     private MockMvc mockMvc;
 
@@ -59,6 +67,7 @@ class ResourceMonitorControllerTest {
     void setUp() {
         synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
         getMonitor = reference -> Optional.of(projection());
+        getMonitors = references -> List.of(projection());
         requestCheck = reference -> new MonitorCheckRequestResult(Status.SCHEDULED, NOW, 0);
         rebuildMockMvc();
     }
@@ -107,6 +116,81 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.leaseToken").doesNotExist())
                 .andExpect(jsonPath("$.leaseAttemptId").doesNotExist())
                 .andExpect(jsonPath("$.targetUrl").doesNotExist());
+    }
+
+    @Test
+    void batchLookupPreservesRequestOrderAndReportsMissingReferencesOnce() throws Exception {
+        getMonitors = references -> {
+            assertThat(references).extracting(ResourceReference::value)
+                    .containsExactly("resource-1", "missing", "resource-2", "resource-1", "missing");
+            return List.of(
+                    projection("resource-2", MonitoringState.INACTIVE, null, null),
+                    projection("resource-1", MonitoringState.ACTIVE, 0L, 30L));
+        };
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors")
+                        .param("resourceReference", "resource-1", "missing", "resource-2", "resource-1", "missing"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.monitors.length()").value(2))
+                .andExpect(jsonPath("$.monitors[0].resourceReference").value("resource-1"))
+                .andExpect(jsonPath("$.monitors[0].checkStatus").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.monitors[0].health").value("UNKNOWN"))
+                .andExpect(jsonPath("$.monitors[0].leaseExpiresAt").doesNotExist())
+                .andExpect(jsonPath("$.monitors[0].leaseToken").doesNotExist())
+                .andExpect(jsonPath("$.monitors[0].targetUrl").doesNotExist())
+                .andExpect(jsonPath("$.monitors[1].resourceReference").value("resource-2"))
+                .andExpect(jsonPath("$.monitors[1].checkStatus").value("INACTIVE"))
+                .andExpect(jsonPath("$.missingResourceReferences", contains("missing")));
+    }
+
+    @Test
+    void batchLookupReturnsEmptyMonitorsWhenAllReferencesAreMissing() throws Exception {
+        getMonitors = references -> List.of();
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors").param("resourceReference", "missing-1", "missing-2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.monitors").isEmpty())
+                .andExpect(jsonPath("$.missingResourceReferences", contains("missing-1", "missing-2")));
+    }
+
+    @Test
+    void rejectsBatchLookupWithoutReferences() throws Exception {
+        getMonitors = references -> {
+            throw new AssertionError("조회 대상 없는 요청이 유스케이스에 도달했습니다");
+        };
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("invalidBatchReferences")
+    void rejectsInvalidBatchReferencesBeforeLookup(String[] references) throws Exception {
+        getMonitors = ignored -> {
+            throw new AssertionError("잘못된 조회 대상이 유스케이스에 도달했습니다");
+        };
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors").param("resourceReference", references))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"));
+    }
+
+    private static Stream<Arguments> invalidBatchReferences() {
+        return Stream.of(
+                Arguments.of((Object) new String[] {""}),
+                Arguments.of((Object) new String[] {"resource-1", ""}),
+                Arguments.of((Object) new String[] {"resource-1", "raw-reference-secret/invalid"}),
+                Arguments.of((Object) new String[] {"r".repeat(129)}),
+                Arguments.of((Object) IntStream.range(0, 21).mapToObj(index -> "resource-1").toArray(String[]::new)));
     }
 
     @Test
@@ -341,7 +425,8 @@ class ResourceMonitorControllerTest {
     private void rebuildMockMvc() {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceMonitorController(
-                                synchronizeMonitor, getMonitor, requestCheck, Clock.fixed(NOW, ZoneOffset.UTC)),
+                                synchronizeMonitor, getMonitor, getMonitors, requestCheck,
+                                Clock.fixed(NOW, ZoneOffset.UTC)),
                         new FrameworkFailureController())
                 .setControllerAdvice(new MonitorApiExceptionHandler())
                 .build();
@@ -370,8 +455,13 @@ class ResourceMonitorControllerTest {
     }
 
     private static MonitorProjection projection(MonitoringState state, Long nextOffset, Long leaseOffset) {
+        return projection("resource-1", state, nextOffset, leaseOffset);
+    }
+
+    private static MonitorProjection projection(
+            String reference, MonitoringState state, Long nextOffset, Long leaseOffset) {
         return new MonitorProjection(
-                new ResourceReference("resource-1"),
+                new ResourceReference(reference),
                 new SourceRevision(42),
                 state,
                 new HealthDerivation(Health.UNKNOWN, 0),

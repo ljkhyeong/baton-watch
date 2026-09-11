@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequest
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
@@ -30,6 +31,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -117,6 +121,38 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(valid.statusCode()).isEqualTo(200);
         assertThat(valid.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
         assertThat(objectMapper.readTree(valid.body()).path("checkStatus").asString()).isEqualTo("INACTIVE");
+    }
+
+    @Test
+    void batchLookupRequiresAuthenticationAndReportsMissingReferences() throws Exception {
+        String path = "/api/v1/resource-monitors?resourceReference=resource-1&resourceReference=missing";
+        assertUnauthorized(get(path, null));
+        assertUnauthorized(get(path, "wrong-token"));
+        HttpResponse<String> response = get(path, API_TOKEN);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = objectMapper.readTree(response.body());
+        assertThat(body.path("monitors").get(0).path("resourceReference").asString()).isEqualTo("resource-1");
+        assertThat(body.path("monitors").get(0).path("checkStatus").asString()).isEqualTo("INACTIVE");
+        assertThat(body.path("missingResourceReferences").get(0).asString()).isEqualTo("missing");
+        assertThat(response.body()).doesNotContain("leaseToken", "leaseExpiresAt", "targetUrl");
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+    }
+
+    @Test
+    void batchLookupAcceptsTwentyMaximumLengthReferencesAndRejectsMoreAfterAuthentication() throws Exception {
+        String query = IntStream.range(0, 20)
+                .mapToObj(index -> "resourceReference=" + "r".repeat(126) + String.format("%02d", index))
+                .collect(Collectors.joining("&"));
+        String path = "/api/v1/resource-monitors?" + query;
+        HttpResponse<String> maximum = get(path, API_TOKEN);
+        assertThat(maximum.statusCode()).isEqualTo(200);
+        assertThat(objectMapper.readTree(maximum.body()).path("missingResourceReferences").size()).isEqualTo(20);
+
+        String tooMany = path + "&resourceReference=resource-1";
+        assertUnauthorized(get(tooMany, null));
+        assertProblem(get(tooMany, API_TOKEN), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     }
 
     @Test
@@ -508,6 +544,12 @@ class MonitorApiSecurityIntegrationTest {
         @Bean
         GetMonitorProjectionUseCase getMonitorProjectionUseCase() {
             return resourceReference -> Optional.of(projection());
+        }
+
+        @Bean
+        GetMonitorProjectionsUseCase getMonitorProjectionsUseCase() {
+            return references -> references.contains(projection().resourceReference())
+                    ? List.of(projection()) : List.of();
         }
 
         @Bean
