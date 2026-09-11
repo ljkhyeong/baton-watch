@@ -1,13 +1,19 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
+import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
@@ -34,6 +40,8 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             MonitorApiProblem.of("request-rejected", "허용되지 않는 HTTP 요청입니다", "REQUEST_REJECTED");
     private static final MonitorApiProblem INTERNAL_ERROR =
             MonitorApiProblem.of("internal-error", "요청 처리 중 서버 오류가 발생했습니다", "INTERNAL_ERROR");
+    private static final MonitorApiProblem SERVICE_UNAVAILABLE = MonitorApiProblem.of(
+            "service-unavailable", "일시적으로 요청을 처리할 수 없습니다", "SERVICE_UNAVAILABLE");
 
     @ExceptionHandler(MonitorApiException.class)
     ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
@@ -51,6 +59,26 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     ResponseEntity<Object> handleUnexpected(Exception exception) {
         logFailure(exception);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, HttpHeaders.EMPTY);
+    }
+
+    @ExceptionHandler({
+        TransientDataAccessException.class,
+        DataAccessResourceFailureException.class,
+        RecoverableDataAccessException.class,
+        TransactionTimedOutException.class
+    })
+    ResponseEntity<Object> handleTemporaryFailure(Exception exception) {
+        logFailure(exception);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "5");
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, SERVICE_UNAVAILABLE, headers);
+    }
+
+    @ExceptionHandler(CannotCreateTransactionException.class)
+    ResponseEntity<Object> handleTransactionCreationFailure(CannotCreateTransactionException exception) {
+        return exception.contains(SQLException.class)
+                ? handleTemporaryFailure(exception)
+                : handleUnexpected(exception);
     }
 
     @Override

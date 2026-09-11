@@ -26,11 +26,13 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
@@ -43,10 +45,20 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.InvalidDataAccessApiUsageException;
+import org.springframework.dao.QueryTimeoutException;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.NestedTransactionNotSupportedException;
+import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.web.servlet.MockMvc;
@@ -369,6 +381,67 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
                 .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    @ParameterizedTest
+    @MethodSource("temporaryFailures")
+    void reportsTemporaryFailuresWithoutRetryingOrLeakingDetails(
+            RuntimeException failure, CapturedOutput output) throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        getMonitor = reference -> {
+            calls.incrementAndGet();
+            throw failure;
+        };
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"))
+                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
+                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:service-unavailable"))
+                .andExpect(jsonPath("$.title").value("일시적으로 요청을 처리할 수 없습니다"))
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
+                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(output).contains("failureType=" + failure.getClass().getSimpleName())
+                .doesNotContain("raw-storage-secret", "raw-sql-secret");
+    }
+
+    private static Stream<RuntimeException> temporaryFailures() {
+        return Stream.of(
+                new QueryTimeoutException("raw-storage-secret"),
+                new CannotAcquireLockException("raw-storage-secret"),
+                new TransientDataAccessResourceException("raw-storage-secret"),
+                new DataAccessResourceFailureException("raw-storage-secret"),
+                new RecoverableDataAccessException("raw-storage-secret"),
+                new TransactionTimedOutException("raw-storage-secret"),
+                new CannotCreateTransactionException("raw-storage-secret", new SQLException("raw-sql-secret")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("nonTemporaryFailures")
+    void keepsProgrammingAndIntegrityFailuresAsInternalErrors(RuntimeException failure) throws Exception {
+        getMonitor = reference -> {
+            throw failure;
+        };
+        rebuildMockMvc();
+
+        mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER))
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+    }
+
+    private static Stream<RuntimeException> nonTemporaryFailures() {
+        return Stream.of(
+                new DataIntegrityViolationException("raw-storage-secret"),
+                new InvalidDataAccessApiUsageException("raw-storage-secret"),
+                new IllegalStateException("raw-storage-secret"),
+                new CannotCreateTransactionException("raw-storage-secret", new IllegalArgumentException()),
+                new NestedTransactionNotSupportedException("raw-storage-secret"));
     }
 
     @Test

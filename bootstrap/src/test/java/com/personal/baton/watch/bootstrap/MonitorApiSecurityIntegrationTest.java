@@ -27,6 +27,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -50,8 +51,12 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -382,6 +387,31 @@ class MonitorApiSecurityIntegrationTest {
                 .isEqualTo("SCHEDULED");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "BATCH", "PUT", "POST"})
+    void temporaryStorageFailuresPreserveAuthenticationAndExposeOnlyRetryGuidance(String operation) throws Exception {
+        assertUnauthorized(unavailableRequest(operation, null));
+        assertUnauthorized(unavailableRequest(operation, "wrong-token"));
+        HttpResponse<String> response = unavailableRequest(operation, API_TOKEN);
+
+        assertProblem(response, 503, "urn:baton-watch:problem:service-unavailable",
+                "일시적으로 요청을 처리할 수 없습니다", "SERVICE_UNAVAILABLE");
+        assertThat(response.headers().firstValue(HttpHeaders.RETRY_AFTER)).contains("5");
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+        assertThat(response.body()).doesNotContain("raw-storage-secret", "raw-sql-secret");
+    }
+
+    private HttpResponse<String> unavailableRequest(String operation, String token) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+        return switch (operation) {
+            case "GET" -> get(path, token);
+            case "BATCH" -> get("/api/v1/resource-monitors?resourceReference=storage-unavailable", token);
+            case "PUT" -> put(path, token, "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}");
+            case "POST" -> post(path + "/check-requests", token);
+            default -> throw new IllegalArgumentException("지원하지 않는 테스트 요청입니다");
+        };
+    }
+
     private HttpResponse<String> get(String path, String token) throws Exception {
         return get(path, token, MediaType.APPLICATION_JSON_VALUE);
     }
@@ -532,24 +562,43 @@ class MonitorApiSecurityIntegrationTest {
 
         @Bean
         SynchronizeMonitorUseCase synchronizeMonitorUseCase() {
-            return command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+            return command -> {
+                if (command.resourceReference().value().equals("storage-unavailable")) {
+                    throw new CannotCreateTransactionException(
+                            "raw-storage-secret", new SQLException("raw-sql-secret"));
+                }
+                return new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+            };
         }
 
         @Bean
         RequestMonitorCheckUseCase requestMonitorCheckUseCase() {
-            return reference -> new MonitorCheckRequestResult(
-                    MonitorCheckRequestResult.Status.SCHEDULED, NOW, 0);
+            return reference -> {
+                if (reference.value().equals("storage-unavailable")) {
+                    throw new QueryTimeoutException("raw-storage-secret");
+                }
+                return new MonitorCheckRequestResult(MonitorCheckRequestResult.Status.SCHEDULED, NOW, 0);
+            };
         }
 
         @Bean
         GetMonitorProjectionUseCase getMonitorProjectionUseCase() {
-            return resourceReference -> Optional.of(projection());
+            return reference -> {
+                if (reference.value().equals("storage-unavailable")) {
+                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
+                }
+                return Optional.of(projection());
+            };
         }
 
         @Bean
         GetMonitorProjectionsUseCase getMonitorProjectionsUseCase() {
-            return references -> references.contains(projection().resourceReference())
-                    ? List.of(projection()) : List.of();
+            return references -> {
+                if (references.contains(new ResourceReference("storage-unavailable"))) {
+                    throw new DataAccessResourceFailureException("raw-storage-secret");
+                }
+                return references.contains(projection().resourceReference()) ? List.of(projection()) : List.of();
+            };
         }
 
         @Bean
