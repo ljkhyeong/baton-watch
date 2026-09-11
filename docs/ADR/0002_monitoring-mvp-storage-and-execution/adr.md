@@ -68,6 +68,11 @@ WATCH가 별도 JDBC 래퍼를 소유하지 않아도 동일한 구문 기한이
 프로젝션 조회와 이벤트 백로그 집계를 제한한다. 활성 Spring 트랜잭션은 남은
 트랜잭션 시간에 맞춰 실효 구문 기한을 더 짧게 만들 수 있다.
 
+같은 `JdbcTemplate`에 `SQLErrorCodeSQLExceptionTranslator("PostgreSQL")`을 적용한다.
+기본 변환기가 미분류로 처리하던 잠금 시간 초과(`55P03`)를 Spring 표준의
+`CannotAcquireLockException`으로 분류해 API의 503·재시도 안내에 연결한다.
+Spring 내장 매핑을 사용하며 제품 이름을 명시해 설정 시 DB 메타데이터 연결을 추가하지 않는다.
+
 `watch.persistence.query-timeout`과 `watch.persistence.transaction-timeout`은
 1~30초의 정수 초 단위여야 한다. HikariCP에는 최대 풀 8, 최소 유휴 연결 2,
 연결 대기 3초, 검증 1초, 유휴 10분, 최대 수명 30분, 생존 확인 2분,

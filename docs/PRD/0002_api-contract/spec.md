@@ -154,6 +154,8 @@ Spring이 분류한 `TransientDataAccessException`, `DataAccessResourceFailureEx
 `RecoverableDataAccessException`, `TransactionTimedOutException`을 처리한다.
 `CannotCreateTransactionException`은 원인에 JDBC `SQLException`이 있을 때만 503으로 처리한다.
 데이터 제약 위반·잘못된 API 사용·그 밖의 서버 오류는 기존 500을 유지하며 재시도 헤더를 붙이지 않는다.
+공용 JDBC 설정은 PostgreSQL용 Spring 오류 변환기를 사용한다. 실제 DB 행 잠금 시간 초과도
+503으로 처리하며, 잠금 해제 후 같은 리비전·본문의 PUT을 다시 보내면 정상 처리할 수 있다.
 
 인증과 요청 검증 순서는 유지한다. 오류 응답과 로그에는 SQL·연결 정보·예외 원문을 포함하지 않고
 로그에는 기존처럼 예외 클래스만 남긴다. 서버 안에서 실패한 요청을 자동 재실행하지 않는다.

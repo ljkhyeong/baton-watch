@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- 작업 브랜치 `codex/postgres-error-translation`의 `2a07f8b`에서 실제 DB 잠금 시간 초과가
+  500으로 반환되던 오류를 수정했다. 공용 JDBC에 Spring의 PostgreSQL용 오류 변환기를 적용해
+  잠금 오류(`55P03`)를 `503 SERVICE_UNAVAILABLE`·`Retry-After: 5`로 처리한다.
+  실제 행 잠금 중 데이터 보존과 잠금 해제 후 동일 요청의 성공을 확인했다.
+  추가 의존성·DB 변경·비용은 없으며 운영 배포는 미실행이다.
 - 작업 브랜치 `codex/api-temporary-failures`의 `dc83cf7`에서 일시적 DB 장애를 `503 SERVICE_UNAVAILABLE`로 구분했다.
   단건·묶음 조회, PUT·재점검 POST에 `Retry-After: 5`를 제공한다. Spring 표준 예외로 분류하고
   SQL 원인이 없는 트랜잭션 생성 실패·데이터 제약 위반·코드 오류는 500을 유지한다.
@@ -55,6 +60,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| PostgreSQL 잠금 오류 `2a07f8b` | 실제 행 잠금 시험에서 503 대신 500이 반환되는 오류를 재현했다. 수정 후 실패한 1개부터 재검증하고 `./gradlew test` 통과. 전체 520개 중 bootstrap 98개 실행·변경 없는 422개 결과 재사용, 최종 실패·건너뜀 없음. 잠금 중 503·5초 안내·기존 데이터 조회와 잠금 해제 후 동일 PUT의 200 응답 확인. 의존성·스키마 변경이 없어 이미지·공급망 검사는 미실행. DB 네트워크 단절·부하·운영 배포는 별도 실행하지 않음 |
 | 일시적 DB 장애 응답 `dc83cf7` | web 전체 46개·bootstrap 인증 20개, 총 66개 실행·통과. 실패·건너뜀 없음. 모의 DB 예외와 실제 로컬 HTTP로 503·5초 안내, 기존 500 분류, 인증 우선순위·민감정보 제외·서버 내부 재시도 없음 확인. `:bootstrap:verifyBootJarLicense` 통과, 실행 JAR의 `spring-tx 7.0.9` 확인. HTTP 오류 응답만 바꿔 전체 Java·이미지·DB 강제 중단·실제 배포 검사는 미실행 |
 | 여러 대상 조회 `1baac29` | 관련 59개와 `./gradlew test` 확인. 전체 503개 중 480개 실행·변경 없는 domain 23개 결과 재사용, 최종 실패·건너뜀 없음. 첫 API 테스트의 배열 단언 2개를 수정해 해당 범위부터 재검증했다. 실제 PostgreSQL의 요청 대상 선택·중복 제거·리스 매핑과 HTTP의 입력 1~20개·최대 길이·인증 우선순위·미등록 구분 확인. 이미지·공급망·실제 BATON 연동·배포는 변경 범위 밖이거나 연결 정보가 없어 미실행 |
 | 점검 진행 상태 `45e518a` | 관련 60개와 `./gradlew test` 통과. 전체 492개 중 466개 실행·앞선 web 26개 결과 재사용, 실패·건너뜀 없음. 고정 시계로 예약·리스 만료 경계, 실제 PostgreSQL의 점유·완료·비활성 전환과 HTTP 응답·인증·내부 정보 미노출 확인. 의존성·이미지 변경이 없어 이미지 빌드·공급망·배포 검사는 미실행 |
@@ -80,6 +86,11 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+실제 DB 잠금 검증 로그는 `.gradle/agent-validation/20260911T225022148209Z-db-lock-recovery/`,
+`20260911T225218714946Z-postgres-error-translation-recovery/`,
+`20260911T225238896558Z-postgres-error-translation-full/`에 있다. 뒤 경로도 같은 로그 디렉터리 아래다.
+순서대로 오류 재현, 수정 후 실패한 테스트 재검사, 전체 회귀 검사 결과이며 검증한 코드는 `2a07f8b`와 같다.
+이후 변경은 문서뿐이므로 링크·JSON 예제·형식을 확인하고 코드 검증은 재실행하지 않는다.
 일시적 장애 응답은 `./gradlew :adapter-in-web:test :bootstrap:test --tests '*MonitorApiSecurityIntegrationTest' :bootstrap:verifyBootJarLicense`로 검증했다.
 로그는 `.gradle/agent-validation/20260911T224050182451Z-api-temporary-failures/`에 있다.
 검증한 코드·의존성 선언은 `dc83cf7`과 같고 이후 변경은 문서뿐이다.
