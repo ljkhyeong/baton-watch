@@ -77,6 +77,48 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
                 .isEqualTo(projection(REFERENCE).checkStatusAt(observedAt).name());
     }
 
+    @ParameterizedTest(name = "다음 전달 {0}초·점유 만료 {1}초: {2}")
+    @CsvSource({
+        "-172800,,QUEUED",
+        "86400,,SCHEDULED",
+        "-172800,172800,IN_PROGRESS",
+        "86400,172800,IN_PROGRESS",
+        "-172800,-86400,QUEUED"
+    })
+    void reportsDeliveryProgressConsistentWithClaimEligibility(
+            int nextAttemptOffsetSeconds, Integer leaseOffsetSeconds, String expected) throws Exception {
+        synchronize(REFERENCE, 1, TARGET, BASE_TIME);
+        UUID eventId = UUID.randomUUID();
+        UUID leaseToken = leaseOffsetSeconds == null ? null : UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO watch_health_change_event (
+                    event_id, resource_reference, source_revision, previous_health, current_health,
+                    changed_at, next_attempt_at, delivery_attempt, delivery_lease_token, delivery_lease_expires_at)
+                VALUES (?, ?, 1, 'UNKNOWN', 'HEALTHY',
+                        statement_timestamp() - INTERVAL '3 days',
+                        statement_timestamp() + ? * INTERVAL '1 second', ?, ?,
+                        statement_timestamp() + ?::integer * INTERVAL '1 second')
+                """, eventId, REFERENCE, nextAttemptOffsetSeconds,
+                leaseToken == null ? 0 : 1, leaseToken, leaseOffsetSeconds);
+        var before = databaseRows();
+
+        var result = runTool(POSTGRES.getContainerId(), REFERENCE);
+        assertThat(result.status()).as(result.output()).isZero();
+        var report = JSON.readTree(result.output());
+        assertThat(report.at("/deliveries/0/deliveryStatus").asString()).isEqualTo("PENDING");
+        assertThat(report.at("/deliveries/0/deliveryProgress").asString()).isEqualTo(expected);
+        assertThat(databaseRows()).isEqualTo(before);
+        if (leaseToken != null) {
+            assertThat(result.output()).doesNotContain(leaseToken.toString());
+        }
+
+        var deliveries = new JdbcHealthChangeEventDeliveryAdapter(
+                JdbcClient.create(jdbc), newTransactionOperations());
+        var claim = deliveries.claimPendingEvent(LEASE);
+        assertThat(claim.isPresent()).isEqualTo(expected.equals("QUEUED"));
+        claim.ifPresent(event -> assertThat(event.payload().eventId()).isEqualTo(eventId));
+    }
+
     @ParameterizedTest(name = "조회 제한 {0}: 최신 이력 {1}건과 읽기 전용·정보 제외 확인")
     @CsvSource({"default,50", "2,2", "100,100"})
     void readsBoundedHistoriesWithoutChangingDataOrExposingTargets(String limit, int expected) throws Exception {
@@ -118,6 +160,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         assertThat(report.at("/deliveries/0/lastHttpStatusCode").asInt()).isEqualTo(503);
         assertThat(report.at("/deliveries/0/nextAttemptAt").isString()).isTrue();
         assertThat(report.at("/deliveries/1/deliveryStatus").asString()).isEqualTo("DELIVERED");
+        assertThat(report.at("/deliveries/1/deliveryProgress").asString()).isEqualTo("DELIVERED");
         assertThat(result.output()).doesNotContain(
                 TARGET, REFERENCE, "private.example", "private-fixture", "targetUrl", "leaseToken", "leaseExpiresAt",
                 check.leaseToken().toString(), event.leaseToken().toString());
