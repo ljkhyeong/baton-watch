@@ -92,7 +92,10 @@ HTTP 400 `INVALID_REQUEST`로 거부한다.
 
 `monitoringState`는 `"ACTIVE"` 또는 `"INACTIVE"` 문자열만 받는다.
 `0`·`1`·`"0"`·`"1"`을 상태값으로 변환하지 않으며 HTTP 400 `INVALID_REQUEST`로 거부한다.
-타입 변환은 [기본 JSON 설정](../../../bootstrap/src/main/resources/application.yml)의
+
+같은 JSON 객체에 필드 이름을 두 번 쓰면 값이 같아도 HTTP 400 `INVALID_REQUEST`로 거부한다.
+`sourceRevision`과 `source\u0052evision`처럼 이스케이프를 해석한 이름이 같은 경우도 포함한다.
+타입 변환과 중복 필드 검사는 [기본 JSON 설정](../../../bootstrap/src/main/resources/application.yml)의
 Spring Boot 기능으로 제어한다.
 
 PUT과 GET은 `application/json`을 반환한다.
