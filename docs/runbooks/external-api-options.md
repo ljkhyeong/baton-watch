@@ -9,6 +9,8 @@
 | --- | --- | --- |
 | WATCH 운영 알림 | Alertmanager → Telegram Bot API·Slack Incoming Webhook | **연결 설정 추가.** 채널을 선택하고 경보 묶기·재시도·복구 통지를 기본 기능으로 처리한다. 별도 Java 전송기는 필요 없다. 실제 채널 연결은 미설정 |
 | 개발·검증 알림 | GitHub 공식 Slack 앱 | [검증 결과·PR·리뷰·IANA 검사 구독](github-slack.md) 안내 추가. 기존 GitHub 이벤트를 사용하며 별도 발송 코드는 필요 없다. 실제 앱·채널 연결은 미설정 |
+| 비밀값 유출 방지 | GitHub Secret scanning·Push protection | **활성화 확인.** 지원하는 비밀값 형식을 탐지하고 해당 값이 포함된 푸시를 차단한다. 자체 검사기를 추가하지 않는다 |
+| 의존성 보안 업데이트 | GitHub Dependabot | **보안 업데이트 활성화 확인.** Gradle·Actions·Docker의 주간 버전 점검도 [기존 설정](../../.github/dependabot.yml)을 사용한다. 수정 PR의 검증·병합은 별도 |
 | WATCH 메트릭 보관·조회 | Prometheus → Grafana Cloud Free | [기존 설정](grafana-cloud-free.md) 사용. 전송 제한(429)의 재시도도 Prometheus가 처리한다. Free 계정·인증 정보는 미설정 |
 | 공개 상태·인증서·점검 결과 누락 | Grafana Cloud Synthetic Monitoring·Grafana Alerting | [외부 HTTP 점검](grafana-public-check.md)은 공개 위치 1곳·5분 간격으로 실행한다. 15분간 결과가 없는 경우도 별도 규칙으로 감지해 Slack·Telegram에 알린다. 실제 계정·점검·알림은 미설정 |
 | CAL 일정 구독 | Google·Apple·Outlook의 `.ics` 구독 | 기존 구독 URL과 등록 안내 사용. 별도 OAuth·일정별 생성·수정 API를 추가할 필요 없다. 갱신 시점은 캘린더 앱에 따라 달라 즉시 동기화를 보장하지 않는다 |
@@ -30,6 +32,18 @@ Grafana Cloud는 Free 요금제의 10,000개 활성 시계열·14일 보관 한�
 
 CAL의 `docs/external-api-options.md`, RELAY와 GO의 `README.md`를 함께 확인했다.
 인접 저장소의 파일은 변경하지 않았다. WATCH 메트릭·운영 알림·외부 상태 점검과 개발 알림 연결을 다룬다.
+
+## 활성 상태 확인과 남은 작업
+
+2026-09-12 GitHub의 `GET /repos/ljkhyeong/baton-watch`로 공개 저장소임을 확인했다.
+`security_and_analysis`의 `secret_scanning`, `secret_scanning_push_protection`,
+`dependabot_security_updates`는 모두 `enabled`였다. 설정을 새로 변경하거나 탐지를 시험하지는 않았다.
+공개 저장소에 제공되는 [GitHub 기본 보안 기능](https://docs.github.com/en/code-security/getting-started/github-security-features)을
+재사용한다. 활성 상태는 모든 비밀값의 탐지나 취약점 해결 완료를 뜻하지 않는다.
+
+현재 WATCH 범위에서 직접 구현을 더 줄일 만한 무료 연동은 추가로 확인되지 않았다.
+남은 작업은 준비된 Telegram·Slack·Grafana의 계정 정보와 수신 채널 연결이다.
+WATCH의 URL 점검·BATON 콜백 계약과 GO의 링크 계약은 위 판단대로 유지한다.
 
 ## 채널 선택과 공통 설정
 

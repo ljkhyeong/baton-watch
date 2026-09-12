@@ -4,6 +4,10 @@
 
 ## 현재 작업
 
+- 2026-09-12 GitHub API로 공개 저장소의 비밀값 탐지·푸시 차단·Dependabot 보안 업데이트가
+  모두 활성화된 것을 확인했다. [외부 API 검토](docs/runbooks/external-api-options.md)에 실제 상태와
+  남은 Telegram·Slack·Grafana 연결을 반영했다. 추가로 적용할 무료 연동은 확인되지 않았다.
+  저장소 설정·애플리케이션 코드·외부 연결은 변경하지 않았다.
 - [GitHub 개발 알림](docs/runbooks/github-slack.md)에 공식 Slack 앱의 검증·PR·리뷰·IANA 검사
   구독 명령을 추가했다. 저장소의 실제 작업 이름과 `main` 대상 PR·푸시·정기·수동 실행을 반영했다.
   앱 설치·계정 연결·채널 구독·메시지 전송은 미실행이다. 문서만 바꿨으며 발송 코드·CI·런타임 설정은 그대로다.
@@ -117,6 +121,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| GitHub 기본 기능 활성 상태 | `gh api repos/ljkhyeong/baton-watch`의 공개 여부와 `security_and_analysis`만 조회. 비밀값 탐지·푸시 차단·Dependabot 보안 업데이트의 `enabled` 확인. 실제 탐지 시험·개별 보안 경보 해결 검증은 미실행. 문서만 변경해 애플리케이션 검사는 재실행하지 않음 |
 | GitHub Slack 연결 안내 | 공식 구독 문법·필터와 실제 워크플로 2개의 이름·실행 조건 대조, 문서 링크·형식 검사 통과. 실제 앱·채널 수신은 미확인. 문서만 변경해 Java·PromQL·Alertmanager 검사는 재실행하지 않음 |
 | 외부 점검 결과 누락 `cd53727` | 공식 `promtool`로 새 규칙의 5개 시나리오·7개 시점 검사와 기존 경보·대시보드 검사 통과. 정상·실패 결과 수신, 15분 경계·복구, 다른 점검 제외, 최초 결과 없음 확인. ShellCheck 통과. 실제 Grafana 가져오기·평가·수신은 미확인. Java·Alertmanager·배포 설정은 변경하지 않아 관련 동작 검사는 재실행하지 않음 |
 | Grafana 전송 제한 재시도 `002b1f8` | 공식 Prometheus `v3.13.1`의 `promtool check config --syntax-only` 통과. 네트워크를 차단해 검사했으며 실제 429 응답·전송 재시도·계정 인증은 미확인. Java·PromQL·Alertmanager 설정은 변경하지 않아 관련 동작 검사는 재실행하지 않음 |
@@ -155,6 +160,8 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+GitHub 기본 기능 확인 작업 기준은 `2dac22f`다. 전체 변경의 종료 검사는
+`.gradle/agent-validation/` 아래 `*-native-integrations-complete/`에서 확인한다.
 GitHub Slack 안내 작업 기준은 `2b1ec98`이다. 전체 변경의 종료 검사는
 `.gradle/agent-validation/` 아래 `*-github-slack-complete/`에서 확인한다.
 외부 점검 결과 누락 검증 로그는 `.gradle/agent-validation/20260912T041309925019Z-public-check-missing-rules/`에 있다.
