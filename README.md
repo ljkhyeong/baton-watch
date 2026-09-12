@@ -52,7 +52,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 | 점검·전달 메트릭 | 결과별 시도 수·소요 시간, 실행 중 작업 수, 점유·완료·만료 리스 회수 횟수. 레이블 값의 종류 제한 |
 | 지연·적체 메트릭 | 실행 가능한 가장 오래된 점검의 지연, JVM·DB 시계 편차, Spring 예약 실행 시간, 미전달 이벤트 수·최대 대기 시간 |
 | 상태 감시 | Blackbox Exporter가 내부 프록시·공개 HTTPS 응답의 서비스 이름과 `UP` 확인. Prometheus 수집·경보 템플릿과 Grafana 대시보드 JSON 제공 |
-| 운영 알림 연결 | Alertmanager의 Telegram Bot API 연결 설정. 같은 경보 묶기·복구 알림, 내부 주소와 자료 참조를 제외한 한글 문구 제공 |
+| 운영 알림 연결 | Alertmanager의 Telegram·Slack 연결 설정. 같은 경보 묶기·복구 알림, 내부 주소와 자료 참조를 제외한 공통 한글 문구 제공 |
 | 외부 요청 처리 | 스테이징 NGINX 경로별 요청 속도 제한, 비공개 네트워크 분리 |
 | Compose 상태 확인 | Spring Boot 기본 liveness와 DB를 포함한 readiness 사용 |
 | 주소 정책 변경 확인 | IANA 주소 레지스트리 체크섬을 매월 비교. 변경 시 허용 정책·경계 테스트 수동 검토 |
@@ -72,8 +72,8 @@ WATCH에는 프런트엔드와 메시지 브로커가 없습니다. 외부 계�
 
 기존 Prometheus로 외부 메트릭을 보내려면 [Grafana Cloud Free 연결 설정](docs/runbooks/grafana-cloud-free.md)을
 사용할 수 있습니다. WATCH 지표만 60초마다 보내는 예시이며 실제 계정·수집기 연결은 별도로 설정해야 합니다.
-운영 알림은 [무료 API 검토와 Telegram 연결](docs/runbooks/external-api-options.md)의 설정을 사용할 수 있습니다.
-현재는 설정·문구만 검증했으며 실제 봇 인증과 알림 수신은 확인하지 않았습니다.
+운영 알림은 [무료 API 검토와 Telegram·Slack 연결](docs/runbooks/external-api-options.md)의 설정을 사용할 수 있습니다.
+현재는 설정·문구만 검증했으며 실제 채널 인증과 알림 수신은 확인하지 않았습니다.
 
 저장소의 코드와 설정만으로 실제 배포·외부 알림 연결을 확인할 수는 없습니다.
 공개 배포 전에는 이그레스 정책, 지원 규모·SLO, NGINX 제한값, 공개 HTTPS 429 검증과
