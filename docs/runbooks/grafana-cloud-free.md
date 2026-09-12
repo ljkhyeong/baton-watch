@@ -4,6 +4,8 @@
 [수집·전송 설정](../../ops/prometheus/watch-cloud-free.yml)과
 [기존 대시보드](../../ops/grafana/watch-overview.json)를 사용한다.
 계정 생성, 수집기 설치, 외부 전송과 알림 수신은 아직 설정하지 않았다.
+홈서버 전체 중단 감지는 메트릭 전송과 별개다.
+[외부 상태 점검](grafana-public-check.md)은 Grafana의 공개 점검 위치에서 실행하며 클라우드에서 알림을 보낸다.
 
 ## 비용과 전송 범위
 

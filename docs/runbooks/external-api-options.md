@@ -9,6 +9,7 @@
 | --- | --- | --- |
 | WATCH 운영 알림 | Alertmanager → Telegram Bot API·Slack Incoming Webhook | **연결 설정 추가.** 채널을 선택하고 경보 묶기·재시도·복구 통지를 기본 기능으로 처리한다. 별도 Java 전송기는 필요 없다. 실제 채널 연결은 미설정 |
 | WATCH 메트릭 보관·조회 | Prometheus → Grafana Cloud Free | [기존 설정](grafana-cloud-free.md) 사용. 자체 외부 전송 코드를 추가할 필요 없다. Free 계정·인증 정보는 미설정 |
+| 홈서버 전체 중단·공개 TLS 만료 | Grafana Cloud Synthetic Monitoring | [외부 HTTP 점검 설정](grafana-public-check.md) 추가. 공개 위치 1곳·5분 간격으로 검사하고 Grafana Cloud에서 Slack·Telegram에 알린다. 실제 계정·점검·알림은 미설정 |
 | CAL 일정 구독 | Google·Apple·Outlook의 `.ics` 구독 | 기존 구독 URL과 등록 안내 사용. 별도 OAuth·일정별 생성·수정 API를 추가할 필요 없다. 갱신 시점은 캘린더 앱에 따라 달라 즉시 동기화를 보장하지 않는다 |
 | 공휴일 데이터 | 한국천문연구원 특일 정보 API | 휴일 표를 직접 관리할 때 유용하다. 일정 원본을 관리하는 BATON에 적용할 후보이며, CAL·WATCH에 중복 수집기를 넣지 않는다. 활용 신청과 인증키 필요 |
 | BATON 업무 알림 | RELAY의 Discord 웹훅 | RELAY가 이미 전송·재시도·결과 처리를 담당한다. WATCH에서 같은 발송 기능을 다시 구현하지 않는다 |
@@ -61,7 +62,8 @@ CAL의 `docs/external-api-options.md`, RELAY와 GO의 `README.md`를 함께 확�
 도메인 표기는 연결 완료를 의미하지 않는다.
 
 Alertmanager와 WATCH가 같은 홈서버에 있으면 서버 전체 중단 중에는 자체 알림을 보낼 수 없다.
-이 경우 별도 위치의 감시가 필요하며 이번 연결 설정만으로 감지한다고 보지 않는다.
+이 경우 [Grafana Cloud 외부 상태 점검](grafana-public-check.md)을 별도로 연결한다.
+외부 점검과 클라우드 알림을 실제로 설정하기 전에는 이 장애를 감지한다고 보지 않는다.
 
 ## Telegram 연결 정보
 
