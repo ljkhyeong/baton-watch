@@ -153,7 +153,7 @@ class WatchClient:
             response.check_returncode()
             if len(body) > max_response_bytes:
                 raise ValueError()
-            return status, json.loads(body) if body else None
+            return status, json.loads(body, object_pairs_hook=unique_json_object) if body else None
         except (OSError, subprocess.SubprocessError, ValueError):
             raise RecoveryError("WATCH 요청 또는 응답 확인에 실패했습니다") from None
 
