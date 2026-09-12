@@ -20,6 +20,12 @@
 `observedAt`은 서버가 생성한 UTC 시각이며 ISO 8601 형식으로 직렬화된다.
 이 경로는 리소스 데이터를 노출하지 않는다.
 
+`HEAD /api/v1/system/status`도 인증 없이 HTTP 200과 `application/json` 헤더를 반환하며
+응답 본문은 없다. 상태 코드·헤더만 확인하는 점검에 사용할 수 있다. 서비스 이름과 `UP`을
+본문으로 확인하려면 `GET`을 사용한다. 공개 메서드는 이 경로의 `GET`·`HEAD`뿐이며,
+모니터 API와 다른 경로의 인증 기준은 유지한다. 두 메서드 모두 `Cache-Control`에 `no-store`를 포함한다.
+별도 컨트롤러 없이 [Spring MVC의 HEAD 처리](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html#mvc-ann-requestmapping-head-options)를 사용한다.
+
 ## 점검 대상 관리 API
 
 ### 공개 진입 경로의 요청 속도 제한
@@ -86,10 +92,20 @@ HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 비활성 스냅샷은 `"monitoringState": "INACTIVE"`를 사용하며 `targetUrl`을
 생략하거나 null로 설정해야 한다.
 
-`sourceRevision`의 범위는 0부터 9223372036854775807까지다. 소수나 지수 표기 숫자는
-정수로 변환하지 않고 HTTP 400 `INVALID_REQUEST`로 거부한다. `42.0`·`4.2e1`도 거부하며,
-클라이언트는 `42`처럼 정수로 전송한다. `-0.5`가 0으로 바뀌어 음수 검증을 통과할 수 없다.
-숫자 해석에는 Spring Boot의 `spring.jackson.deserialization.accept-float-as-int=false`를 사용한다.
+`targetUrl`의 짝이 맞지 않는 유니코드 서로게이트는 HTTP 422 `INVALID_TARGET_URL`로 거부한다.
+경로·쿼리의 정상 한글·이모지는 그대로 유지하며, JSON의 정상 서로게이트 쌍도 허용한다.
+
+`sourceRevision`은 0부터 9223372036854775807까지의 JSON 정수로 전송한다.
+소수·지수 표기·숫자 문자열(`-0.5`·`42.0`·`4.2e1`·`"42"`)은 자동 변환하지 않고
+HTTP 400 `INVALID_REQUEST`로 거부한다.
+
+`monitoringState`는 `"ACTIVE"` 또는 `"INACTIVE"` 문자열만 받는다.
+`0`·`1`·`"0"`·`"1"`을 상태값으로 변환하지 않으며 HTTP 400 `INVALID_REQUEST`로 거부한다.
+
+같은 JSON 객체에 필드 이름을 두 번 쓰면 값이 같아도 HTTP 400 `INVALID_REQUEST`로 거부한다.
+`sourceRevision`과 `source\u0052evision`처럼 이스케이프를 해석한 이름이 같은 경우도 포함한다.
+타입 변환과 중복 필드 검사는 [기본 JSON 설정](../../../bootstrap/src/main/resources/application.yml)의
+Spring Boot 기능으로 제어한다.
 
 PUT과 GET은 `application/json`을 반환한다.
 

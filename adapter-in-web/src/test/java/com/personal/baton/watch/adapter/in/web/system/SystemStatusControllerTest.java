@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.in.web.system;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -37,5 +38,13 @@ class SystemStatusControllerTest {
                 .andExpect(jsonPath("$.status").value("UP"))
                 .andExpect(jsonPath("$.observedAt").value("2026-08-01T00:00:00Z"));
     }
-}
 
+    @Test
+    void mapsHeadToTheExistingSystemStatusHandler() throws Exception {
+        // 본문 생략은 실제 Tomcat을 사용하는 보안 통합 테스트에서 확인한다.
+        mockMvc.perform(head("/api/v1/system/status"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.service").value("baton-watch"));
+    }
+}

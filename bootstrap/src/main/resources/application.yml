@@ -2,8 +2,15 @@ spring:
   application:
     name: baton-watch
   jackson:
+    read:
+      strict-duplicate-detection: true
     deserialization:
       accept-float-as-int: false
+    mapper:
+      allow-coercion-of-scalars: false
+    datatype:
+      enum:
+        fail-on-numbers-for-enums: true
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}

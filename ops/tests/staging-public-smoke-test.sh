@@ -72,7 +72,8 @@ case "$config" in
     'url = "https://watch.staging.example.com/api/v1/system/status"')
         printf 'status\n' >>"$FAKE_CURL_CALLS"
         printf '%b' "${FAKE_STATUS_HEADERS:-HTTP/2 200\r\nCF-Ray: test-ray-ICN\r\nCF-Cache-Status: DYNAMIC\r\n\r\n}" >"$header_file"
-        printf '%s' "${FAKE_STATUS_BODY:-{\"service\":\"baton-watch\",\"status\":\"UP\"}}" >"$body_file"
+        default_body='{"service":"baton-watch","status":"UP"}'
+        printf '%s' "${FAKE_STATUS_BODY-$default_body}" >"$body_file"
         printf '%s %s' "${FAKE_STATUS_CODE:-200}" "${FAKE_STATUS_REDIRECTS:-0}"
         ;;
     'url = "https://watch.staging.example.com/api/v1/resource-monitors/staging-auth-smoke"')
@@ -131,12 +132,20 @@ assert_failure() {
 
 run_smoke >/dev/null
 assert_calls $'status\nunauthorized\ncatch-all'
+run_smoke FAKE_STATUS_BODY='{"service":"baton-watch","status":"UP"}' >/dev/null
+assert_calls $'status\nunauthorized\ncatch-all'
 run_smoke FAKE_STATUS_HEADERS=$'HTTP/2 200\r\nCF-Ray: test-ray-ICN\r\nCF-Cache-Status: BYPASS\r\n\r\n' >/dev/null
 assert_calls $'status\nunauthorized\ncatch-all'
 
 assert_failure "status" FAKE_STATUS_CODE=301 FAKE_STATUS_REDIRECTS=0
 assert_failure "status" FAKE_STATUS_BODY='not-json'
 assert_failure "status" FAKE_STATUS_BODY='{"service":"other","status":"UP"}'
+for body in \
+    '{"service":"baton-watch","status":"DOWN","status":"UP"}' \
+    '{"service":"other","service":"baton-watch","status":"UP"}' \
+    '{"service":"baton-watch","status":"UP","sta\u0074us":"UP"}'; do
+    assert_failure "status" FAKE_STATUS_BODY="$body"
+done
 for cache_status in HIT MISS EXPIRED STALE UPDATING REVALIDATED; do
     assert_failure "status" \
         FAKE_STATUS_HEADERS=$'HTTP/2 200\r\nCF-Ray: test-ray-ICN\r\nCF-Cache-Status: '"$cache_status"$'\r\n\r\n'
@@ -147,4 +156,4 @@ assert_failure $'status\nunauthorized' FAKE_UNAUTHORIZED_STATUS=400
 assert_failure $'status\nunauthorized\ncatch-all' FAKE_CATCH_ALL_STATUS=401
 assert_failure "" WATCH_PUBLIC_BASE_URL='https://2130706433'
 
-printf '[staging-public-smoke-test] 16개 사례와 curl 요청 계약이 통과했습니다\n'
+printf '[staging-public-smoke-test] 20개 사례와 curl 요청 계약이 통과했습니다\n'

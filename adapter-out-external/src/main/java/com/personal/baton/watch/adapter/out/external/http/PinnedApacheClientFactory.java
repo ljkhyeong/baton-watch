@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.out.external.http;
 
 import java.net.InetAddress;
+import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import javax.net.ssl.SSLContext;
@@ -19,6 +20,8 @@ import org.apache.hc.core5.util.Timeout;
 /** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
 public final class PinnedApacheClientFactory {
 
+    private static final Duration MINIMUM_SOCKET_TIMEOUT = Duration.ofMillis(1);
+
     private final SSLContext sslContext;
 
     public PinnedApacheClientFactory() {
@@ -33,8 +36,8 @@ public final class PinnedApacheClientFactory {
             String hostname,
             List<InetAddress> approvedAddresses,
             ApacheHttpClientLimits limits) {
-        Timeout connectTimeout = Timeout.of(limits.connectTimeout());
-        Timeout responseTimeout = Timeout.of(limits.responseTimeout());
+        Timeout connectTimeout = socketTimeout(limits.connectTimeout());
+        Timeout responseTimeout = socketTimeout(limits.responseTimeout());
         Http1Config http1Config = Http1Config.custom()
                 .setMaxHeaderCount(limits.maxHeaderCount())
                 .setMaxLineLength(limits.maxHeaderLineLength())
@@ -81,4 +84,9 @@ public final class PinnedApacheClientFactory {
         }
     }
 
+    private static Timeout socketTimeout(Duration duration) {
+        // 소켓에서 0밀리초는 무제한이므로 양수 제한이 잘려 비활성화되지 않게 한다.
+        return Timeout.of(duration.compareTo(MINIMUM_SOCKET_TIMEOUT) < 0
+                ? MINIMUM_SOCKET_TIMEOUT : duration);
+    }
 }

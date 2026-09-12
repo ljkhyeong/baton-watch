@@ -4,6 +4,101 @@
 
 ## 현재 작업
 
+- `a11fb0c`에서 콜백 URL의 `%2F`·`%20`이 중복 인코딩되고, 문법 오류 시 주소 원문이 시작 로그에 남는 문제를 수정했다.
+  설정을 문자열로 받아 JDK URI로 해석하며, 변환 실패는 원문·원인 예외 없이 전달한다.
+  URL 내부 공백은 `%20`으로 입력해야 한다. 기존 목적지 정책과 앞뒤 공백 제거는 유지한다.
+  전달 PRD와 README에 반영했다. 추가 의존성·비용은 없으며 실제 콜백 전달·운영 배포는 미실행이다.
+- `43045da`에서 밀리초 미만 HTTP 시간 제한이 소켓의 0(무제한)으로 변환되는 문제를 수정했다.
+  공통 Apache 클라이언트에서 연결·응답 제한에 최소 1밀리초를 적용하며 기존 전체 요청 기한은 유지한다.
+  점검·전달 PRD에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
+- `47af573`에서 짝이 맞지 않는 유니코드 서로게이트가 URL 검증을 통과하는 문제를 수정했다.
+  기존 `TargetUrl` 문자 검사에 JDK 문자 분류 조건을 추가했다. 등록은 `422 INVALID_TARGET_URL`,
+  리다이렉트는 추가 DNS 조회·연결 전에 `REDIRECT_REJECTED`로 처리하며 정상 한글·이모지는 보존한다.
+  API·점검 PRD와 README에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
+- `878b3a0`에서 공개 상태 JSON의 중복 필드가 마지막 정상 값으로 덮여 검사가 통과하는 문제를 수정했다.
+  공개 스모크·이벤트 전달 사전 검사의 공통 파서에서 중복을 거부하고 후속 요청을 중단한다.
+  스모크 테스트 대역이 지정한 JSON에 `}`를 추가하던 오류도 수정했다. 두 배포 런북에 반영했으며
+  추가 의존성·비용은 없다. 실제 공개 HTTPS·수신기 연결·운영 배포는 미실행이다.
+- `6efdaca`에서 공급망 검사 명령이 성공했지만 이미지 SBOM 보고서가 없어도 완료로 처리하는 문제를 수정했다.
+  JAR·이미지 검사 직후 보고서 파일과 내용 유무를 확인하고, 기존 검사 도구의 실패도 그대로 전파한다.
+  후속 검사·실패 보고서 보존을 유지하며 불완전한 결과에는 완료 체크섬·배포용 JAR을 만들지 않는다.
+  [배포 검사 절차](docs/runbooks/staging-deployment.md)와 README에 반영했다. 검사 인자·이미지·정책·추가 비용은 그대로이며 운영 배포는 미실행이다.
+- `9f91333`에서 Tomcat이 잘못된 요청을 거부하면서 주소·쿼리를 INFO 로그에 남기는 문제를 수정했다.
+  Spring 진입 전의 요청 파싱 로거를 기존 고정 설정에 추가했다. HTTP 400 거부, 정상 API 처리와
+  WATCH의 오류 종류 로그는 유지한다. [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)과
+  [로그 감사 절차](docs/runbooks/staging-deployment.md)에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
+- `6a3ba2c`에서 Spring 상세 로그에 요청 URL·토큰·응답의 리소스 참조·예외 원문이 기록되는 문제를 수정했다.
+  실제 요청에서 원문을 출력한 MVC·Security 로거 6개를 기존 고정 설정에 추가했다. 외부 상세 설정보다 우선하며
+  WATCH의 오류 종류 로그와 인증·응답 동작은 유지한다. [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)과
+  [로그 감사 절차](docs/runbooks/staging-deployment.md)에 보호 범위를 반영했다. 추가 의존성·비용은 없으며 실제 운영 배포는 미실행이다.
+- `689332e`에서 로그가 비거나 일부 비밀 파일에 값이 없어도 로그 감사가 통과하는 문제를 수정했다.
+  빈 로그·공백뿐인 로그와 개별 비밀 파일의 값 누락을 종료 코드 1로 거부한다. 오류에 파일 경로·비밀값을 출력하지 않는다.
+  [로그 감사 절차](docs/runbooks/staging-deployment.md)에 입력 기준을 반영했다.
+  추가 의존성·비용과 애플리케이션 동작 변경은 없으며 실제 운영 로그 감사는 미실행이다.
+- `2d9c0a0`에서 검증 도구 취소 후 하위 명령이 남고 결과 기록이 누락되는 문제를 수정했다.
+  `SIGINT`·`SIGTERM`·`SIGHUP`를 실행한 명령의 프로세스 그룹에 전달하고, 종료를 최대 5초 기다린 뒤 남은 명령을 강제 종료한다.
+  하위 명령이 0으로 종료해도 중단 결과는 실패로 기록한다. [개발 검증 절차](docs/runbooks/development-validation.md)에
+  종료 코드와 정리 범위를 반영했다. 추가 의존성·비용과 애플리케이션 동작 변경은 없다.
+- `c3919a2`에서 첫 실패 뒤 생성되는 카운터의 증가량이 경보에서 빠지는 문제를 보완했다.
+  점검·전달 완료 실패와 리스 회수 카운터 4개를 시작 시 0으로 등록하고 기존 메트릭 오류 격리를 사용한다.
+  경보식·레이블·시계열 최대 개수는 그대로다. [경보 절차](docs/runbooks/monitoring-alerts.md)에 실패 전 0의 수집 조건을 명시했다.
+  추가 의존성·비용은 없으며 실제 운영 수집·외부 알림·배포는 미실행이다.
+- `99f8f2a`에서 진단·백업의 SQL·셸·복원 Compose만 바뀌면 영속성 테스트가 생략되는 문제를 수정했다.
+  테스트가 읽는 운영 파일 5개를 Gradle 입력으로 등록했다. 해당 파일 변경은 검사에 반영하고 문서 변경은 기존 결과를 재사용한다.
+  [개발 검증 절차](docs/runbooks/development-validation.md)에 새 운영 파일의 입력 등록 기준을 정리했다.
+  추가 의존성·비용과 애플리케이션 동작 변경은 없다.
+- `3e9f43a`에서 복구 도구가 응답 JSON의 마지막 중복 필드만 사용해 정상 조회·복구 성공으로 오판하는 문제를 수정했다.
+  입력 파일의 중복 검사 함수를 응답 파서에도 적용한다. 모호한 GET 뒤에는 PUT을 보내지 않고,
+  모호한 PUT 응답은 실패로 기록한 뒤 나머지 항목을 처리한다. [복구 절차](docs/runbooks/baton-snapshot-recovery.md)에 반영했다.
+  추가 의존성·비용은 없으며 실제 서버 연동·운영 복구는 미실행이다.
+- `e5baa5a`에서 [읽기 전용 진단](docs/runbooks/check-control-and-diagnostics.md)에 `deliveryProgress`를 추가했다.
+  미전달 이벤트의 예약·대기·전달 중과 전달 완료를 구분하며, DB 조회 시각과 기존 일정·점유를 사용한다.
+  기존 `deliveryStatus`·전달 처리·스키마는 유지한다. 작업자 중단·전달 비활성 여부는 이 상태만으로 판단하지 않는다.
+  추가 의존성·비용은 없으며 운영 배포·실제 콜백 전달은 미실행이다.
+- `b500466`에서 공개 상태 API의 `HEAD`를 지원했다. 토큰 없이 HTTP 200과 상태 응답 헤더를
+  확인하며 본문은 받지 않는다. Spring MVC 기본 처리를 사용하고 보안 설정에서 정확한 상태 경로의
+  `GET`·`HEAD`만 공개한다. 모니터·하위 경로의 인증과 기존 GET 본문 점검은 유지한다.
+  [API 계약](docs/PRD/0002_api-contract/spec.md)에 반영했다. 추가 의존성·비용은 없으며 운영 배포·공개 HTTPS 점검은 미실행이다.
+- `54ffc79`에서 이미 중단된 호출이 DNS·HTTP 실행기에 새 작업을 제출하던 문제를 수정했다.
+  진입 시 `isInterrupted()`로 확인해 작업 제출 전에 `INTERNAL_FAILURE`를 반환한다.
+  HTTP 요청은 취소 상태로 표시하고 호출자의 중단 표시를 유지한다. 정상 호출과 제출 후 취소는 기존대로 처리한다.
+  [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)과 [전달 기준](docs/PRD/0004_health-change-event-delivery/spec.md)에 반영했다.
+  추가 의존성·비용은 없으며 실제 운영 종료·배포는 미실행이다.
+- `cc34bad`에서 이벤트 전달 사전 검사가 HTTP 200만으로 WATCH 정상 상태를 판단하던 문제를 수정했다.
+  공개 스모크와 공통 Python JSON 판정을 사용해 `baton-watch`·`UP`을 확인한다. 응답 크기는
+  64 KiB로 제한하며 실패 시 후속 수신기 요청을 중단한다. 임시 본문 삭제와 실패 종료 코드를 유지하고
+  HTTP 상태값의 한글 오류 안내도 수정했다. [전달 검증 절차](docs/runbooks/public-staging-event-delivery.md)에 반영했다.
+  추가 요청·의존성·비용은 없으며 실제 공개 HTTPS·수신기 인증·이벤트 전달은 미검증이다.
+- `2e39398`에서 공개 TLS 인증서 만료 7일 전 경보를 Prometheus 템플릿에 추가했다.
+  기존 Blackbox 점검의 만료 시각을 사용하고, 2분간 조건이 유지되면 알린다. 갱신 시 해제하며
+  수집 실패·만료 지표 누락은 만료 예고로 처리하지 않는다. TLS 실패는 기존 요청 실패 경보로 확인한다.
+  [인바운드 점검 절차](docs/runbooks/ingress-monitoring.md)에 감시 범위를 반영했다.
+  추가 요청·의존성·비용은 없으며 실제 수집기 적용·공개 TLS·알림 수신은 미검증이다.
+- `5e29b75`에서 루트 경로·전체 URL·`//호스트/...` 리다이렉트에 `.`·`..`가 남는 오류를 수정했다.
+  `/docs/../guide`는 `/guide`로 점검하고 같은 페이지로 돌아오면 추가 연결 전에 거부한다.
+  기존 점 구간 함수를 공통 적용하며 연속 슬래시·인코딩·쿼리·목적지 재검증·IP 고정은 유지한다.
+  [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
+- `6cf53b4`에서 복구 도구가 401·403 응답의 본문 수신 실패를 일반 통신 실패로 처리하던 문제를 수정했다.
+  본문 크기 초과·전송 중단·시간 초과에도 인증·접근 거부를 먼저 판단해 후속 요청을 중단한다.
+  나머지 응답의 전송 성공·크기 검사는 유지한다. [복구 절차](docs/runbooks/baton-snapshot-recovery.md)에 반영했다.
+  추가 의존성·비용은 없으며 실제 서버 인증·운영 복구는 미실행이다.
+- `188ea9f`에서 등록 API와 복구 파일의 중복 JSON 필드가 처리 단계까지 통과하는 문제를 수정했다.
+  API는 HTTP 400 `INVALID_REQUEST`, 복구 도구는 모든 통신 전에 종료 코드 1로 거부한다.
+  값이 같거나 이름을 이스케이프로 적어도 검사하며 Jackson 설정·Python 표준 파서를 사용한다.
+  [API 계약](docs/PRD/0002_api-contract/spec.md)과 [복구 절차](docs/runbooks/baton-snapshot-recovery.md)에 반영했다.
+  추가 의존성·비용은 없으며 실제 배포·운영 복구는 미실행이다.
+- `80822e5`에서 모니터 등록의 숫자 상태값과 문자열 리비전이 자동 변환되는 문제를 수정했다.
+  `monitoringState`의 `0`·`1`·`"0"`·`"1"`, `sourceRevision`의 `"42"` 같은 입력을 처리 전에
+  HTTP 400 `INVALID_REQUEST`로 거부한다. Spring Boot JSON 설정 두 항목을 사용하며
+  정상 정수·상태 문자열·인증 우선순위를 유지한다. [API 계약](docs/PRD/0002_api-contract/spec.md)에 반영했다.
+  추가 검증 클래스·의존성·비용은 없으며 운영 배포는 미실행이다.
+- `a078dab`에서 상대 리다이렉트를 해석할 때 연속 슬래시가 줄어드는 오류를 수정했다.
+  `/docs//page`의 `next` 이동은 `/docs//next`를 유지한다. JDK·Apache의 경로 정규화가 빈 구간을
+  제거하므로 상대 경로 병합만 보완했다. 인코딩·쿼리 보존, 목적지 재검증·IP 고정·순환 거부는 유지한다.
+  [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
+- `977de2c`에서 [읽기 전용 진단](docs/runbooks/check-control-and-diagnostics.md)에 `monitor.checkStatus`를 추가했다.
+  기존 일정·점유와 DB 조회 시각으로 예약·대기·진행 중·비활성을 구분한다. API와 같은 판단 규칙을 사용하며
+  리스 토큰·만료 시각은 출력하지 않는다. 추가 의존성·스키마 변경·비용은 없으며 운영 배포는 미실행이다.
 - `d9eb4dd`에서 [PR #43](https://github.com/ljkhyeong/baton-watch/pull/43)의 런타임 부하 검사가
   DB 연결 부족에 예전 500 응답을 기대하던 문제를 수정했다. 현재 계약인 503·`SERVICE_UNAVAILABLE`과
   `Retry-After: 5`를 검증하며 [검증 절차](docs/runbooks/runtime-load-test.md)도 맞췄다.
@@ -145,6 +240,29 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 콜백 URL 설정 `a11fb0c` | 변경 전 `%2F`→`%252F`·`%20`→`%2520`과 잘못된 호스트 구문의 시작 로그 노출 재현. 변경 후 관련 19개·bootstrap 전체 130개 통과, 실패·건너뜀 없음. 실제 Spring 시작 과정에서 문법 오류·사용자 정보의 거부와 원문 비노출 확인. DB·외부 통신 구현·이미지 변경이 없어 해당 검사는 반복하지 않음 |
+| HTTP 시간 제한 변환 `43045da` | 변경 전 실제 로컬 HTTP에서 1ns·999999ns 응답 제한이 작동하지 않는 오류 재현. 변경 후 두 사례의 `READ_TIMEOUT`과 외부 통신 모듈 전체 278개 통과, 실패·건너뜀 없음. 기존 GET·콜백 POST·TLS·전체 기한·취소 경로 포함. 공통 클라이언트의 시간 변환만 변경해 전체 Java·DB·이미지·공급망 검사는 반복하지 않음 |
+| URL 유니코드 검증 `47af573` | 변경 전 값 타입·API 동기화 대역까지 잘못된 입력이 통과하고 리다이렉트가 `INTERNAL_FAILURE`가 되는 문제 재현. 변경 후 관련 115개, 전체 614개(ArchUnit 3개·실제 PostgreSQL 포함) 실행·통과, 실패·건너뜀 없음. API 422·Problem Details·동기화 미호출, 리다이렉트의 후속 DNS·연결 차단, 정상 한글·JSON 서로게이트 쌍 보존 확인. 의존성·이미지 변경이 없어 이미지·공급망 검사는 미실행 |
+| 공개 상태 중복 필드 `878b3a0` | 변경 전 사전 검사와 대역을 고친 공개 스모크에서 잘못된 성공 재현. 변경 후 각 20개 사례·변경 셸 2개의 ShellCheck 통과. 상태·서비스 중복, 같은 값·이스케이프 이름의 중복 거부와 후속 요청 중단 확인. 지정한 정상 JSON의 성공도 확인. HTTP 대역을 사용했으며 요청 인자·애플리케이션·DB·이미지 변경이 없어 실제 외부 연결·Java·DB·이미지 검사는 미실행 |
+| 공급망 보고서 누락 `6efdaca` | 변경 전 도구가 0으로 종료하고 이미지 보고서를 만들지 않아도 완료 처리되는 오류 재현. 변경 후 공급망 스크립트 검사·라이선스 정책 6개·변경 셸 2개의 ShellCheck 통과. 보고서 누락·빈 JAR 보고서·도구 실패의 실패 전파, 후속 검사와 실패 보고서 보존, 완료 체크섬·배포용 JAR 미생성 확인. 검사 도구 대역을 사용했으며 Docker 호출 인자·이미지·정책은 바꾸지 않아 실제 Trivy 재검사·이미지 빌드·Java·DB 검사는 반복하지 않음 |
+| Tomcat 요청 거부 로그 `9f91333` | 변경 전 실제 TCP 요청으로 잘못된 주소의 HTTP 400과 INFO·DEBUG 원문 노출 재현. 변경 후 로그 통합 2개·bootstrap 전체 125개 통과, 실패·건너뜀 없음. 개별 Tomcat DEBUG 설정의 차단, 요청 거부·주소와 쿼리 비노출, 기존 정상·미인증·DB 장애 요청과 오류 종류 로그 유지 확인. 합성 입력만 사용했으며 DB·외부 통신·이미지 동작 변경이 없어 해당 검사는 반복하지 않음 |
+| 인바운드 원문 로그 보호 `6a3ba2c` | 변경 전 실제 Tomcat HTTP 요청에서 요청 경로·쿼리·본문 URL·인증 토큰·응답 참조·예외 원문 노출 재현. 변경 후 관련 3개·bootstrap 전체 124개 통과, 실패·건너뜀 없음. 상위 범주와 개별 로거의 TRACE 재정의 차단, 401·200·503과 WATCH의 오류 종류 로그 유지 확인. 합성 입력과 DB 예외 대역을 사용했으며 DB·외부 통신·이미지 동작 변경이 없어 해당 검사는 반복하지 않음 |
+| 로그 감사 입력 누락 `689332e` | 변경 전 빈 로그·첫 번째 비밀 파일만 비어 있는 입력이 통과하는 오류 재현. 변경 후 감사 테스트 12개·변경 셸 2개의 ShellCheck 통과. 정상 로그·6종 노출 탐지·빈 로그·공백 로그·개별 비밀 파일·금지 값 파일 누락과 원문·경로 비노출 확인. 합성 입력만 사용했으며 애플리케이션·DB·이미지 변경이 없어 해당 검사는 반복하지 않음 |
+| 검증 취소 처리 `2d9c0a0` | 변경 전 하위 명령 잔존·결과 누락 재현. 변경 후 실행 도구 9개·파일 검사 도구 9개 통과. 실제 임시 프로세스로 신호 3종의 전달·하위 명령 종료·실패 기록과 취소 무시 시 강제 종료 확인. 애플리케이션·DB·이미지 변경이 없어 해당 검사는 반복하지 않음 |
+| 경보 카운터 초기 등록 `c3919a2` | 변경 전 4개 카운터 부재 재현. 변경 후 계측 18개·bootstrap 전체 123개 통과, 실패·건너뜀 없음. 초기 0·실제 증가·메트릭 오류 격리·제한된 레이블 확인. 기존 promtool 전체 검사에 첫 사건 시나리오를 추가해 사전 0이 있는 경우만 경보 발생, 2분 유지·정상 기간·해제 확인. DB·외부 통신·부하·이미지 검사는 변경 범위 밖이므로 반복하지 않음 |
+| DB 운영 파일의 테스트 입력 `99f8f2a` | 수정 전 SQL에 임시 주석을 추가해도 영속성 테스트가 `UP-TO-DATE`인 누락 재현. 입력 등록 후 검사 실행, SQL 주석 제거만으로 재실행 확인. 최종 SQL의 실제 PostgreSQL 포함 84개 통과, 실패·건너뜀 없음. 이후 문서만 수정하면 `UP-TO-DATE`로 재사용됨을 확인. 강제 재실행 옵션은 사용하지 않았으며 임시 SQL 변경은 모두 제거함 |
+| 복구 응답의 중복 JSON `3e9f43a` | 수정 전 묶음 조회 3개·GET/PUT 2개 조건에서 잘못된 결과·후속 PUT 재현. 수정 후 복구 도구 전체 22개 통과. 중첩 객체·같은 값·이스케이프 이름의 중복 거부, 결과 순서·다음 묶음·항목 처리와 기존 401·403 중단 확인. DNS·HTTP 응답은 대역으로 검증했으며 Java·DB·이미지 변경이 없어 해당 검사는 반복하지 않음 |
+| 전달 진단 진행 상태 `e5baa5a` | 실제 PostgreSQL 진단 테스트 21개와 영속성 모듈 전체 84개 통과, 실패·건너뜀 없음. 일정·점유 조합 5개에서 표시 상태와 실제 작업자의 실행 대상 일치, 완료 상태·읽기 전용·이력 제한·정보 제외 확인. 전달 처리·스키마·API·외부 통신은 변경하지 않아 전체 Java·부하·이미지 검사는 반복하지 않음 |
+| 공개 상태 HEAD `b500466` | 변경 전 토큰 없음·잘못된 토큰의 HEAD가 401을 반환하는 사례 2개 확인. 변경 후 실제 Tomcat 인증 통합 44개, 웹 전체 47개·bootstrap 전체 122개 통과, 실패·건너뜀 없음. HEAD 200·빈 본문·JSON 헤더·캐시 금지, 다른 세 경로의 HEAD 인증과 기존 POST 인증 유지 확인. MockMvc는 핸들러 연결, 실제 HTTP는 본문 생략을 검사. 프록시·외부 통신·DB 동작은 변경하지 않아 관련 검사는 반복하지 않음 |
+| 중단된 외부 호출 `54ffc79` | 수정 전 DNS·HTTP 회귀 시험 2개에서 작업자 생성 재현. 수정 후 관련 21개·외부 통신 모듈 전체 274개 통과, 실패·건너뜀 없음. 중단 표시 유지·HTTP 취소·작업 미제출과 이후 정상 호출, 기존 실행 중 취소·대기열 복구·시간 제한 확인. 단일 모듈 변경으로 전체 Java·DB·부하·이미지 검사는 반복하지 않음 |
+| 사전 검사의 WATCH 확인 `cc34bad` | 수정 전 잘못된 본문의 HTTP 200 통과 재현. 수정 후 사전 검사 17개·공개 스모크 16개와 변경 셸 3개의 ShellCheck 통과. 다른 서비스·비정상 상태·필드 누락·배열·빈 본문·잘못된 JSON·curl 실패의 후속 요청 중단, 원문 비노출·임시 파일 삭제 확인. HTTP·크기 초과·시간 초과는 대역으로 검증했으며 Java·DB·이미지는 변경하지 않아 해당 검사는 반복하지 않음 |
+| 공개 TLS 만료 경보 `2e39398` | `./ops/tests/prometheus-rules-test.sh` 통과. 설정 문법·인바운드 경보 4개와 기존 WATCH·공개 점검·작업자 경보·대시보드 쿼리 확인. 새 시나리오 3개에서 7일 경계·2분 대기·갱신 해제·수집 실패·지표 누락·경로 구분·TLS 실패를 8개 시점별 기대 결과로 검사. Java·DB·프록시·Blackbox 모듈은 변경하지 않아 해당 검사는 반복하지 않음 |
+| 이동 경로의 점 구간 `5e29b75` | 수정 전 주소 계산·순환 시험 29개 중 새로 추가한 10개에서 실패 재현. 수정 후 점검 엔진 61개·외부 통신 모듈 전체 272개 통과, 실패·건너뜀 없음. 루트 경로·전체 URL·호스트 기준 이동, 연속 슬래시·인코딩·쿼리 보존, 잘못된 주소·사용자 정보·프래그먼트 거부 확인. 단일 모듈 변경으로 전체 Java·DB·부하·이미지 검사는 재실행하지 않음 |
+| 복구 응답 실패의 인증 판정 `6cf53b4` | 수정 전 401·403 × 본문 초과·전송 중단·시간 초과 × 대조·재전송의 12개 조건에서 후속 요청 재현. 수정 후 복구 도구 전체 20개 통과. 200 응답의 전송 실패·연결·TLS 실패 거부도 확인. 실제 curl 8.7.1과 로컬 임시 HTTP 서버의 6개 조건에서 종료 코드 63·18·28과 HTTP 상태 보존 확인. Java·DB·이미지 변경이 없어 해당 검사는 재실행하지 않음 |
+| 중복 JSON 필드 `188ea9f` | 수정 전 API·복구 파일 각각 5가지 중복 입력의 통과 재현. 수정 후 인증 통합 38개·bootstrap 전체 116개·복구 도구 18개 통과, 실패·건너뜀 없음. 변경 없는 웹 계약 46개 결과 재사용. 인증 우선순위·정상 입력·뒤쪽 행의 중복에 대한 전체 통신 중단·오류의 민감정보 제외 확인. 이미지·외부 통신·부하 검사는 변경 범위 밖이므로 재실행하지 않음 |
+| 등록 JSON 타입 `80822e5` | 실제 HTTP에서 잘못된 타입 7가지가 변환되어 처리 단계까지 전달되는 문제 재현. 수정 후 인증 통합 33개와 bootstrap 전체 111개 통과, 실패·건너뜀 없음. 변경 없는 웹 계약 46개 결과 재사용. 타입 거부·정수 경계·인증 우선순위·공통 오류·본문 제한 확인. 이미지·외부 통신·부하 검사는 변경 범위 밖이므로 재실행하지 않음 |
+| 상대 리다이렉트 경로 `a078dab` | 수정 전 경로·쿼리 사례 15개 중 10개에서 잘못된 주소 재현. 수정 후 같은 15개와 외부 통신 모듈 전체 257개 통과, 실패·건너뜀 없음. 빈 경로 구간·점 구간·인코딩·쿼리 보존, 상대 주소의 순환 거부, DNS 재검증·IP 고정과 실제 HTTP 전송 확인. 단일 모듈 변경으로 전체 Java·DB·부하·이미지 검사는 재실행하지 않음 |
+| 진단 진행 상태 `977de2c` | 실제 PostgreSQL 진단 테스트 16개 후 영속성 모듈 전체 79개 통과, 실패·건너뜀 없음. 일정·점유 조합 7개의 상태와 같은 조회 시각의 도메인 판단 일치, 읽기 전용·정보 제외·이력 제한·잠금 시간 초과 확인. 점검 실행·API·외부 통신·스키마 변경이 없어 전체 Java·부하·이미지 검사는 재실행하지 않음 |
 | 런타임 부하 검사 `d9eb4dd` | [원격 검사](https://github.com/ljkhyeong/baton-watch/actions/runs/34675952314)에서 실제 503과 예전 기대값 500의 불일치 확인. 수정 후 `:bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 통과, 테스트 1개·실패·건너뜀 없음. 실제 PostgreSQL의 풀 고갈·복구, 503·재시도 안내, 25개 점검·전달 복구와 최종 미전달 0건 확인. 외부 점검·콜백은 테스트 대역이며 운영 코드·이미지 변경은 없음 |
 | 복구 인증 실패 중단 `75fdde4` | 수정 전 401·403의 후속 요청 10개 조건 재현. 수정 후 복구 도구 16개와 추가 CLI 검사 1개, 총 17개 통과. JSON·HTML·빈 본문, 묶음 조회와 재전송 GET·PUT 중단, 이전 결과·전체 항목·요약·종료 코드 2와 비밀값 비노출 확인. DNS·curl 응답을 모의했으며 실제 서버 인증·운영 복구는 미실행. Java·DB·이미지 변경이 없어 관련 검사는 반복하지 않음 |
 | 리다이렉트 경로 비교 `c7a4948` | 실제 로컬 HTTP에서 연속 슬래시 전송을 확인하고, 점검 엔진이 서로 다른 두 경로의 이동을 거부하는 오류 재현. 수정 후 외부 어댑터 전체 243개 통과, 실패·건너뜀 없음. 양방향 이동 허용·실제 순환 거부·DNS 재검증·IP 고정 확인. 해당 모듈만 변경해 전체 Java·DB·이미지·배포 검사는 재실행하지 않음 |
@@ -190,6 +308,100 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+콜백 URL 설정의 작업 기준은 `44f6697`이며 검증한 코드·테스트는 `a11fb0c`와 같다.
+`.gradle/agent-validation/`의 `*-callback-url-reproduction/`에 변경 전 실패,
+`*-callback-url-regression/`·`*-callback-url-bootstrap-tests/`에 변경 후 성공,
+`*-callback-url-complete/`에 종료 검사를 기록한다. 초기 공백·쿼리 입력으로는 로그 노출이 재현되지 않아
+실제 URI 변환이 실패하는 호스트 구문으로 확인했다. 문서 수정 후 동작 테스트는 반복하지 않는다.
+
+HTTP 시간 제한 변환의 작업 기준은 `9292ddc`이며 검증한 코드·테스트는 `43045da`와 같다.
+`.gradle/agent-validation/`의 `*-http-timeout-resolution-reproduction/`에 변경 전 실패,
+`*-http-timeout-resolution-regression/`·`*-http-timeout-resolution-external-tests/`에 변경 후 성공,
+`*-http-timeout-resolution-complete/`에 종료 검사를 기록한다.
+
+URL 유니코드 검증의 작업 기준은 `dc4ec29`이며 검증한 코드·테스트는 `47af573`과 같다.
+`.gradle/agent-validation/`의 `*-url-unicode-domain-reproduction/`·`*-url-unicode-boundaries-reproduction/`에 변경 전 실패,
+`*-url-unicode-related-tests/`·`*-url-unicode-full-tests/`에 변경 후 성공, `*-url-unicode-complete/`에 종료 검사를 기록한다.
+초기 JShell 확인은 클래스 로딩 오류로 유효한 결과가 없어 기존 Gradle 테스트로 재현했고 임시 프로세스는 정리했다.
+
+공개 상태 중복 필드의 작업 기준은 `8003409`이며 검증한 코드·테스트는 `878b3a0`과 같다.
+`.gradle/agent-validation/`의 `*-status-duplicates-preflight-reproduction/`·`*-status-duplicates-smoke-reproduction-fixed-fixture/`에 변경 전 실패,
+`*-status-duplicates-smoke-tests/`·`*-status-duplicates-preflight-tests/`·`*-status-duplicates-shellcheck/`에 변경 후 성공,
+`*-status-duplicates-complete/`에 종료 검사를 기록한다. 최초 스모크 재현 결과는 대역 오류로 유효하지 않아 재사용하지 않는다.
+
+공급망 보고서 확인의 작업 기준은 `4807b30`이며 검증한 코드·테스트는 `6efdaca`와 같다.
+`.gradle/agent-validation/`의 `*-supply-reports-reproduction/`에 변경 전 실패,
+`*-supply-reports-tests/`·`*-supply-reports-license-policy/`·`*-supply-reports-shellcheck/`에 변경 후 성공,
+`*-supply-reports-complete/`에 종료 검사를 기록한다.
+Tomcat 요청 거부 로그 수정의 작업 기준은 `3934100`이며 검증한 코드·테스트는 `9f91333`과 같다.
+`.gradle/agent-validation/`의 `*-rejected-logs-reproduction/`에 변경 전 실패,
+`*-rejected-logs-tests/`·`*-rejected-logs-bootstrap/`에 변경 후 성공,
+`*-rejected-logs-complete/`에 종료 검사를 기록한다.
+인바운드 로그 보호의 작업 기준은 `b288d41`이며 검증한 코드·테스트는 `6a3ba2c`와 같다.
+`.gradle/agent-validation/`의 `*-inbound-logs-reproduction/`에 변경 전 실패,
+`*-inbound-logs-tests/`·`*-inbound-logs-bootstrap/`에 변경 후 성공,
+`*-inbound-logs-complete/`에 종료 검사를 기록한다.
+로그 감사 입력 수정의 작업 기준은 `35474ac`이며 검증한 코드·테스트는 `689332e`와 같다.
+`.gradle/agent-validation/`의 `*-log-audit-inputs-reproduction/`에 변경 전 실패,
+`*-log-audit-inputs-tests/`·`*-log-audit-inputs-shellcheck/`에 변경 후 성공,
+`*-log-audit-inputs-complete/`에 종료 검사를 기록한다.
+검증 취소 수정의 작업 기준은 `9b1b53d`이며 검증한 코드·테스트는 `2d9c0a0`과 같다.
+`.gradle/agent-validation/`의 `*-validation-cancel-reproduction/`에 변경 전 실패,
+`*-validation-cancel-tests/`·`*-validation-cancel-feedback-tests/`에 변경 후 성공,
+`*-validation-cancel-complete/`에 종료 검사를 기록한다.
+카운터 초기 등록의 작업 기준은 `0012e52`이며 검증한 코드·테스트는 `c3919a2`와 같다.
+`.gradle/agent-validation/`의 `*-initial-counters-reproduction/`에 변경 전 실패,
+`*-initial-counters-metrics/`·`*-initial-counters-bootstrap/`에 변경 후 성공,
+`*-initial-counters-alerts/`에 경보·대시보드 검사, `*-initial-counters-complete/`에 종료 검사를 기록한다.
+DB 테스트 입력 수정의 작업 기준은 `9687268`이며 최종 검증한 설정은 `99f8f2a`와 같다.
+`.gradle/agent-validation/`의 `*-database-inputs-baseline/`·`*-database-inputs-reproduction/`에 변경 전 생략,
+`*-database-inputs-registered/`·`*-database-inputs-sql-change/`에 변경 감지와 실행,
+`*-database-inputs-document-reuse/`에 문서 변경 후 재사용, `*-database-inputs-complete/`에 종료 검사를 기록한다.
+복구 응답 JSON 수정의 작업 기준은 `a59a79d`이며 검증한 코드·테스트는 `3e9f43a`와 같다.
+`.gradle/agent-validation/`의 `*-recovery-response-json-reproduction/`에 재현 실패,
+`*-recovery-response-json-tests/`에 수정 후 성공, `*-recovery-response-json-complete/`에 종료 검사를 기록한다.
+전달 진단의 작업 기준은 `2b3d0e6`이며 검증한 SQL·테스트는 `e5baa5a`와 같다.
+`.gradle/agent-validation/`의 `*-delivery-progress-diagnostics/`·`*-delivery-progress-persistence/`에 동작 검사,
+`*-delivery-progress-complete/`에 종료 검사를 기록한다.
+공개 상태 HEAD의 작업 기준은 `2128202`이며 검증한 코드·테스트는 `b500466`과 같다.
+`.gradle/agent-validation/20260912T111835253888Z-public-head-reproduction/`에 변경 전 인증 응답,
+`*-public-head-security/`·`*-public-head-web-bootstrap/`에 변경 후 성공,
+`*-public-head-complete/`에 종료 검사를 기록한다. 첫 재현 검사의 MockMvc 본문 기대는 실제 Tomcat 검사로 옮겼다.
+중단된 외부 호출 수정의 작업 기준은 `8c65f5f`이며 검증한 코드·테스트는 `54ffc79`와 같다.
+`.gradle/agent-validation/`의 `*-interrupted-admission-reproduction/`에 재현 실패,
+`*-interrupted-admission-cases/`·`*-interrupted-admission-external/`에 수정 후 성공,
+`*-interrupted-admission-complete/`에 종료 검사를 기록한다.
+사전 검사 개선의 작업 기준은 `cbbf31b`이며 검증한 코드·테스트는 `cc34bad`와 같다.
+`.gradle/agent-validation/`의 `*-preflight-identity-reproduction/`에 재현 실패,
+`20260912T104743781694Z-preflight-identity-cases/`에 최종 사전 검사 성공,
+`*-preflight-identity-smoke/`·`*-preflight-identity-shellcheck/`에 공개 스모크·정적 검사 성공,
+`*-preflight-identity-complete/`에 종료 검사를 기록한다. 중간 실패는 같은 사례의 진단과 오류 안내를 보완해 해결했다.
+공개 TLS 만료 경보의 작업 기준은 `6fac970`이며 검증한 설정·테스트는 `2e39398`과 같다.
+`.gradle/agent-validation/`의 `*-public-tls-alert-rules/`에 Prometheus 검사 성공,
+`*-public-tls-alert-complete/`에 종료 검사를 기록한다.
+이동 경로의 점 구간 수정 기준은 `9de365e`이며 검증한 코드·테스트는 `5e29b75`와 같다.
+`.gradle/agent-validation/`의 `*-redirect-dot-reproduction/`에 재현 실패,
+`*-redirect-dot-cases/`·`*-redirect-dot-external/`에 수정 후 성공,
+`*-redirect-dot-complete/`에 종료 검사를 기록한다.
+복구 응답 상태 수정의 작업 기준은 `804be51`이며 검증한 코드·테스트는 `6cf53b4`와 같다.
+`.gradle/agent-validation/`의 `*-recovery-http-status-reproduction/`에 재현 실패,
+`*-recovery-http-status-tests/`에 수정 후 성공, `*-recovery-http-status-curl/`에 실제 curl 확인,
+`*-recovery-http-status-complete/`에 종료 검사를 기록한다.
+중복 JSON 필드 수정의 작업 기준은 `c67539e`이며 검증한 코드·설정·테스트는 `188ea9f`와 같다.
+`.gradle/agent-validation/`의 `*-duplicate-json-*-reproduction/`에 재현 실패,
+`*-duplicate-json-http/`·`*-duplicate-json-recovery/`·`*-duplicate-json-web-bootstrap/`에 수정 후 성공,
+`*-duplicate-json-complete/`에 종료 검사를 기록한다.
+등록 JSON 타입 수정의 작업 기준은 `910984c`이며 검증한 설정·테스트는 `80822e5`와 같다.
+`.gradle/agent-validation/`의 `*-monitor-input-reproduction/`에 재현 실패,
+`*-monitor-input-http/`와 `*-monitor-input-web-bootstrap/`에 수정 후 성공,
+`*-monitor-input-complete/`에 종료 검사를 기록한다.
+상대 리다이렉트 수정의 작업 기준은 `11dde34`이며 검증한 코드·테스트는 `a078dab`과 같다.
+`.gradle/agent-validation/`의 `*-relative-redirect-reproduction/`에 재현 실패,
+`*-relative-redirect-cases/`와 `*-relative-redirect-external/`에 수정 후 성공,
+`*-relative-redirect-complete/`에 종료 검사를 기록한다.
+진단 진행 상태의 작업 기준은 `697e60b`이며 검증한 SQL·테스트는 `977de2c`와 같다.
+`.gradle/agent-validation/`의 `*-diagnostic-check-status-tests/`와
+`*-diagnostic-check-status-persistence/`에 동작 검사, `*-diagnostic-check-status-complete/`에 종료 검사를 기록한다.
 PR #43 병합 작업 기준은 `9e7f647`이며 검증한 런타임 부하 테스트는 `d9eb4dd`와 같다.
 수정 후 검사는 `.gradle/agent-validation/`의 `*-main-merge-runtime-load/`,
 전체 변경의 종료 검사는 `*-main-merge-runtime-complete/`에 기록한다.

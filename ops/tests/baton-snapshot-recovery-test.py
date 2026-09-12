@@ -34,6 +34,15 @@ def snapshots(count):
             for index in range(count)]
 
 
+def curl_result(returncode, stdout):
+    def run(command, **options):
+        result = subprocess.CompletedProcess(command, returncode, stdout, b"private-error")
+        if options.get("check"):
+            result.check_returncode()
+        return result
+    return run
+
+
 class SnapshotRecoveryTest(unittest.TestCase):
     def test_audit_does_not_mutate_missing_older_matching_or_conflicting_monitors(self):
         """조회 모드는 누락·낮은 리비전·일치·충돌을 구분하고 PUT을 보내지 않는다."""
@@ -143,6 +152,41 @@ class SnapshotRecoveryTest(unittest.TestCase):
             with self.assertRaises(recovery.RecoveryError):
                 recovery.private_file(manifest, 10000)
 
+    def test_duplicate_json_fields_fail_before_network(self):
+        """뒤쪽 레코드에 중복 필드가 있어도 파일 전체를 거부하고 통신하지 않는다."""
+        first, second, replacement = snapshots(3)
+        duplicates = {
+            "resourceReference": json.dumps(replacement["resourceReference"]),
+            "sourceRevision": "8",
+            "monitoringState": json.dumps(second["monitoringState"]),
+            "targetUrl": json.dumps("https://docs.example.com/other"),
+            r"source\u0052evision": "8",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "snapshots.jsonl"
+            token_file = Path(temporary) / "token"
+            token = "x" * 32
+            token_file.write_text(token)
+            token_file.chmod(0o600)
+            for field, value in duplicates.items():
+                with self.subTest(field=field):
+                    duplicate_record = json.dumps(second)[:-1] + f',"{field}":{value}' + "}"
+                    manifest.write_text(json.dumps(first) + "\n" + duplicate_record + "\n")
+                    manifest.chmod(0o600)
+                    output, errors = io.StringIO(), io.StringIO()
+                    with patch.object(recovery, "WatchClient") as client, \
+                         contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                        client.return_value.get_batch.return_value = batch_response(
+                            missing=[first["resourceReference"], second["resourceReference"]])
+                        result = recovery.main(["--snapshots", str(manifest), "--source-namespace", "pilot",
+                                                "--origin", "https://watch.example.com", "--token-file", str(token_file)])
+                    self.assertEqual(result, 1)
+                    client.assert_not_called()
+                    self.assertEqual(output.getvalue(), "")
+                    self.assertIn("스냅샷의 형식", errors.getvalue())
+                    for private_value in [token, second["resourceReference"], second["targetUrl"]]:
+                        self.assertNotIn(private_value, errors.getvalue())
+
     def test_token_file_matches_api_format_without_exposing_credentials(self):
         """API와 같은 문자·패딩·길이 기준을 적용하고 토큰은 출력하지 않는다."""
         valid = ["x" * 32, "x" * 30 + "+/==", "x" * 200, "x" * 198 + "=="]
@@ -239,6 +283,87 @@ class SnapshotRecoveryTest(unittest.TestCase):
                                      [item["resourceReference"] for item in items])
                     self.assertTrue(all(item["remoteRevision"] is None for item in results[20:]))
                     self.assertNotIn("private-error", json.dumps(results))
+
+    def test_duplicate_response_fields_fail_audit_without_hiding_next_batch(self):
+        """중복된 조회 필드를 정상·미등록으로 판단하지 않고 다음 묶음은 계속 확인한다."""
+        items = snapshots(21)
+        first = remote(8, reference=items[0]["resourceReference"])[1]
+        for duplicate in ('"sourceRevision":7', r'"source\u0052evision":7', '"sourceRevision":8'):
+            with self.subTest(duplicate=duplicate):
+                ambiguous = json.dumps(first)[:-1] + "," + duplicate + "}"
+                batch = ('{"monitors":[' + ambiguous + ',' + ','.join(
+                    json.dumps(remote(reference=item["resourceReference"])[1]) for item in items[1:20])
+                    + '],"missingResourceReferences":[]}')
+                accepted = json.dumps(batch_response(remote(reference=items[20]["resourceReference"])[1])[1])
+                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                     patch.object(recovery.subprocess, "run", side_effect=[
+                         subprocess.CompletedProcess([], 0, batch.encode() + b"\n200"),
+                         subprocess.CompletedProcess([], 0, accepted.encode() + b"\n200")]) as run:
+                    results = list(recovery.reconcile(client, items))
+                self.assertEqual(run.call_count, 2)
+                self.assertEqual([result["resourceReference"] for result in results],
+                                 [item["resourceReference"] for item in items])
+                self.assertEqual([result["status"] for result in results],
+                                 ["LOOKUP_OR_REPLAY_FAILED"] * 20 + ["REVISION_MATCH_UNVERIFIED"])
+                self.assertTrue(all(result["remoteRevision"] is None for result in results[:20]))
+
+    def test_duplicate_get_or_put_response_cannot_verify_replay(self):
+        """모호한 GET 뒤에는 PUT을 보내지 않고, 모호한 PUT 응답도 복구 성공으로 보고하지 않는다."""
+        items = snapshots(2)
+        first = remote(reference=items[0]["resourceReference"])[1]
+        second = remote(reference=items[1]["resourceReference"])[1]
+        ambiguous = json.dumps(dict(first, sourceRevision=8))[:-1] + ',"sourceRevision":7}'
+        for method in ("GET", "PUT"):
+            with self.subTest(method=method):
+                bodies = ([json.dumps(first)] if method == "PUT" else []) + [
+                    ambiguous, json.dumps(second), json.dumps(second)]
+                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                     patch.object(recovery.subprocess, "run", side_effect=[
+                         subprocess.CompletedProcess([], 0, body.encode() + b"\n200")
+                         for body in bodies + [json.dumps(second)]]) as run:
+                    results = list(recovery.reconcile(client, items, True))
+                methods = [call.args[0][call.args[0].index("--request") + 1] for call in run.call_args_list]
+                self.assertEqual(methods, (["GET"] if method == "PUT" else []) + [method, "GET", "PUT"])
+                self.assertEqual([result["status"] for result in results], ["LOOKUP_OR_REPLAY_FAILED", "REPLAYED"])
+                self.assertEqual([result["remoteRevision"] for result in results], [None, 7])
+
+    def test_access_denied_stops_requests_even_when_response_transfer_fails(self):
+        """본문 초과·전송 중단·시간 초과 뒤에도 받은 401·403으로 후속 요청을 중단한다."""
+        items = snapshots(21)
+        for code in (401, 403):
+            for returncode in (18, 28, 63):
+                for apply in (False, True):
+                    with self.subTest(code=code, returncode=returncode, apply=apply):
+                        client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                        with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
+                             patch.object(recovery.subprocess, "run", side_effect=curl_result(
+                                 returncode, f"private-error\n{code}".encode())) as run:
+                            results = list(recovery.reconcile(client, items, apply))
+                        self.assertEqual(run.call_count, 1)
+                        self.assertEqual(dns.call_count, 1)
+                        denied_count = 1 if apply else 20
+                        self.assertEqual([item["status"] for item in results],
+                                         ["ACCESS_DENIED"] * denied_count + ["NOT_ATTEMPTED"] * (21 - denied_count))
+                        self.assertEqual([item["resourceReference"] for item in results],
+                                         [item["resourceReference"] for item in items])
+                        self.assertTrue(all(item["remoteRevision"] is None for item in results))
+                        self.assertNotIn("private-error", json.dumps(results))
+
+    def test_other_transfer_failures_are_not_accepted_as_successful_responses(self):
+        """200과 JSON을 받았어도 전송 실패면 거부하고 연결·TLS 오류도 그대로 실패 처리한다."""
+        body = json.dumps(remote()[1]).encode()
+        for returncode, stdout in [(code, body + b"\n200") for code in (18, 28, 63)] + [
+                (7, b"\n000"), (60, b"\n000")]:
+            with self.subTest(returncode=returncode):
+                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                     patch.object(recovery.subprocess, "run", side_effect=curl_result(returncode, stdout)):
+                    with self.assertRaises(recovery.RecoveryError) as failure:
+                        client.request("GET", REFERENCE)
+                self.assertEqual(type(failure.exception), recovery.RecoveryError)
+                self.assertNotIn("private-error", str(failure.exception))
 
     def test_access_denied_during_replay_stops_gets_and_puts(self):
         """GET 또는 PUT의 인증 거부 뒤에는 남은 항목을 조회하거나 재전송하지 않는다."""

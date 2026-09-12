@@ -1,6 +1,5 @@
 package com.personal.baton.watch.bootstrap;
 
-import java.net.URI;
 import java.time.Duration;
 
 final class BootstrapTestFixtures {
@@ -67,7 +66,7 @@ final class BootstrapTestFixtures {
     static EventDeliveryProperties disabledEventDeliveryProperties() {
         return new EventDeliveryProperties(
                 false,
-                URI.create(""),
+                "",
                 "",
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),

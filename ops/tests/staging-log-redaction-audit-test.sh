@@ -72,6 +72,20 @@ assert_failure() {
     assert_safe_output "$output"
 }
 
+assert_incomplete_input() {
+    local description="$1"
+    local output status=0
+
+    output="$(run_audit 2>&1)" || status=$?
+    if [[ "$status" != "1" || "$output" == *'통과'* ]]; then
+        fail "$description 입력을 검사 완료로 처리했습니다"
+    fi
+    assert_safe_output "$output"
+    if [[ "$output" == *"$TEMP_DIR"* ]]; then
+        fail "입력 오류 안내가 파일 경로를 출력했습니다"
+    fi
+}
+
 printf '%s\n' '정상적인 제한 결과와 상태만 있는 로그' >"$LOG_FILE"
 success_output="$(run_audit)"
 assert_safe_output "$success_output"
@@ -83,4 +97,19 @@ assert_failure "$TARGET_URL"
 assert_failure "$RESOURCE_REFERENCE"
 assert_failure "$PAYLOAD"
 
-printf '[staging-log-redaction-audit-test] 7개 사례와 비식별 출력 계약이 통과했습니다\n'
+: >"$LOG_FILE"
+assert_incomplete_input '빈 로그'
+printf '\n \t\n' >"$LOG_FILE"
+assert_incomplete_input '공백뿐인 로그'
+
+printf '%s\n' '정상적인 제한 결과와 상태만 있는 로그' >"$LOG_FILE"
+: >"$SECRET_ONE_FILE"
+assert_incomplete_input '첫 번째 비밀 파일이 빈'
+printf '%s\n' "$SECRET_ONE" >"$SECRET_ONE_FILE"
+printf '\n\n' >"$SECRET_TWO_FILE"
+assert_incomplete_input '두 번째 비밀 파일이 빈'
+printf '%s\n' "$SECRET_TWO" >"$SECRET_TWO_FILE"
+: >"$FORBIDDEN_VALUES_FILE"
+assert_incomplete_input '금지 값 파일이 빈'
+
+printf '[staging-log-redaction-audit-test] 12개 사례와 비식별 출력 계약이 통과했습니다\n'

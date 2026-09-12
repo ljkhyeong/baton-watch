@@ -2,6 +2,50 @@ rule_files:
   - watch-alerts.yml
 evaluation_interval: 1m
 tests:
+  - name: 처음 발생한 실패와 리스 회수는 사전에 수집한 0부터 증가량 계산
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch",instance="initialized"}
+        values: '1x14'
+      - series: up{job="baton-watch",instance="late"}
+        values: '1x14'
+      - series: baton_watch_check_finalizations_total{job="baton-watch",instance="initialized",status="failure"}
+        values: '0x5 2x8'
+      - series: baton_watch_event_delivery_finalizations_total{job="baton-watch",instance="initialized",status="failure"}
+        values: '0x5 2x8'
+      - series: baton_watch_check_lease_recoveries_total{job="baton-watch",instance="initialized"}
+        values: '0x5 2x8'
+      - series: baton_watch_event_delivery_lease_recoveries_total{job="baton-watch",instance="initialized"}
+        values: '0x5 2x8'
+      - series: baton_watch_check_finalizations_total{job="baton-watch",instance="late",status="failure"}
+        values: '_ _ _ _ _ _ 2x8'
+      - series: baton_watch_event_delivery_finalizations_total{job="baton-watch",instance="late",status="failure"}
+        values: '_ _ _ _ _ _ 2x8'
+      - series: baton_watch_check_lease_recoveries_total{job="baton-watch",instance="late"}
+        values: '_ _ _ _ _ _ 2x8'
+      - series: baton_watch_event_delivery_lease_recoveries_total{job="baton-watch",instance="late"}
+        values: '_ _ _ _ _ _ 2x8'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: WatchFinalizationFailures
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: initialized, severity: warning}
+            exp_annotations: {summary: WATCH 완료 처리 반복 실패}
+      - eval_time: 8m
+        alertname: WatchLeaseRecoveryBurst
+        exp_alerts:
+          - exp_labels: {job: baton-watch, instance: initialized, severity: warning}
+            exp_annotations: {summary: WATCH 만료 리스 반복 회수}
+    promql_expr_test:
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 5m
+        exp_samples: []
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 7m
+        exp_samples: []
+      - expr: ALERTS{alertstate="firing"}
+        eval_time: 10m
+        exp_samples: []
   - name: 두 카운터가 함께 존재하고 합계만 임계치를 넘는 경우
     interval: 2m
     input_series:

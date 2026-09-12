@@ -44,6 +44,9 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
     public List<InetAddress> resolve(String hostname, Duration timeout) throws DnsLookupException {
         Objects.requireNonNull(hostname, "hostname");
         Objects.requireNonNull(timeout, "timeout");
+        if (Thread.currentThread().isInterrupted()) {
+            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
+        }
         if (!timeout.isPositive()) {
             throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
         }

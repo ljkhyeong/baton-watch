@@ -17,6 +17,12 @@ SELECT json_build_object(
         SELECT row_to_json(monitor)
         FROM (
             SELECT source_revision AS "sourceRevision", monitor_status AS "monitoringState",
+                   CASE
+                       WHEN monitor_status = 'INACTIVE' THEN 'INACTIVE'
+                       WHEN lease_expires_at > statement_timestamp() THEN 'IN_PROGRESS'
+                       WHEN next_check_at > statement_timestamp() THEN 'SCHEDULED'
+                       ELSE 'QUEUED'
+                   END AS "checkStatus",
                    current_health AS health, consecutive_failures AS "consecutiveFailures",
                    last_outcome AS "lastOutcome", last_checked_at AS "lastCheckedAt",
                    last_conclusive_at AS "lastConclusiveAt", next_check_at AS "nextCheckAt"
@@ -45,6 +51,12 @@ SELECT json_build_object(
             SELECT event_id AS "eventId", source_revision AS "sourceRevision",
                    changed_at AS "changedAt", current_health AS "currentHealth",
                    delivery_status AS "deliveryStatus", delivery_attempt AS "deliveryAttempt",
+                   CASE
+                       WHEN delivery_status = 'DELIVERED' THEN 'DELIVERED'
+                       WHEN delivery_lease_expires_at > statement_timestamp() THEN 'IN_PROGRESS'
+                       WHEN next_attempt_at > statement_timestamp() THEN 'SCHEDULED'
+                       ELSE 'QUEUED'
+                   END AS "deliveryProgress",
                    last_delivery_outcome AS "lastDeliveryOutcome",
                    last_http_status_code AS "lastHttpStatusCode",
                    next_attempt_at AS "nextAttemptAt", delivered_at AS "deliveredAt"

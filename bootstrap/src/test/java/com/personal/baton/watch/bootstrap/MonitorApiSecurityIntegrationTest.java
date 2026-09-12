@@ -38,6 +38,7 @@ import java.util.stream.IntStream;
 import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -186,6 +187,36 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
     }
 
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"wrong-token", API_TOKEN})
+    void exactSystemStatusHeadIsPublicAndReturnsOnlyHeaders(String token) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(uri("/api/v1/system/status"))
+                .method("HEAD", HttpRequest.BodyPublishers.noBody()), token);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEmpty();
+        assertHeaderContains(response, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+        assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/v1/resource-monitors/resource-1",
+        "/api/v1/system/status/",
+        "/api/v1/system/status/extra"
+    })
+    void headOnOtherPathsStillRequiresAuthentication(String path) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(uri(path))
+                .method("HEAD", HttpRequest.BodyPublishers.noBody()), null);
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.body()).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).contains("Bearer");
+    }
+
     @Test
     void authenticationPrecedesRequestBodyParsingAndPutDoesNotRequireCsrf() throws Exception {
         HttpResponse<String> missing = put("/api/v1/resource-monitors/resource-1", null, "{");
@@ -206,10 +237,41 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1"})
-    void rejectsFloatingPointRevisionsBeforeSynchronization(String revision) throws Exception {
+    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1", "\"42\"", "\"0\"", "\"9223372036854775807\""})
+    void rejectsNonIntegerRevisionTokensBeforeSynchronization(String revision) throws Exception {
         String path = "/api/v1/resource-monitors/storage-unavailable";
         String body = "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"sourceRevision\":42,\"monitoringState\":0,\"targetUrl\":\"https://example.com/health\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":1}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"0\",\"targetUrl\":\"https://example.com/health\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"1\"}"
+    })
+    void rejectsNumericMonitoringStatesBeforeSynchronization(String body) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"sourceRevision\":41,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"targetUrl\":\"https://example.com/first\",\"targetUrl\":\"https://example.com/second\"}",
+        "{\"sourceRevision\":42,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":41,\"source\\u0052evision\":42,\"monitoringState\":\"INACTIVE\"}"
+    })
+    void rejectsDuplicateJsonFieldsBeforeSynchronization(String body) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
 
         assertUnauthorized(put(path, null, body));
         assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",

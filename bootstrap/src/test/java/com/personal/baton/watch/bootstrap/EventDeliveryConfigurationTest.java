@@ -1,6 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
 import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChangeEventSender;
@@ -12,19 +13,26 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
+@ExtendWith(OutputCaptureExtension.class)
 class EventDeliveryConfigurationTest {
 
     private static final String API_TOKEN = "a-test-token-that-is-longer-than-32-characters";
@@ -87,6 +95,49 @@ class EventDeliveryConfigurationTest {
     @Test
     void rejectsInvalidSettingInsteadOfSilentlyDisablingDelivery() {
         withDeliverySetting("enabled").run(context -> assertThat(context).hasFailed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "https://baton.example/callback/a%2Fb",
+        "https://baton.example/callback/a%20b"
+    })
+    void preservesConfiguredEndpointEncoding(String endpoint) {
+        withDeliverySetting("true").withPropertyValues("watch.event-delivery.endpoint=" + endpoint)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context.getBean(EventDeliveryProperties.class).endpointUri().toString())
+                            .isEqualTo(endpoint);
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "https://endpoint-sensitive-marker.example/callback bad",
+        "https://[endpoint-sensitive-marker/callback",
+        "https://user:endpoint-sensitive-marker@baton.example/callback"
+    })
+    void rejectsInvalidEndpointsWithoutLoggingTheirValues(String endpoint, CapturedOutput output) {
+        SpringApplication application = new SpringApplication(
+                Settings.class, EventDeliveryConfiguration.class, JacksonAutoConfiguration.class);
+        application.setWebApplicationType(WebApplicationType.NONE);
+        application.setRegisterShutdownHook(false);
+        application.addInitializers(context -> {
+            GenericApplicationContext beans = (GenericApplicationContext) context;
+            beans.registerBean(JdbcClient.class, () -> mock(JdbcClient.class));
+            beans.registerBean(TransactionOperations.class, () -> mock(TransactionOperations.class));
+            beans.registerBean(Clock.class, () -> Clock.fixed(
+                    Instant.parse("2026-08-30T00:00:00Z"), ZoneOffset.UTC));
+            beans.registerBean(MonitoringMetrics.class, () -> new MonitoringMetrics(new SimpleMeterRegistry()));
+        });
+
+        RuntimeException failure = assertThrows(RuntimeException.class, () -> application.run(
+                    "--watch.api-token=" + API_TOKEN,
+                    "--watch.event-delivery.enabled=true",
+                    "--watch.event-delivery.endpoint=" + endpoint,
+                    "--watch.event-delivery.bearer-token=a-separate-delivery-token-longer-than-32-characters").close());
+        assertThat(failure).hasStackTraceContaining("endpoint");
+        assertThat(output.getAll()).doesNotContain("endpoint-sensitive-marker");
     }
 
     private ApplicationContextRunner withDeliverySetting(String enabled) {

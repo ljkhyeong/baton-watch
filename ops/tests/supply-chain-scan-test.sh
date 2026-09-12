@@ -56,6 +56,13 @@ case "$1 $2" in
             previous="$argument"
         done
         if [ -n "$report" ]; then
+            if [ "${WATCH_TEST_MISSING_REPORT-}" = "$report" ]; then
+                exit 0
+            fi
+            if [ "${WATCH_TEST_EMPTY_REPORT-}" = "$report" ]; then
+                : >"$reports/$report"
+                exit 0
+            fi
             printf '%s\n' '{"bomFormat":"CycloneDX","components":[{"purl":"pkg:maven/example/test@1.0","licenses":[{"license":{"id":"Apache-2.0"}}]}]}' >"$reports/$report"
             if [ "${WATCH_TEST_FAIL_REPORT-}" = "$report" ]; then
                 exit 1
@@ -174,5 +181,34 @@ fi
 if [ -e "$missing_archive_reports" ]; then
     fail "입력 아카이브 확인 실패가 최종 보고서 경로를 남겼습니다"
 fi
+
+for incomplete in missing empty; do
+    incomplete_reports="$TEMP_DIR/$incomplete-report-output"
+    missing_report=""
+    empty_report=""
+    if [ "$incomplete" = missing ]; then
+        missing_report="migrations.cdx.json"
+    else
+        empty_report="baton-watch.cdx.json"
+    fi
+    if PATH="$TEMP_DIR/bin:$PATH" \
+        WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/$incomplete-report-docker-calls" \
+        WATCH_TEST_MISSING_REPORT="$missing_report" \
+        WATCH_TEST_EMPTY_REPORT="$empty_report" \
+        WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
+        "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
+        "$incomplete_reports" "$TEMP_DIR/baton-watch.jar" \
+        "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
+        "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test \
+        >"$TEMP_DIR/$incomplete-report-output.log" 2>&1; then
+        fail "검사 명령이 성공해도 보고서가 없거나 비면 실패해야 합니다: $incomplete"
+    fi
+    if [ -e "$incomplete_reports/SHA256SUMS" ] || [ -e "$incomplete_reports/baton-watch.jar" ]; then
+        fail "불완전한 보고서를 배포용 완료 산출물로 표시했습니다"
+    fi
+    if [ ! -s "$incomplete_reports/cloudflared.cdx.json" ]; then
+        fail "보고서 누락 뒤의 검사를 실행하고 결과를 보존해야 합니다"
+    fi
+done
 
 printf '[supply-chain-scan-test] 공용 취약점·라이선스 검사 계약이 통과했습니다\n'

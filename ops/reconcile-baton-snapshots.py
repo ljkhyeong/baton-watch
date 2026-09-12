@@ -51,6 +51,13 @@ def private_file(path, limit):
         raise RecoveryError("입력 파일을 안전하게 읽지 못했습니다") from None
 
 
+def unique_json_object(pairs):
+    item = dict(pairs)
+    if len(item) != len(pairs):
+        raise ValueError()
+    return item
+
+
 def read_snapshots(raw, namespace):
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,63}", namespace):
         raise RecoveryError("소스 이름공간 형식이 올바르지 않습니다")
@@ -60,7 +67,7 @@ def read_snapshots(raw, namespace):
         for line in raw.decode("utf-8").splitlines():
             if not line.strip():
                 raise ValueError()
-            item = json.loads(line)
+            item = json.loads(line, object_pairs_hook=unique_json_object)
             if not isinstance(item, dict) or set(item) != FIELDS:
                 raise ValueError()
             reference = item["resourceReference"]
@@ -137,14 +144,16 @@ class WatchClient:
                    "--write-out", "\n%{http_code}"]
         self.last_request = time.monotonic()
         try:
-            response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=True)
+            response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=False)
             body, code = response.stdout.rsplit(b"\n", 1)
             status = int(code)
+            # 본문 수신에 실패해도 이미 받은 인증·접근 거부는 후속 요청을 중단한다.
             if status in (401, 403):
                 raise AccessDeniedError("WATCH API 토큰과 접근 권한을 확인하세요")
+            response.check_returncode()
             if len(body) > max_response_bytes:
                 raise ValueError()
-            return status, json.loads(body) if body else None
+            return status, json.loads(body, object_pairs_hook=unique_json_object) if body else None
         except (OSError, subprocess.SubprocessError, ValueError):
             raise RecoveryError("WATCH 요청 또는 응답 확인에 실패했습니다") from None
 

@@ -94,6 +94,13 @@ save_image "$CLOUDFLARED_IMAGE" cloudflared.tar
 WORK_OUTPUT_DIR="$(mktemp -d "${OUTPUT_DIR}.tmp.XXXXXX")"
 chmod 0700 "$WORK_OUTPUT_DIR"
 
+require_report() {
+    if [ ! -f "$WORK_OUTPUT_DIR/$1" ] || [ ! -s "$WORK_OUTPUT_DIR/$1" ]; then
+        printf '%s SBOM 보고서 파일이 없거나 비어 있습니다: %s\n' "$PREFIX" "$1" >&2
+        return 1
+    fi
+}
+
 scan_rootfs() {
     docker run --rm \
         --user "$CONTAINER_USER" \
@@ -110,7 +117,8 @@ scan_rootfs() {
         --exit-code 1 \
         --skip-version-check \
         --no-progress \
-        /inputs
+        /inputs || return $?
+    require_report baton-watch.cdx.json
 }
 
 scan_image_archive() {
@@ -131,7 +139,8 @@ scan_image_archive() {
         --exit-code 1 \
         --skip-version-check \
         --no-progress \
-        --input /inputs/image.tar
+        --input /inputs/image.tar || return $?
+    require_report "$report"
 }
 
 scan_failed=false

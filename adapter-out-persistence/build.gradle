@@ -17,6 +17,14 @@ dependencies {
 
 tasks.named('test', Test) {
     useJUnitPlatform { excludeTags 'load', 'process-recovery' }
+    // 테스트가 별도 프로세스에서 읽는 운영 파일도 변경 감지에 포함한다.
+    inputs.files(rootProject.files(
+        'ops/staging-monitor-diagnostics.sh',
+        'ops/monitor-diagnostics.sql',
+        'ops/staging-database-backup.sh',
+        'ops/compose.restore-test.yml',
+        'ops/verify-restored-database.sql'
+    )).withPropertyName('databaseTooling').withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 tasks.register('processRecoveryTest', Test) {

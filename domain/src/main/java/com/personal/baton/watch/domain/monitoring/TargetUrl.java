@@ -45,7 +45,9 @@ public record TargetUrl(String value) {
         if (value.isEmpty()
                 || value.length() > MAX_LENGTH
                 || value.codePoints().anyMatch(codePoint ->
-                        codePoint == '\\' || Character.isISOControl(codePoint))) {
+                        codePoint == '\\'
+                                || Character.isISOControl(codePoint)
+                                || Character.getType(codePoint) == Character.SURROGATE)) {
             throw invalid();
         }
     }

@@ -23,8 +23,8 @@ DB 연결 풀, 진행 중인 외부 요청 수를 보여준다. 임계치는 운
 
 ## 경보 범위
 
-프록시와 공개 HTTPS의 실제 요청 경로는 [인바운드 점검 절차](ingress-monitoring.md)의
-Blackbox Exporter 수집 템플릿과 선택적 경보 3개로 별도 확인한다. 아래 WATCH 내부
+프록시·공개 HTTPS 요청과 공개 TLS 인증서 만료는 [인바운드 점검 절차](ingress-monitoring.md)의
+Blackbox Exporter 수집 템플릿과 선택적 경보 4개로 별도 확인한다. 아래 WATCH 내부
 지표 11개 규칙만으로는 프록시 경로 장애를 감지할 수 없다.
 
 `ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다.
@@ -51,6 +51,10 @@ Blackbox Exporter 수집 템플릿과 선택적 경보 3개로 별도 확인한�
 개별 대상의 일시적 HTTP 오류에는 경보를 걸지 않는다. 미실행 경보는
 `process_uptime_seconds > 600`일 때만 평가하여 시작·재시작 직후를 제외한다.
 오류 카운터가 아직 없는 상태와 카운터 초기화 자체를 장애로 취급하지 않는다.
+점검·전달의 완료 실패(`status="failure"`)와 리스 회수 카운터 4개는 시작 시 0으로 등록한다.
+실패 뒤 처음 나타나는 카운터의 증가량 누락을 줄이기 위한 것으로,
+[Prometheus의 기본값 권장사항](https://prometheus.io/docs/practices/instrumentation/#avoid-missing-metrics)을 따른다.
+첫 실패 전에 0이 한 번 이상 수집되어야 효과가 있으며, 최초 수집 전에 발생한 사건을 소급 계산하지는 않는다.
 완료 실패와 리스 회수는 점검·전달 카운터의 증가량을 각각 계산한 뒤
 합산한다. 계산 중의 `watch_worker` 레이블은 이름이 제거된 시계열의 충돌을
 막기 위한 것으로, 최종 경보에는 남기지 않는다. 한쪽 카운터만 존재해도 평가하며

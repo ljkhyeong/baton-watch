@@ -114,3 +114,76 @@ tests:
             exp_annotations: {summary: WATCH 인바운드 점검 대상 누락}
           - exp_labels: {job: baton-watch-ingress, route: public, severity: warning}
             exp_annotations: {summary: WATCH 인바운드 점검 대상 누락}
+  - name: 인증서 만료 7일 경계부터 2분간 대기하고 갱신하면 해제
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x9'
+      - series: probe_success{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x9'
+      - series: probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",instance="watch-public",route="public"}
+        # 3분 시점에 정확히 7일 남고 7분 시점에 갱신된다.
+        values: '604980x6 2592000x2'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts:
+          - exp_labels: {job: baton-watch-ingress, instance: watch-public, route: public, severity: warning}
+            exp_annotations: {summary: WATCH 공개 TLS 인증서 만료 임박}
+      - eval_time: 7m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts: []
+  - name: 수집 실패·만료 지표 누락·다른 경로와 작업은 만료 경보에서 제외
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '0x8'
+      - series: probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '604800x8'
+      - series: up{job="baton-watch-ingress",instance="missing-expiry",route="public"}
+        values: '1x8'
+      - series: probe_success{job="baton-watch-ingress",instance="missing-expiry",route="public"}
+        values: '1x8'
+      - series: probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",instance="missing-scrape",route="public"}
+        values: '604800x8'
+      - series: up{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
+        values: '1x8'
+      - series: probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",instance="watch-gateway",route="gateway"}
+        values: '604800x8'
+      - series: up{job="other",instance="other-public",route="public"}
+        values: '1x8'
+      - series: probe_ssl_earliest_cert_expiry{job="other",instance="other-public",route="public"}
+        values: '604800x8'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts: []
+  - name: TLS 연결 실패로 만료 시각을 못 받으면 기존 요청 실패 경보로 확인
+    interval: 1m
+    input_series:
+      - series: up{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x8'
+      - series: probe_success{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '1x2 0x5'
+      - series: probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",instance="watch-public",route="public"}
+        values: '604800x2 stale _x4'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts:
+          - exp_labels: {job: baton-watch-ingress, instance: watch-public, route: public, severity: warning}
+            exp_annotations: {summary: WATCH 공개 TLS 인증서 만료 임박}
+      - eval_time: 5m
+        alertname: WatchIngressTlsExpiring
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: WatchIngressRequestFailed
+        exp_alerts:
+          - exp_labels: {job: baton-watch-ingress, instance: watch-public, route: public, severity: critical}
+            exp_annotations: {summary: WATCH 인바운드 정상 응답 확인 실패}

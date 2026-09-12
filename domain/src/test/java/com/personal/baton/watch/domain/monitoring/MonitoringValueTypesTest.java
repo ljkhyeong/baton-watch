@@ -26,6 +26,7 @@ class MonitoringValueTypesTest {
         new TargetUrl("http://example.com:80/health?detail=short");
         new TargetUrl("https://status.example.com:443");
         new TargetUrl("https://example.com/a%20path?literal=%25").requireSafeEncodedCharacters();
+        new TargetUrl("https://example.com/자료/\uD83D\uDE00?검색=한글").requireSafeEncodedCharacters();
         String prefix = "https://example.com/";
         new TargetUrl(prefix + "a".repeat(TargetUrl.MAX_LENGTH - prefix.length()));
         assertThrows(
@@ -58,6 +59,10 @@ class MonitoringValueTypesTest {
             "https://example.com\\health",
             "https://example.com\\@evil.example/health",
             "https://example.com/health\nnext",
+            "https://example.com/\uD800",
+            "https://example.com/\uDC00",
+            "https://example.com/\uD800path",
+            "https://example.com/?query=\uDFFF",
             "https://example.com%2e.evil.example/health",
             "https:///missing-host",
             "https://example.com:443:443/health"

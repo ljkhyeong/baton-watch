@@ -64,8 +64,26 @@ class SafeUrlCheckEngineTest {
             https://Example.COM/docs/page | ?page=2 | https://Example.COM/docs/page?page=2
             https://Example.COM/docs/a%2Fb?old=%2F | ?next=%2f%3F&tag=a+b | https://Example.COM/docs/a%2Fb?next=%2f%3F&tag=a+b
             https://Example.COM/docs/page?old=1 | ? | https://Example.COM/docs/page?
+            https://Example.COM/docs//page | next | https://Example.COM/docs//next
+            https://Example.COM/docs//page | ./next | https://Example.COM/docs//next
+            https://Example.COM/docs//page | ../next | https://Example.COM/docs/next
+            https://Example.COM/docs//page | a//next | https://Example.COM/docs//a//next
+            https://Example.COM/docs//page | a/..//next | https://Example.COM/docs///next
+            https://Example.COM/docs//page | . | https://Example.COM/docs//
+            https://Example.COM/docs//page | .. | https://Example.COM/docs/
+            https://Example.COM/docs/page | ../../../next | https://Example.COM/next
+            https://Example.COM | next | https://Example.COM/next
+            https://Example.COM//docs/page | ../next | https://Example.COM//next
+            https://Example.COM/docs//page | a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b | https://Example.COM/docs//a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b
+            https://Example.COM/start | /docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | /./guide | https://Example.COM/guide
+            https://Example.COM/start | /../../guide | https://Example.COM/guide
+            https://Example.COM/start | /docs/. | https://Example.COM/docs/
+            https://Example.COM/start | https://Example.COM/docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | //Example.COM/docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | /docs//./a/../%2e%2E/x%2Fy?next=/../&tag=%2f | https://Example.COM/docs//%2e%2E/x%2Fy?next=/../&tag=%2f
             """)
-    void preservesThePathWhenARedirectOnlyChangesTheQuery(String target, String location, String expected)
+    void resolvesRedirectsWithoutChangingPathOrQueryEncoding(String target, String location, String expected)
             throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
@@ -82,15 +100,25 @@ class SafeUrlCheckEngineTest {
         assertEquals(publicAnswer(), transport.targets.get(1).addresses());
     }
 
-    @Test
-    void rejectsAQueryOnlyRedirectToTheSamePageBeforeAnotherConnection() throws Exception {
+    @ParameterizedTest
+    @CsvSource({
+        "https://example.com/docs/page?page=2, ?page=2",
+        "https://example.com/docs//page, page",
+        "https://example.com/docs//page, ./page",
+        "https://example.com/docs//page, next/../page",
+        "https://example.com/docs/page, /docs/./page",
+        "https://example.com/docs/page, https://example.com/docs/other/../page",
+        "https://example.com/docs/page, //example.com/docs/other/../page"
+    })
+    void rejectsARedirectToTheSamePageBeforeAnotherConnection(String target, String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(redirect(302, "?page=2"));
+        transport.add(redirect(302, location));
+        transport.add(finalStatus(200));
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://example.com/docs/page?page=2"));
+                .check(new TargetUrl(target));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         assertEquals(0, observation.redirectCount());
@@ -159,9 +187,16 @@ class SafeUrlCheckEngineTest {
         "%0d/../safe",
         "%5c/../safe",
         "?next=%0d%0aHost:internal",
-        "?next=%5c%5cevil.example"
+        "?next=%5c%5cevil.example",
+        "/\uD800",
+        "?query=\uDC00",
+        "https:guide",
+        "https:/docs/../guide",
+        "ftp://example.com/docs/../guide",
+        "https://user:password@example.com/docs/../guide",
+        "/docs/../guide#section"
     })
-    void rejectsEncodedControlOrBackslashRedirectsBeforeASecondConnection(String location) throws Exception {
+    void rejectsUnsafeRedirectsBeforeASecondConnection(String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);

@@ -48,6 +48,10 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(timeout, "timeout");
         Objects.requireNonNull(operation, "operation");
+        if (Thread.currentThread().isInterrupted()) {
+            request.cancel();
+            throw new OutboundHttpFailure(OutboundHttpFailure.Kind.INTERNAL_FAILURE);
+        }
         if (!timeout.isPositive()) {
             throw new OutboundHttpFailure(OutboundHttpFailure.Kind.CONNECT_TIMEOUT);
         }

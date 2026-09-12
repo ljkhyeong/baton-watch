@@ -90,42 +90,61 @@ if ! command -v curl >/dev/null 2>&1; then
     fail "curl이 필요합니다"
 fi
 
+audit_dir="$(mktemp -d "${TMPDIR:-/tmp}/baton-watch-preflight.XXXXXX")"
+readonly audit_dir
+readonly response_body="$audit_dir/response.body"
+
+cleanup() {
+    local exit_code=$?
+    trap - EXIT
+    rm -f "$response_body"
+    rmdir "$audit_dir"
+    exit "$exit_code"
+}
+trap cleanup EXIT
+
 curl_status() {
     local request_url="$1"
-    shift
+    local output_file="$2"
+    shift 2
 
     printf 'url = "%s"\n' "$request_url" | curl \
         --disable \
         --config - \
         --silent \
         --noproxy '*' \
-        --output /dev/null \
+        --output "$output_file" \
         --write-out '%{http_code}' \
         --proto '=https' \
         --tlsv1.2 \
         --connect-timeout 5 \
         --max-time 10 \
+        --max-filesize 65536 \
         "$@"
 }
 
-if ! watch_status="$(curl_status "$watch_public_base_url/api/v1/system/status")"; then
+if ! watch_status="$(curl_status "$watch_public_base_url/api/v1/system/status" "$response_body")"; then
     fail "WATCH 공개 상태 요청이 실패했습니다"
 fi
 if [[ "$watch_status" != "200" ]]; then
-    fail "WATCH 공개 상태 요청이 예상하지 않은 HTTP 상태 $watch_status를 반환했습니다"
+    fail "WATCH 공개 상태 요청이 예상하지 않은 HTTP 상태 ${watch_status}를 반환했습니다"
+fi
+if ! python3 "$SCRIPT_DIR/check-watch-status.py" "$response_body"; then
+    fail "공개 상태 응답이 baton-watch의 UP 상태 JSON이 아닙니다"
 fi
 
 # 본문은 의도적으로 잘못된 형식입니다. HTTP 401은 JSON 역직렬화 오류가 드러나기
 # 전에 수신기가 요청을 거부했음을 외부에서 증명합니다.
 if ! receiver_status="$(curl_status \
         "$delivery_endpoint" \
+        /dev/null \
         --request POST \
         --header 'Content-Type: application/json' \
         --data-binary '{"eventId":')"; then
     fail "BATON 수신기 인증 사전 요청이 실패했습니다"
 fi
 if [[ "$receiver_status" != "401" ]]; then
-    fail "BATON 수신기는 미인증 사전 요청을 HTTP 401로 거부해야 하지만 $receiver_status를 반환했습니다"
+    fail "BATON 수신기는 미인증 사전 요청을 HTTP 401로 거부해야 하지만 ${receiver_status}를 반환했습니다"
 fi
 
 unset watch_public_base_url delivery_endpoint watch_status receiver_status
