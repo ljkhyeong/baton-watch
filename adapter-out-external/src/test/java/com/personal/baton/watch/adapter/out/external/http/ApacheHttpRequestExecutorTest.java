@@ -31,6 +31,31 @@ import org.junit.jupiter.params.provider.ValueSource;
 class ApacheHttpRequestExecutorTest {
 
     @Test
+    void alreadyInterruptedCallerDoesNotStartHttpWorkAndPreservesInterruption() throws Exception {
+        AtomicBoolean workerCreated = new AtomicBoolean();
+        ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
+            workerCreated.set(true);
+            return Thread.ofPlatform().unstarted(task);
+        });
+        HttpGet request = new HttpGet("https://check.test/cancelled");
+        try (var executor = new ApacheHttpRequestExecutor(worker)) {
+            try {
+                Thread.currentThread().interrupt();
+                OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
+                        () -> executor.execute(request, Duration.ofSeconds(1), started -> "sent"));
+                assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+            assertFalse(workerCreated.get());
+            assertTrue(request.isCancelled());
+            assertEquals("sent", executor.execute(new HttpGet("https://check.test/next"),
+                    Duration.ofSeconds(1), started -> "sent"));
+        }
+    }
+
+    @Test
     void reportsConnectTimeoutAndCancelsWorkBeforeAResponseStarts() throws Exception {
         assertTimedOut(false, OutboundHttpFailure.Kind.CONNECT_TIMEOUT);
     }

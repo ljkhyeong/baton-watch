@@ -10,6 +10,7 @@ import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +25,29 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class BoundedDnsLookupTest {
+
+    @Test
+    void alreadyInterruptedCallerDoesNotStartDnsWorkAndPreservesInterruption() throws Exception {
+        AtomicBoolean workerCreated = new AtomicBoolean();
+        ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
+            workerCreated.set(true);
+            return Thread.ofPlatform().unstarted(task);
+        });
+        InetAddress address = InetAddress.getLoopbackAddress();
+        try (var lookup = new BoundedDnsLookup(worker, hostname -> new InetAddress[] {address})) {
+            try {
+                Thread.currentThread().interrupt();
+                DnsLookupException failure = assertThrows(DnsLookupException.class,
+                        () -> lookup.resolve("cancelled.example", Duration.ofSeconds(1)));
+                assertEquals(DnsLookupException.Reason.INTERNAL_FAILURE, failure.reason());
+                assertTrue(Thread.currentThread().isInterrupted());
+            } finally {
+                Thread.interrupted();
+            }
+            assertFalse(workerCreated.get());
+            assertEquals(List.of(address), lookup.resolve("next.example", Duration.ofSeconds(1)));
+        }
+    }
 
     @Test
     void rejectsExecutorBoundsBeforeAllocatingThreadsOrQueues() {
