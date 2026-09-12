@@ -27,9 +27,10 @@ DB 연결 풀, 진행 중인 외부 요청 수를 보여준다. 임계치는 운
 Blackbox Exporter 수집 템플릿과 선택적 경보 3개로 별도 확인한다. 아래 WATCH 내부
 지표 11개 규칙만으로는 프록시 경로 장애를 감지할 수 없다.
 
-`ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다. 외부
-메트릭 전송, 수집기 배포, Alertmanager 연결, 외부 알림 수신자 설정은 포함하지
-않는다. 아래 임계치는 운영 승인을 받기 전의 시작값이며 SLO가 아니다.
+`ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다.
+외부 알림은 [Telegram 연결 설정](external-api-options.md)을 선택적으로 사용한다.
+수집기·Alertmanager와 실제 수신 채팅은 별도로 연결해야 한다.
+아래 임계치는 운영 승인을 받기 전의 시작값이며 SLO가 아니다.
 
 ## 규칙과 대응
 
