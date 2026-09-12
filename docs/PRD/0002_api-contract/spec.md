@@ -86,10 +86,14 @@ HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 비활성 스냅샷은 `"monitoringState": "INACTIVE"`를 사용하며 `targetUrl`을
 생략하거나 null로 설정해야 한다.
 
-`sourceRevision`의 범위는 0부터 9223372036854775807까지다. 소수나 지수 표기 숫자는
-정수로 변환하지 않고 HTTP 400 `INVALID_REQUEST`로 거부한다. `42.0`·`4.2e1`도 거부하며,
-클라이언트는 `42`처럼 정수로 전송한다. `-0.5`가 0으로 바뀌어 음수 검증을 통과할 수 없다.
-숫자 해석에는 Spring Boot의 `spring.jackson.deserialization.accept-float-as-int=false`를 사용한다.
+`sourceRevision`은 0부터 9223372036854775807까지의 JSON 정수로 전송한다.
+소수·지수 표기·숫자 문자열(`-0.5`·`42.0`·`4.2e1`·`"42"`)은 자동 변환하지 않고
+HTTP 400 `INVALID_REQUEST`로 거부한다.
+
+`monitoringState`는 `"ACTIVE"` 또는 `"INACTIVE"` 문자열만 받는다.
+`0`·`1`·`"0"`·`"1"`을 상태값으로 변환하지 않으며 HTTP 400 `INVALID_REQUEST`로 거부한다.
+타입 변환은 [기본 JSON 설정](../../../bootstrap/src/main/resources/application.yml)의
+Spring Boot 기능으로 제어한다.
 
 PUT과 GET은 `application/json`을 반환한다.
 
