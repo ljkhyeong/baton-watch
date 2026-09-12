@@ -4,6 +4,10 @@
 
 ## 현재 작업
 
+- `a078dab`에서 상대 리다이렉트를 해석할 때 연속 슬래시가 줄어드는 오류를 수정했다.
+  `/docs//page`의 `next` 이동은 `/docs//next`를 유지한다. JDK·Apache의 경로 정규화가 빈 구간을
+  제거하므로 상대 경로 병합만 보완했다. 인코딩·쿼리 보존, 목적지 재검증·IP 고정·순환 거부는 유지한다.
+  [점검 기준](docs/PRD/0003_monitoring-mvp/spec.md)에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - `977de2c`에서 [읽기 전용 진단](docs/runbooks/check-control-and-diagnostics.md)에 `monitor.checkStatus`를 추가했다.
   기존 일정·점유와 DB 조회 시각으로 예약·대기·진행 중·비활성을 구분한다. API와 같은 판단 규칙을 사용하며
   리스 토큰·만료 시각은 출력하지 않는다. 추가 의존성·스키마 변경·비용은 없으며 운영 배포는 미실행이다.
@@ -148,6 +152,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 상대 리다이렉트 경로 `a078dab` | 수정 전 경로·쿼리 사례 15개 중 10개에서 잘못된 주소 재현. 수정 후 같은 15개와 외부 통신 모듈 전체 257개 통과, 실패·건너뜀 없음. 빈 경로 구간·점 구간·인코딩·쿼리 보존, 상대 주소의 순환 거부, DNS 재검증·IP 고정과 실제 HTTP 전송 확인. 단일 모듈 변경으로 전체 Java·DB·부하·이미지 검사는 재실행하지 않음 |
 | 진단 진행 상태 `977de2c` | 실제 PostgreSQL 진단 테스트 16개 후 영속성 모듈 전체 79개 통과, 실패·건너뜀 없음. 일정·점유 조합 7개의 상태와 같은 조회 시각의 도메인 판단 일치, 읽기 전용·정보 제외·이력 제한·잠금 시간 초과 확인. 점검 실행·API·외부 통신·스키마 변경이 없어 전체 Java·부하·이미지 검사는 재실행하지 않음 |
 | 런타임 부하 검사 `d9eb4dd` | [원격 검사](https://github.com/ljkhyeong/baton-watch/actions/runs/34675952314)에서 실제 503과 예전 기대값 500의 불일치 확인. 수정 후 `:bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 통과, 테스트 1개·실패·건너뜀 없음. 실제 PostgreSQL의 풀 고갈·복구, 503·재시도 안내, 25개 점검·전달 복구와 최종 미전달 0건 확인. 외부 점검·콜백은 테스트 대역이며 운영 코드·이미지 변경은 없음 |
 | 복구 인증 실패 중단 `75fdde4` | 수정 전 401·403의 후속 요청 10개 조건 재현. 수정 후 복구 도구 16개와 추가 CLI 검사 1개, 총 17개 통과. JSON·HTML·빈 본문, 묶음 조회와 재전송 GET·PUT 중단, 이전 결과·전체 항목·요약·종료 코드 2와 비밀값 비노출 확인. DNS·curl 응답을 모의했으며 실제 서버 인증·운영 복구는 미실행. Java·DB·이미지 변경이 없어 관련 검사는 반복하지 않음 |
@@ -194,6 +199,10 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+상대 리다이렉트 수정의 작업 기준은 `11dde34`이며 검증한 코드·테스트는 `a078dab`과 같다.
+`.gradle/agent-validation/`의 `*-relative-redirect-reproduction/`에 재현 실패,
+`*-relative-redirect-cases/`와 `*-relative-redirect-external/`에 수정 후 성공,
+`*-relative-redirect-complete/`에 종료 검사를 기록한다.
 진단 진행 상태의 작업 기준은 `697e60b`이며 검증한 SQL·테스트는 `977de2c`와 같다.
 `.gradle/agent-validation/`의 `*-diagnostic-check-status-tests/`와
 `*-diagnostic-check-status-persistence/`에 동작 검사, `*-diagnostic-check-status-complete/`에 종료 검사를 기록한다.
