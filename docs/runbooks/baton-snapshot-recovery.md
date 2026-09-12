@@ -67,7 +67,9 @@ python3 ops/reconcile-baton-snapshots.py \
 | `NOT_ATTEMPTED` | 앞선 인증·접근 거부로 요청하지 않은 항목 |
 | `LOOKUP_FAILED`·`LOOKUP_OR_REPLAY_FAILED` | HTTP 계약·DNS·네트워크 실패 등으로 확인 불가 |
 
-인증·접근 거부는 JSON·HTML·빈 응답 본문과 관계없이 HTTP 상태로 판단한다. 거부된 요청의
+인증·접근 거부는 JSON·HTML·빈 응답 본문과 관계없이 HTTP 상태로 판단한다.
+401·403을 받았다면 본문 크기 초과·전송 중단·시간 초과로 수신에 실패해도 후속 요청을 중단한다.
+다른 HTTP 상태는 전송이 정상 종료되어야 응답을 사용하며 기존 크기·시간 제한을 유지한다. 거부된 요청의
 항목은 `ACCESS_DENIED`, 이후 요청하지 않은 항목은 `NOT_ATTEMPTED`로 파일 순서대로 출력한다.
 두 결과의 `remoteRevision`은 `null`이며, 앞서 완료한 결과와 마지막 건수 요약은 보존한다.
 종료 코드는 2다. 재전송 모드의 GET·PUT에도 같은 중단 규칙을 적용한다.
