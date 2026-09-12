@@ -143,9 +143,36 @@ class SnapshotRecoveryTest(unittest.TestCase):
             with self.assertRaises(recovery.RecoveryError):
                 recovery.private_file(manifest, 10000)
 
+    def test_token_file_matches_api_format_without_exposing_credentials(self):
+        """API와 같은 문자·패딩·길이 기준을 적용하고 토큰은 출력하지 않는다."""
+        valid = ["x" * 32, "x" * 30 + "+/==", "x" * 200, "x" * 198 + "=="]
+        invalid = ["x" * 31 + "=", "x" * 200 + "=", "x" * 32 + "=middle",
+                   "x" * 32 + "\nheader", "x" * 32 + " ", "x" * 32 + ":", "é" * 32]
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "snapshots.jsonl"
+            manifest.write_text(json.dumps(SNAPSHOT))
+            manifest.chmod(0o600)
+            token_file = Path(temporary) / "token"
+            for token, expected in [(token, 0) for token in valid] + [(token, 1) for token in invalid]:
+                with self.subTest(length=len(token), expected=expected):
+                    token_file.write_bytes((token + ("\r\n" if expected == 0 else "")).encode())
+                    token_file.chmod(0o600)
+                    output, errors = io.StringIO(), io.StringIO()
+                    with patch.object(recovery, "WatchClient") as client, \
+                         contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                        client.return_value.get_batch.return_value = batch_response(remote()[1])
+                        result = recovery.main(["--snapshots", str(manifest), "--source-namespace", "pilot",
+                                                "--origin", "https://watch.example.com", "--token-file", str(token_file)])
+                    self.assertEqual(result, expected)
+                    if expected == 0:
+                        client.assert_called_once_with("https://watch.example.com", token)
+                    else:
+                        client.assert_not_called()
+                    self.assertNotIn(token, output.getvalue() + errors.getvalue())
+
     def test_transport_keeps_token_off_argv_and_pins_without_redirects(self):
         """토큰은 표준 입력으로만 전달하고 공개 주소 고정·리디렉션 금지·시간 및 크기 제한을 유지한다."""
-        token = "watch-test-token-with-at-least-32-characters"
+        token = "x" * 30 + "+/=="
         client = recovery.WatchClient("https://watch.example.com", token)
         payload = {key: value for key, value in SNAPSHOT.items() if key != "resourceReference"}
         with patch.object(recovery, "public_address", return_value="93.184.216.34"), \

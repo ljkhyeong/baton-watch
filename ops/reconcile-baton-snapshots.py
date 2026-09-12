@@ -253,7 +253,7 @@ def main(argv=None):
         if args.apply and digest != args.expected_sha256:
             raise RecoveryError("재전송에는 사전 검토한 스냅샷 파일의 SHA-256이 필요합니다")
         token = private_file(args.token_file, 202).decode("ascii").rstrip("\r\n")
-        if not re.fullmatch(r"[A-Za-z0-9._~-]{32,200}", token):
+        if len(token) > 200 or not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,}=*", token):
             raise RecoveryError("WATCH API 토큰 형식을 확인하세요")
         client = WatchClient(args.origin, token)
         print(json.dumps({"mode": "REPLAY" if args.apply else "AUDIT", "manifestSha256": digest, "count": len(snapshots)}), flush=True)
