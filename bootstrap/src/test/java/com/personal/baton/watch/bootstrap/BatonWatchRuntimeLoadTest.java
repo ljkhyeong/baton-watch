@@ -266,9 +266,10 @@ class BatonWatchRuntimeLoadTest {
                 Connection second = dataSource.getConnection()) {
             assertThat(dataSource.getHikariPoolMXBean().getActiveConnections()).isEqualTo(2);
             HttpResponse<String> unavailable = synchronizeInactiveMonitor("pool-saturation");
-            assertThat(unavailable.statusCode()).isEqualTo(500);
+            assertThat(unavailable.statusCode()).isEqualTo(503);
+            assertThat(unavailable.headers().firstValue("Retry-After")).contains("5");
             JsonNode body = objectMapper.readTree(unavailable.body());
-            assertThat(body.required("code").stringValue()).isEqualTo("INTERNAL_ERROR");
+            assertThat(body.required("code").stringValue()).isEqualTo("SERVICE_UNAVAILABLE");
             assertThat(unavailable.body())
                     .doesNotContain(
                             POSTGRES.getJdbcUrl(),

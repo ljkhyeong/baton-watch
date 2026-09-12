@@ -30,7 +30,7 @@ bootstrap/build/test-results/runtimeLoadTest/
 ## 확인하는 흐름
 
 1. HikariCP 최대 연결 수를 2로 제한하고 두 연결을 모두 점유한다. 인증된 모니터
-   동기화가 고정 오류 응답 `500 INTERNAL_ERROR`를 반환하며 JDBC URL·비밀번호·풀 내부
+   동기화가 `503 SERVICE_UNAVAILABLE`과 `Retry-After: 5`를 반환하며 JDBC URL·비밀번호·풀 내부
    오류 문구를 응답에 노출하지 않는지 확인한다.
 2. 연결을 반환한 뒤 같은 요청이 성공하는지 확인한다.
 3. 인증된 활성 모니터 동기화 요청을 JDK `HttpClient.sendAsync`로 동시에 보낸다.
