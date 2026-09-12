@@ -124,6 +124,18 @@ class SafeEventDeliveryEngineTest {
         assertNull(observation.httpStatusCode());
     }
 
+    @Test
+    void keepsTheServerRetryTimeInTheDeliveryObservation() throws Exception {
+        Instant retryAt = Instant.parse("2026-08-01T00:02:00Z");
+        DeliveryTransport transport = (request, remaining) -> new DeliveryResponse(503, retryAt);
+
+        EventDeliveryObservation observation = engine(
+                new RecordingDnsLookup(List.of(address("8.8.8.8"))), transport, System::nanoTime)
+                .send(event());
+
+        assertEquals(EventDeliveryObservation.forHttpStatus(503, retryAt), observation);
+    }
+
     @ParameterizedTest
     @MethodSource("transportFailures")
     void mapsTransportFailuresToBoundedOutcomes(
@@ -290,9 +302,9 @@ class SafeEventDeliveryEngineTest {
         }
 
         @Override
-        public int execute(ApprovedDeliveryRequest request, Duration remainingTime) {
+        public DeliveryResponse execute(ApprovedDeliveryRequest request, Duration remainingTime) {
             requests.add(request);
-            return statusCode;
+            return new DeliveryResponse(statusCode, null);
         }
     }
 

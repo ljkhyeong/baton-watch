@@ -95,7 +95,7 @@ COPY ops/cloudflared/go.mod ops/cloudflared/go.sum ./
 COPY ops/cloudflared/licenses.sha256 ops/cloudflared/copy-licenses.sh ./
 RUN go test -mod=readonly ./cmd/cloudflared/cliutil ./tunnelrpc/... \
     && go build -mod=readonly -trimpath \
-    -ldflags="-X main.Version=2026.8.3-watch.1 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
+    -ldflags="-X main.Version=2026.8.3-watch.2 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
     -o /cloudflared ./cmd/cloudflared \
     && sh /src/copy-licenses.sh
 

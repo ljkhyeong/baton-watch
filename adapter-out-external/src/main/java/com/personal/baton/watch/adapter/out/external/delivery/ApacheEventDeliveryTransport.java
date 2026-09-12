@@ -7,11 +7,17 @@ import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
 import java.io.IOException;
+import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Objects;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.utils.DateUtils;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.http.HttpHost;
@@ -24,19 +30,21 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
     private final EventDeliveryLimits limits;
+    private final Clock clock;
     private final ApacheHttpRequestExecutor requestExecutor;
     private final PinnedApacheClientFactory clientFactory;
     private final ResponseBodyDiscarder bodyDiscarder = new ResponseBodyDiscarder();
 
-    ApacheEventDeliveryTransport(EventDeliveryLimits limits, int threadCount, int queueCapacity) {
+    ApacheEventDeliveryTransport(EventDeliveryLimits limits, int threadCount, int queueCapacity, Clock clock) {
         this.limits = Objects.requireNonNull(limits, "limits");
+        this.clock = Objects.requireNonNull(clock, "clock");
         this.clientFactory = new PinnedApacheClientFactory();
         this.requestExecutor = new ApacheHttpRequestExecutor(
                 threadCount, queueCapacity, "watch-event-http-");
     }
 
     @Override
-    public int execute(ApprovedDeliveryRequest request, Duration remainingTime)
+    public DeliveryResponse execute(ApprovedDeliveryRequest request, Duration remainingTime)
             throws OutboundHttpFailure {
         HttpPost httpRequest = new HttpPost(request.endpoint().uri());
         return requestExecutor.execute(
@@ -50,7 +58,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
         requestExecutor.close();
     }
 
-    private int executeBlocking(
+    private DeliveryResponse executeBlocking(
             ApprovedDeliveryRequest delivery,
             HttpPost request,
             Duration remainingTime,
@@ -73,12 +81,32 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             return ApacheResponseLifecycle.execute(
                     client, HttpHost.create(delivery.endpoint().uri()), request, CloseMode.GRACEFUL, response -> {
                         onResponseStarted.run();
+                        Instant retryNotBefore = retryNotBefore(response);
                         HttpEntity entity = response.getEntity();
                         if (entity != null) {
                             bodyDiscarder.discard(entity, limits.maxResponseBytes());
                         }
-                        return response.getCode();
+                        return new DeliveryResponse(response.getCode(), retryNotBefore);
                     });
+        }
+    }
+
+    private Instant retryNotBefore(ClassicHttpResponse response) {
+        if (response.getCode() != 429 && response.getCode() != 503) {
+            return null;
+        }
+        Header[] headers = response.getHeaders(HttpHeaders.RETRY_AFTER);
+        if (headers.length != 1 || headers[0].getValue() == null) {
+            return null;
+        }
+        String value = headers[0].getValue().trim();
+        try {
+            if (value.matches("[0-9]+")) {
+                return clock.instant().plusSeconds(Long.parseLong(value));
+            }
+            return DateUtils.parseStandardDate(value);
+        } catch (NumberFormatException | DateTimeException | ArithmeticException exception) {
+            return null;
         }
     }
 

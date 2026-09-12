@@ -29,7 +29,7 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
                 response,
                 HttpStatus.UNAUTHORIZED,
                 "unauthorized",
-                "Unauthorized",
+                "유효한 인증 토큰이 필요합니다",
                 "UNAUTHORIZED",
                 false);
     }

@@ -21,14 +21,14 @@ final class MonitorApiException extends RuntimeException {
     }
 
     static MonitorApiException invalidRequest() {
-        return new MonitorApiException(HttpStatus.BAD_REQUEST, "invalid-request", "Invalid request", "INVALID_REQUEST");
+        return new MonitorApiException(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     }
 
     static MonitorApiException invalidTarget() {
         return new MonitorApiException(
                 HttpStatus.UNPROCESSABLE_CONTENT,
                 "invalid-target-url",
-                "Invalid target URL",
+                "점검할 수 없는 URL입니다",
                 "INVALID_TARGET_URL");
     }
 
@@ -36,7 +36,7 @@ final class MonitorApiException extends RuntimeException {
         return new MonitorApiException(
                 HttpStatus.CONFLICT,
                 "stale-source-revision",
-                "Stale source revision",
+                "저장된 리비전보다 오래된 요청입니다",
                 "STALE_SOURCE_REVISION");
     }
 
@@ -44,17 +44,17 @@ final class MonitorApiException extends RuntimeException {
         return new MonitorApiException(
                 HttpStatus.CONFLICT,
                 "source-revision-conflict",
-                "Source revision conflict",
+                "같은 리비전에 다른 내용이 등록되어 있습니다",
                 "SOURCE_REVISION_CONFLICT");
     }
 
     static MonitorApiException notFound() {
-        return new MonitorApiException(HttpStatus.NOT_FOUND, "monitor-not-found", "Monitor not found", "MONITOR_NOT_FOUND");
+        return new MonitorApiException(HttpStatus.NOT_FOUND, "monitor-not-found", "등록된 점검 대상이 없습니다", "MONITOR_NOT_FOUND");
     }
 
     static MonitorApiException inactive() {
         return new MonitorApiException(HttpStatus.CONFLICT, "monitor-inactive",
-                "비활성 모니터는 재점검할 수 없습니다", "MONITOR_INACTIVE");
+                "비활성 점검 대상은 재점검할 수 없습니다", "MONITOR_INACTIVE");
     }
 
     static MonitorApiException checkRequestRateLimited(long retryAfterSeconds) {

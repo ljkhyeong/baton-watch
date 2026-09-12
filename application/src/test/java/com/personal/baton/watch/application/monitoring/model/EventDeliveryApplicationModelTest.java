@@ -36,10 +36,10 @@ class EventDeliveryApplicationModelTest {
         assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(600));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 199));
+                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 199, null));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 302));
+                () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 302, null));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> EventDeliveryObservation.failure(EventDeliveryOutcome.DELIVERED));
@@ -56,6 +56,17 @@ class EventDeliveryApplicationModelTest {
                         0,
                         Instant.now(),
                         false));
+    }
+
+    @Test
+    void rejectsRetryTimesForDeliveredAndUnrelatedHttpOutcomes() {
+        Instant retryAt = Instant.parse("2026-08-01T00:01:00Z");
+        assertThrows(IllegalArgumentException.class,
+                () -> EventDeliveryObservation.forHttpStatus(204, retryAt));
+        assertThrows(IllegalArgumentException.class,
+                () -> EventDeliveryObservation.forHttpStatus(500, retryAt));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EventDeliveryObservation(EventDeliveryOutcome.DNS_FAILURE, null, retryAt));
     }
 
     private HealthChangeEventPayload payload(Health previous, Health current) {

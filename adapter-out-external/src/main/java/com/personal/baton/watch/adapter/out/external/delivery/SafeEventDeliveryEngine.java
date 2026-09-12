@@ -83,16 +83,16 @@ final class SafeEventDeliveryEngine {
                     body,
                     bearerToken,
                     payload.eventId().toString());
-            int statusCode;
+            DeliveryResponse response;
             try {
-                statusCode = transport.execute(request, remaining);
+                response = transport.execute(request, remaining);
             } catch (OutboundHttpFailure exception) {
                 return transportFailure(exception.kind());
             }
-            if (statusCode < 200 || statusCode > 599) {
+            if (response.statusCode() < 200 || response.statusCode() > 599) {
                 return EventDeliveryObservation.failure(EventDeliveryOutcome.NETWORK_FAILURE);
             }
-            return EventDeliveryObservation.forHttpStatus(statusCode);
+            return EventDeliveryObservation.forHttpStatus(response.statusCode(), response.retryNotBefore());
         } catch (RuntimeException exception) {
             return EventDeliveryObservation.internalFailure();
         }

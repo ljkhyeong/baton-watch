@@ -13,7 +13,7 @@ public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay)
         }
     }
 
-    Instant nextAttemptAt(Instant completedAt, int deliveryAttempt) {
+    Instant nextAttemptAt(Instant completedAt, int deliveryAttempt, Instant retryNotBefore) {
         Duration delay = initialDelay;
         int remainingDoublings = deliveryAttempt - 1;
         while (remainingDoublings > 0 && delay.compareTo(maxDelay) < 0) {
@@ -21,6 +21,11 @@ public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay)
             delay = doubled.compareTo(maxDelay) > 0 ? maxDelay : doubled;
             remainingDoublings--;
         }
-        return completedAt.plus(delay);
+        Instant nextAttemptAt = completedAt.plus(delay);
+        if (retryNotBefore == null || !retryNotBefore.isAfter(nextAttemptAt)) {
+            return nextAttemptAt;
+        }
+        Instant latestAttemptAt = completedAt.plus(maxDelay);
+        return retryNotBefore.isAfter(latestAttemptAt) ? latestAttemptAt : retryNotBefore;
     }
 }

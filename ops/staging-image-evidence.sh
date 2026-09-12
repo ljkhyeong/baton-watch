@@ -67,7 +67,7 @@ require_local_image() {
         fail "로컬 이미지 리비전을 확인할 수 없습니다: $expected_tag"
     fi
     if [ "$actual_id" != "$expected_id" ]; then
-        fail "로컬 이미지 ID가 보관 증거와 다릅니다: $expected_tag"
+        fail "로컬 이미지 ID가 보관 명세와 다릅니다: $expected_tag"
     fi
     if [ "$actual_revision" != "$REVISION" ]; then
         fail "로컬 이미지 OCI 리비전이 배포 리비전과 다릅니다: $expected_tag"
@@ -170,12 +170,12 @@ archive_images() {
     verify_archive_dir "$temp_dir" true
     mv "$temp_dir" "$ARCHIVE_DIR"
     trap - EXIT HUP INT TERM
-    printf '[staging-image-evidence] 이미지 보관 증거를 생성했습니다: %s\n' "$ARCHIVE_DIR"
+    printf '[staging-image-evidence] 이미지 아카이브와 검증 기록을 저장했습니다: %s\n' "$ARCHIVE_DIR"
 }
 
 verify_images() {
     verify_archive_dir "$ARCHIVE_DIR" true
-    printf '[staging-image-evidence] 이미지 보관 증거와 로컬 이미지가 일치합니다\n'
+    printf '[staging-image-evidence] 보관 명세·체크섬과 로컬 이미지가 일치합니다\n'
 }
 
 restore_images() {

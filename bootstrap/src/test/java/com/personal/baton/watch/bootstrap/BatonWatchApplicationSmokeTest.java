@@ -8,6 +8,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.util.List;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -175,6 +177,48 @@ class BatonWatchApplicationSmokeTest {
     }
 
     @Test
+    void retriesTheSameUpdateAfterAnActualDatabaseLockTimeout() throws Exception {
+        String reference = "lock-recovery-smoke";
+        String path = "/api/v1/resource-monitors/" + reference;
+        try {
+            assertThat(put(path, API_TOKEN).statusCode()).isEqualTo(200);
+            try (Connection blocker = jdbc.getDataSource().getConnection();
+                    PreparedStatement lock = blocker.prepareStatement(
+                            "SELECT source_revision FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")) {
+                blocker.setAutoCommit(false);
+                try {
+                    lock.setString(1, reference);
+                    try (var row = lock.executeQuery()) {
+                        assertThat(row.next()).isTrue();
+                        assertThat(row.getLong("source_revision")).isEqualTo(1);
+                    }
+
+                    HttpResponse<String> blocked = put(path, API_TOKEN, 2);
+                    assertThat(blocked.statusCode()).isEqualTo(503);
+                    assertThat(blocked.headers().firstValue(HttpHeaders.RETRY_AFTER)).contains("5");
+                    assertThat(objectMapper.readTree(blocked.body()).required("code").stringValue())
+                            .isEqualTo("SERVICE_UNAVAILABLE");
+
+                    HttpResponse<String> unchanged = get(path, API_TOKEN);
+                    assertThat(unchanged.statusCode()).isEqualTo(200);
+                    assertThat(objectMapper.readTree(unchanged.body()).required("sourceRevision").longValue())
+                            .isEqualTo(1);
+                } finally {
+                    blocker.rollback();
+                }
+            }
+
+            HttpResponse<String> recovered = put(path, API_TOKEN, 2);
+            assertThat(recovered.statusCode()).isEqualTo(200);
+            assertThat(recovered.headers().firstValue(HttpHeaders.RETRY_AFTER)).isEmpty();
+            assertThat(objectMapper.readTree(get(path, API_TOKEN).body()).required("sourceRevision").longValue())
+                    .isEqualTo(2);
+        } finally {
+            jdbc.update("DELETE FROM watch_monitor WHERE resource_reference = ?", reference);
+        }
+    }
+
+    @Test
     void readinessIncludesDatabaseAndLifecycleButLivenessDoesNot() throws Exception {
         assertProbe("readiness", 200, "UP");
         assertProbe("liveness", 200, "UP");
@@ -246,11 +290,15 @@ class BatonWatchApplicationSmokeTest {
     }
 
     private HttpResponse<String> put(String path, String token) throws Exception {
+        return put(path, token, 1);
+    }
+
+    private HttpResponse<String> put(String path, String token, long revision) throws Exception {
         return send(
                 HttpRequest.newBuilder(uri(path))
                         .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                         .PUT(HttpRequest.BodyPublishers.ofString(
-                                "{\"sourceRevision\":1,\"monitoringState\":\"INACTIVE\"}")),
+                                "{\"sourceRevision\":%d,\"monitoringState\":\"INACTIVE\"}".formatted(revision))),
                 token);
     }
 

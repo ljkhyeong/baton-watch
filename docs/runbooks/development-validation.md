@@ -2,10 +2,65 @@
 
 ## 기본 흐름
 
-1. `git status --short --branch`와 HANDOFF의 최근 검증·차단 조건을 확인한다.
-2. 아래 표에서 변경한 동작에 필요한 검사만 고른다. 기존 결과의 명령·파일 지문·환경을 대조한다.
-3. 명령 하나씩 실행하고 종료 코드와 로그를 남긴다. 실패하면 로그 끝과 실패 지점부터 읽는다.
-4. 수정 후 실패한 검사부터 다시 실행한다. 필수 검사가 통과하면 변경·실패·미해결 문제가 없는 검사는 반복하지 않는다.
+1. `git status --short --branch`와 HANDOFF를 확인하고 작업 시작 커밋을 기록한다.
+2. 파일을 작성·수정한 직후 아래 파일 검사를 실행한다. 한 번에 수정한 관련 파일은 묶어서 검사한다.
+3. 아래 표에서 필요한 동작 테스트를 골라 검증 기록 도구로 실행한다. 실패하면 해당 범위부터 수정·재검사한다.
+4. 완료 직전 종료 검사를 실행하고 작업 시작 이후의 전체 diff와 새 파일 본문을 검토한다.
+5. 필수 검사가 통과하면 입력이 같은 성공 결과는 재사용한다. 문서 수정·커밋만으로 동작 테스트를 반복하지 않는다.
+
+## 작성 직후와 종료 전 검사
+
+[검사 도구](../../ops/check-feedback.py)는 Python 표준 라이브러리와 기존 Gradle을 사용한다.
+파일 검사는 AGENTS 지시에 따라 에이전트가 호출한다. 구조 검사는 기존 `test`·`check`와 CI에도 연결돼 있다.
+
+```bash
+# 작업을 시작할 때 한 번 기록한다. 에이전트는 이 커밋을 후속 작업에도 인계한다.
+WATCH_FEEDBACK_BASE=$(git rev-parse HEAD)
+
+# 파일을 작성·수정한 직후: 실제 변경 경로를 지정한다.
+python3 ops/check-feedback.py file ops/check-feedback.py
+
+# 작업 종료 직전: 중간에 커밋했어도 작업 시작 커밋을 유지한다.
+python3 ops/run-validation.py run --label finish -- \
+  python3 ops/check-feedback.py finish --base "$WATCH_FEEDBACK_BASE"
+git diff "$WATCH_FEEDBACK_BASE" --
+git ls-files --others --exclude-standard
+```
+
+| 단계 | 자동 검사 범위 |
+| --- | --- |
+| `file` | 지정 파일의 줄 끝 공백·LF·마지막 줄바꿈, Python·JSON·TOML·XML·셸 문법, Markdown 로컬 파일 링크. Java는 해당 모듈의 운영 코드 또는 테스트 코드 컴파일 |
+| `finish` | 기준 커밋 이후의 커밋·스테이징·미커밋 변경과 새 파일. 삭제·이름 변경도 포함. 파일 검사·`git diff --check` 후 Java·Gradle·검사 도구 변경이 있으면 전체 ArchUnit 검사 |
+
+Java 파일 검사에는 컴파일에 필요한 상위 모듈도 포함된다. Gradle 파일은 `help`로 구성 오류부터 확인한다.
+종료 검사는 문서만 바뀌면 Java를 실행하지 않는다. Markdown은 로컬 파일 존재만 검사하며 제목 앵커·
+외부 링크는 확인하지 않는다. YAML의 의미·Compose 정책과 기능 동작 테스트는 아래 표에 따라 별도로 확인한다.
+전체 diff를 읽을 때는 자동 규칙에 없는 책임 배치·중복·요청 범위도 검토한다. 새 파일 본문은 별도로 읽는다.
+
+## 계층 의존성 규칙
+
+[ArchitectureTest](../../bootstrap/src/test/java/com/personal/baton/watch/bootstrap/ArchitectureTest.java)는
+테스트 코드를 제외한 전체 운영 바이트코드를 검사한다. 필드·메서드·생성자 등 실제 타입 참조를 확인하며
+위반한 클래스와 의존 대상을 출력한다. DB·Spring 컨텍스트·외부 API는 기동하지 않는다.
+
+| 규칙 | 허용·차단 기준 |
+| --- | --- |
+| 계층 방향 | `bootstrap → adapters → application → domain`. 각 계층 내부와 하위 도메인 값 사용은 허용, 역방향 의존은 차단 |
+| 어댑터 분리 | 웹·영속성·외부 통신 어댑터 간 직접 의존 차단. Controller의 JDBC 저장소 구현체 사용도 포함 |
+| 도메인·애플리케이션 | `java.*`와 두 핵심 계층만 사용. Spring·DB·HTTP 구현 의존 차단. 서비스는 `application`의 저장소 포트 사용 가능 |
+| 웹 진입점 | 서비스 구현체·출력 포트 직접 사용 차단. 입력 포트로 유스케이스 호출 |
+| 검사 누락 | 정해진 계층 밖의 WATCH 패키지 또는 비어 있는 계층도 실패 처리 |
+
+구조 검사만 실행할 때는 다음 명령을 사용한다.
+
+```bash
+python3 ops/run-validation.py run --label architecture -- ./gradlew :bootstrap:architectureTest
+```
+
+ArchUnit은 테스트 전용 의존성이다. 별도 `architectureTest` 작업에서 실행하며 `bootstrap:test`가 이를
+선행 실행한다. 일반 테스트에서는 같은 클래스를 제외해 중복 실행하지 않는다. 기존 Gradle 캐시를 사용한다.
+
+## 변경 범위별 동작 테스트
 
 | 변경 범위 | 먼저 실행 | 추가 검사 조건 |
 | --- | --- | --- |

@@ -11,6 +11,7 @@ import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequest
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
@@ -26,8 +27,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -44,8 +51,12 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -114,6 +125,39 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(wrong);
         assertThat(valid.statusCode()).isEqualTo(200);
         assertThat(valid.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(objectMapper.readTree(valid.body()).path("checkStatus").asString()).isEqualTo("INACTIVE");
+    }
+
+    @Test
+    void batchLookupRequiresAuthenticationAndReportsMissingReferences() throws Exception {
+        String path = "/api/v1/resource-monitors?resourceReference=resource-1&resourceReference=missing";
+        assertUnauthorized(get(path, null));
+        assertUnauthorized(get(path, "wrong-token"));
+        HttpResponse<String> response = get(path, API_TOKEN);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode body = objectMapper.readTree(response.body());
+        assertThat(body.path("monitors").get(0).path("resourceReference").asString()).isEqualTo("resource-1");
+        assertThat(body.path("monitors").get(0).path("checkStatus").asString()).isEqualTo("INACTIVE");
+        assertThat(body.path("missingResourceReferences").get(0).asString()).isEqualTo("missing");
+        assertThat(response.body()).doesNotContain("leaseToken", "leaseExpiresAt", "targetUrl");
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+    }
+
+    @Test
+    void batchLookupAcceptsTwentyMaximumLengthReferencesAndRejectsMoreAfterAuthentication() throws Exception {
+        String query = IntStream.range(0, 20)
+                .mapToObj(index -> "resourceReference=" + "r".repeat(126) + String.format("%02d", index))
+                .collect(Collectors.joining("&"));
+        String path = "/api/v1/resource-monitors?" + query;
+        HttpResponse<String> maximum = get(path, API_TOKEN);
+        assertThat(maximum.statusCode()).isEqualTo(200);
+        assertThat(objectMapper.readTree(maximum.body()).path("missingResourceReferences").size()).isEqualTo(20);
+
+        String tooMany = path + "&resourceReference=resource-1";
+        assertUnauthorized(get(tooMany, null));
+        assertProblem(get(tooMany, API_TOKEN), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     }
 
     @Test
@@ -156,9 +200,29 @@ class MonitorApiSecurityIntegrationTest {
                 malformed,
                 400,
                 "urn:baton-watch:problem:invalid-request",
-                "Invalid request",
+                "요청 형식이 올바르지 않습니다",
                 "INVALID_REQUEST");
         assertThat(valid.statusCode()).isEqualTo(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1"})
+    void rejectsFloatingPointRevisionsBeforeSynchronization(String revision) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+        String body = "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, Long.MAX_VALUE})
+    void acceptsIntegerRevisionBoundaries(long revision) throws Exception {
+        HttpResponse<String> response = put("/api/v1/resource-monitors/resource-1", API_TOKEN,
+                "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}");
+
+        assertThat(response.statusCode()).isEqualTo(200);
     }
 
     @Test
@@ -202,13 +266,13 @@ class MonitorApiSecurityIntegrationTest {
                 contentLength,
                 413,
                 "urn:baton-watch:problem:payload-too-large",
-                "Payload too large",
+                "요청 본문이 허용 크기를 초과했습니다",
                 "PAYLOAD_TOO_LARGE");
         assertProblem(
                 chunked,
                 413,
                 "urn:baton-watch:problem:payload-too-large",
-                "Payload too large",
+                "요청 본문이 허용 크기를 초과했습니다",
                 "PAYLOAD_TOO_LARGE");
     }
 
@@ -242,7 +306,7 @@ class MonitorApiSecurityIntegrationTest {
                 authenticated,
                 404,
                 "urn:baton-watch:problem:route-not-found",
-                "Route not found",
+                "요청한 API 경로가 없습니다",
                 "ROUTE_NOT_FOUND");
     }
 
@@ -259,7 +323,7 @@ class MonitorApiSecurityIntegrationTest {
                 response,
                 400,
                 "urn:baton-watch:problem:request-rejected",
-                "Request rejected",
+                "허용되지 않는 HTTP 요청입니다",
                 "REQUEST_REJECTED");
         assertThat(response.body())
                 .doesNotContain("raw-value")
@@ -301,14 +365,14 @@ class MonitorApiSecurityIntegrationTest {
                 methodNotAllowed,
                 405,
                 "urn:baton-watch:problem:method-not-allowed",
-                "Method not allowed",
+                "지원하지 않는 HTTP 메서드입니다",
                 "METHOD_NOT_ALLOWED");
         assertHeaderContains(methodNotAllowed, HttpHeaders.ALLOW, "GET");
         assertProblem(
                 unsupportedMediaType,
                 415,
                 "urn:baton-watch:problem:unsupported-media-type",
-                "Unsupported media type",
+                "지원하지 않는 요청 본문 형식입니다",
                 "UNSUPPORTED_MEDIA_TYPE");
         assertHeaderContains(
                 unsupportedMediaType,
@@ -318,13 +382,13 @@ class MonitorApiSecurityIntegrationTest {
                 oversizedUnsupportedMediaType,
                 415,
                 "urn:baton-watch:problem:unsupported-media-type",
-                "Unsupported media type",
+                "지원하지 않는 요청 본문 형식입니다",
                 "UNSUPPORTED_MEDIA_TYPE");
         assertProblem(
                 notAcceptable,
                 406,
                 "urn:baton-watch:problem:not-acceptable",
-                "Not acceptable",
+                "요청한 응답 형식을 지원하지 않습니다",
                 "NOT_ACCEPTABLE");
         assertHeaderContains(
                 notAcceptable,
@@ -341,6 +405,31 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(202);
         assertThat(objectMapper.readTree(response.body()).required("status").stringValue())
                 .isEqualTo("SCHEDULED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"GET", "BATCH", "PUT", "POST"})
+    void temporaryStorageFailuresPreserveAuthenticationAndExposeOnlyRetryGuidance(String operation) throws Exception {
+        assertUnauthorized(unavailableRequest(operation, null));
+        assertUnauthorized(unavailableRequest(operation, "wrong-token"));
+        HttpResponse<String> response = unavailableRequest(operation, API_TOKEN);
+
+        assertProblem(response, 503, "urn:baton-watch:problem:service-unavailable",
+                "일시적으로 요청을 처리할 수 없습니다", "SERVICE_UNAVAILABLE");
+        assertThat(response.headers().firstValue(HttpHeaders.RETRY_AFTER)).contains("5");
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+        assertThat(response.body()).doesNotContain("raw-storage-secret", "raw-sql-secret");
+    }
+
+    private HttpResponse<String> unavailableRequest(String operation, String token) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+        return switch (operation) {
+            case "GET" -> get(path, token);
+            case "BATCH" -> get("/api/v1/resource-monitors?resourceReference=storage-unavailable", token);
+            case "PUT" -> put(path, token, "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}");
+            case "POST" -> post(path + "/check-requests", token);
+            default -> throw new IllegalArgumentException("지원하지 않는 테스트 요청입니다");
+        };
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {
@@ -418,7 +507,7 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(problem.size()).isEqualTo(4);
         assertThat(problem.required("type").stringValue())
                 .isEqualTo("urn:baton-watch:problem:unauthorized");
-        assertThat(problem.required("title").stringValue()).isEqualTo("Unauthorized");
+        assertThat(problem.required("title").stringValue()).isEqualTo("유효한 인증 토큰이 필요합니다");
         assertThat(problem.required("status").intValue()).isEqualTo(401);
         assertThat(problem.required("code").stringValue()).isEqualTo("UNAUTHORIZED");
     }
@@ -460,6 +549,7 @@ class MonitorApiSecurityIntegrationTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -481,24 +571,54 @@ class MonitorApiSecurityIntegrationTest {
     static class TestWebConfiguration {
 
         @Bean
+        Clock clock() {
+            return Clock.fixed(NOW, ZoneOffset.UTC);
+        }
+
+        @Bean
         WatchProperties watchProperties() {
             return BootstrapTestFixtures.watchProperties(API_TOKEN);
         }
 
         @Bean
         SynchronizeMonitorUseCase synchronizeMonitorUseCase() {
-            return command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+            return command -> {
+                if (command.resourceReference().value().equals("storage-unavailable")) {
+                    throw new CannotCreateTransactionException(
+                            "raw-storage-secret", new SQLException("raw-sql-secret"));
+                }
+                return new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+            };
         }
 
         @Bean
         RequestMonitorCheckUseCase requestMonitorCheckUseCase() {
-            return reference -> new MonitorCheckRequestResult(
-                    MonitorCheckRequestResult.Status.SCHEDULED, NOW, 0);
+            return reference -> {
+                if (reference.value().equals("storage-unavailable")) {
+                    throw new QueryTimeoutException("raw-storage-secret");
+                }
+                return new MonitorCheckRequestResult(MonitorCheckRequestResult.Status.SCHEDULED, NOW, 0);
+            };
         }
 
         @Bean
         GetMonitorProjectionUseCase getMonitorProjectionUseCase() {
-            return resourceReference -> Optional.of(projection());
+            return reference -> {
+                if (reference.value().equals("storage-unavailable")) {
+                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
+                }
+                return Optional.of(projection());
+            };
+        }
+
+        @Bean
+        GetMonitorProjectionsUseCase getMonitorProjectionsUseCase() {
+            return references -> {
+                if (references.contains(new ResourceReference("storage-unavailable"))) {
+                    throw new DataAccessResourceFailureException("raw-storage-secret");
+                }
+                return references.contains(projection().resourceReference()) ? List.of(projection()) : List.of();
+            };
         }
 
         @Bean

@@ -27,6 +27,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
@@ -100,8 +102,10 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 .containsEntry("last_http_status_code", 204);
     }
 
-    @Test
-    void failedDeliveryPersistsBoundedOutcomeAndBecomesClaimableAtRetryBoundary() {
+    @ParameterizedTest
+    @CsvSource({"0, DNS_FAILURE", "429, HTTP_CLIENT_ERROR", "503, HTTP_SERVER_ERROR"})
+    void failedDeliveryPersistsBoundedOutcomeAndBecomesClaimableAtRetryBoundary(
+            int httpStatus, EventDeliveryOutcome expectedOutcome) {
         UUID eventId = createDeliveryEvent("resource:delivery-retry");
         ClaimedHealthChangeEvent first = claimOneDelivery();
         Instant completedAt = first.claimedAt().plusSeconds(1);
@@ -110,7 +114,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryFinalization failed = new EventDeliveryFinalization(
                 first.payload().eventId(),
                 first.leaseToken(),
-                EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE),
+                httpStatus == 0 ? EventDeliveryObservation.failure(expectedOutcome)
+                        : EventDeliveryObservation.forHttpStatus(httpStatus, retryAt),
                 completedAt,
                 retryAt);
         assertThat(deliveryAdapter.finalizeDelivery(failed))
@@ -118,6 +123,9 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         EventDeliveryBacklogSnapshot retryBacklog = deliveryAdapter.getBacklogSnapshot();
         assertThat(retryBacklog.pendingCount()).isEqualTo(1);
         assertThat(retryBacklog.oldestChangedAt()).contains(first.payload().changedAt());
+        assertThat(jdbc.queryForObject("""
+                SELECT next_attempt_at = ? FROM watch_health_change_event WHERE event_id = ?
+                """, Boolean.class, databaseTime(retryAt), eventId)).isTrue();
 
         assertThat(deliveryAdapter.claimPendingEvent(LEASE))
                 .isEmpty();
@@ -127,7 +135,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                 WHERE event_id = ?
                 """, eventId);
         ClaimedHealthChangeEvent retried = claimOneDelivery();
-        assertThat(retried.payload().eventId()).isEqualTo(eventId);
+        assertThat(retried.payload()).isEqualTo(first.payload());
         assertThat(retried.deliveryAttempt()).isEqualTo(2);
         assertThat(jdbc.queryForMap("""
                         SELECT delivery_status, last_delivery_outcome, last_http_status_code
@@ -135,8 +143,8 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
                         WHERE event_id = ?
                         """, eventId))
                 .containsEntry("delivery_status", "PENDING")
-                .containsEntry("last_delivery_outcome", "DNS_FAILURE")
-                .containsEntry("last_http_status_code", null);
+                .containsEntry("last_delivery_outcome", expectedOutcome.name())
+                .containsEntry("last_http_status_code", httpStatus == 0 ? null : httpStatus);
     }
 
     @Test

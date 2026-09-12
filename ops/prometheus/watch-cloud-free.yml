@@ -36,4 +36,8 @@ remote_write:
         action: keep
     queue_config:
       max_shards: 1
+      # 일시적인 전송 제한으로 샘플을 버리지 않도록 대기 후 재시도한다.
+      retry_on_http_429: true
+      min_backoff: 1s
+      max_backoff: 1m
       sample_age_limit: 1h

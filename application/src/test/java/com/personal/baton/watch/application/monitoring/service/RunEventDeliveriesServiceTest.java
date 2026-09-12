@@ -106,6 +106,23 @@ class RunEventDeliveriesServiceTest {
         assertEquals(1, result.retryScheduled());
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {429, 503})
+    void persistsServerRetryTimeWithoutChangingTheClaimedEvent(int httpStatus) {
+        ClaimedHealthChangeEvent claim = claimed(1);
+        RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claim);
+
+        EventDeliveryBatchResult result = service(persistence,
+                event -> EventDeliveryObservation.forHttpStatus(httpStatus, NOW.plusSeconds(45)))
+                .runEventDeliveries();
+
+        assertEquals(1, result.retryScheduled());
+        assertEquals(NOW.plusSeconds(45), persistence.finalization.nextAttemptAt());
+        assertEquals(claim.payload().eventId(), persistence.finalization.eventId());
+        assertEquals(claim.leaseToken(), persistence.finalization.leaseToken());
+        assertEquals(httpStatus, persistence.finalization.observation().httpStatusCode());
+    }
+
     @Test
     void reportsIdempotentAndStaleFinalizationsSeparatelyFromTransportOutcome() {
         RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claimed(1));

@@ -1,0 +1,25 @@
+{
+  "job": "baton-watch-public",
+  "target": "https://watch.b4ton.com/api/v1/system/status",
+  "enabled": false,
+  "frequency": 300000,
+  "timeout": 5000,
+  "basicMetricsOnly": true,
+  "probes": [],
+  "settings": {
+    "http": {
+      "validStatusCodes": [200],
+      "noFollowRedirects": true,
+      "failIfNotSSL": true,
+      "tlsConfig": {
+        "insecureSkipVerify": false
+      },
+      "headers": ["Accept: application/json"],
+      "cacheBustingQueryParamName": "_watch_probe",
+      "failIfBodyNotMatchesRegexp": [
+        "\"service\"\\s*:\\s*\"baton-watch\"",
+        "\"status\"\\s*:\\s*\"UP\""
+      ]
+    }
+  }
+}

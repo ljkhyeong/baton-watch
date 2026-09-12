@@ -8,7 +8,7 @@
 
 이 실행 절차서는 현재 Mac을 `https://watch-staging.b4ton.com`의 단일 스테이징
 오리진으로 준비합니다. 의도한 엣지 경로는 원격 관리형 Cloudflare Tunnel에서
-Docker `watch-ingress`의 NGINX를 거쳐 `watch-edge`의 WATCH로 연결됩니다. 터널 오버레이를 사용하면 오리진은
+Docker `watch-ingress`의 NGINX를 거쳐 `watch-edge`의 WATCH로 연결됩니다. 터널용 Compose 설정을 추가하면 오리진은
 호스트 포트를 공개하지 않습니다.
 
 저장소에는 스테이징 Compose 정의와 이 절차가 들어 있지만, 아직 오리진에서
@@ -34,20 +34,20 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   `baton-watch-cloudflared:<full-git-sha>` 터널 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
 - Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 필수 비밀
-  파일 세 개, 선택한 오버레이의 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
+  파일 세 개, 추가 Compose 설정에서 사용하는 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
   상위 디렉터리 안의 `0444` 터널 토큰 파일
 
 기본 스테이징 범위에서는 상태 변경 전달을 비활성화한 상태로 유지합니다.
 `compose.staging.yml`은 `WATCH_EVENT_DELIVERY_ENABLED=false`로 고정하며, 이 실행
 절차서만 따르는 동안 콜백과 전달 토큰 값을 채우지 않습니다. 호환되는 BATON
-수신기를 준비하고 사전 검사를 통과한 뒤에만 선택적 이벤트 전달 오버레이와 별도의
+수신기를 준비하고 사전 검사를 통과한 뒤에만 이벤트 전달용 Compose 설정과 별도의
 [공개 스테이징 전달 검증 실행 절차서](public-staging-event-delivery.md)를
 사용하세요.
 
 ## 네트워크 및 영속성 불변 조건
 
-기본 Compose와 터널 오버레이를 적용하면 다음 조건을 충족해야 합니다. 선택적
-이벤트 전달 오버레이를 추가해도 같은 네트워크·포트 경계를 유지해야 합니다.
+기본 Compose에 터널용 설정을 추가하면 다음 조건을 충족해야 합니다. 이벤트 전달용 Compose 설정을
+추가해도 같은 네트워크 분리와 포트 접근 제한을 유지해야 합니다.
 
 - PostgreSQL은 호스트 포트를 공개하지 않고 내부 `watch-db` 네트워크에만
   참여합니다.
@@ -138,8 +138,8 @@ Cloudflare 설정, DNS, Active 인증서만으로는 오리진이 실행 중임�
 WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수락 대기를 32개,
 워커 스레드를 최대 32개·최소 유휴 4개, 워커 큐를 64개로 고정합니다. 이 값에는
 외부 설정보다 우선하는 Spring Boot 환경 후처리기 속성 소스를 사용하므로 환경
-변수·시스템 속성·명령행 인수로 완화할 수 없습니다. 이 상한은 단일 오리진의 유한 자원 경계이며
-지원 용량이나 요청 속도 제한이 아닙니다.
+변수·시스템 속성·명령행 인수로 완화할 수 없습니다. 이 설정은 서버 한 대의 자원 사용량을 제한합니다.
+지원 용량을 보장하거나 요청 빈도를 제한하는 값은 아닙니다.
 
 현재 기본 점검 설정은 단일 스케줄러 스레드, 배치 크기 1, 요청당 전체 제한 시간
 5초입니다. 이벤트 전달은 단일 스레드에서 배치 2개를 직렬 처리합니다. 두 작업자는
@@ -184,8 +184,8 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 5건·버스트 10건입니다. [요청 제한 런북](request-rate-limit.md)의 격리 검사와
 외부 HTTPS `429` 확인, 용량 승인을 마치기 전까지 공개 배포 차단 조건으로 남깁니다.
 WATCH의 인증과 16 KiB 본문
-제한, Tomcat 연결·대기열·워커 상한은 요청별 계약과 오리진 자원 경계일 뿐 요청
-빈도 제한을 대신하지 않습니다.
+제한, Tomcat 연결·대기열·워커 상한은 요청 크기와 서버 자원 사용량을 제한합니다. 요청
+빈도 제한은 별도로 적용해야 합니다.
 
 ## Mac 준비
 
@@ -322,7 +322,7 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 실행하지 않고 해당 값을 읽어 검증합니다. 데이터베이스 비밀 검사는 파일
 값을 터미널에 출력하지 않습니다. 각 파일은 마지막 줄바꿈이 있는 정확히 한 줄만
 허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
-초기화와 마이그레이션 스크립트도 같은 문법과 파일 경계를 다시 검증합니다.
+초기화와 마이그레이션 스크립트도 같은 비밀값 문법과 파일 형식을 다시 검증합니다.
 
 WATCH API 토큰이나 터널 토큰은 다음 순서로 교체하세요.
 
@@ -379,8 +379,8 @@ NGINX는 Compose에 고정한 공식 이미지 다이제스트로 가져옵니�
 작업·마이그레이션·cloudflared·WATCH는 Dockerfile의 고정된 소스로 빌드합니다. 이 다섯
 이미지는 `pull_policy: never`와 전체 Git SHA 태그로 검증한 로컬 이미지를 선택합니다.
 
-모든 작업에서 터널 오버레이를 사용합니다. 별도 전달 런북에 따라 BATON 콜백을
-명시한 경우에만 이벤트 전달 오버레이를 추가하도록 헬퍼 하나를 먼저 정의합니다.
+모든 작업에 터널용 Compose 설정을 포함합니다. 별도 전달 런북에 따라 BATON 콜백을
+명시한 경우에만 이벤트 전달용 Compose 설정을 추가하도록 헬퍼 하나를 먼저 정의합니다.
 
 ~~~bash
 staging_compose() {
@@ -477,7 +477,7 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `ops/check-runtime-licenses.py`는 허용 라이선스가 없는 의존성을 먼저 차단하고,
 라이선스 정보 누락·대체 라이선스를 승인된 패키지와 버전에 대조한 뒤에만 Trivy
 제외 목록을 출력합니다. 예외 목록의 라이선스를 가진 다른 패키지가 함께 허용되는
-것은 아닙니다. CI는 `python3 ops/tests/runtime-license-policy-test.py`로 이 경계도
+것은 아닙니다. CI는 `python3 ops/tests/runtime-license-policy-test.py`로 패키지별 예외가 다른 의존성에 적용되지 않는지도
 검사합니다. 검증 산출물은 실행 가능한 JAR, SBOM 일곱 개와
 체크섬 목록이며 14일 동안 보관합니다. `main` 푸시에서는 이 파일 묶음에 GitHub
 출처 증명을 추가합니다. 현재 워크플로는 컨테이너 이미지 자체를 출처 증명 대상으로
@@ -490,7 +490,7 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 PostgreSQL 검증과 CodeQL은 공급망 검사보다 먼저 실행해 취약점 차단이 다른 검증
 결과를 가리지 않게 합니다. 보고서 디렉터리가 이미 있으면 덮어쓰지 않으며, 입력
 아카이브를 확인하지 못하면 최종 보고서 경로를 만들지 않습니다. `SHA256SUMS`가 생성된
-경우에만 모든 검사가 완료된 증거로 사용합니다.
+경우에만 모든 검사를 마친 결과로 인정합니다.
 로컬 실제 PostgreSQL 스모크는 Flyway V1~V6, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
@@ -515,7 +515,7 @@ staging_compose config
 서비스를 검사합니다. 어느 서비스에도
 `ports` 항목이 있어서는 안 됩니다. 렌더링된 WATCH 환경은
 `SPRING_FLYWAY_ENABLED: "false"`를 유지해야 하며 비밀값 내용이 나타나서는 안
-됩니다. 이벤트 전달 오버레이를 선택하지 않았다면
+됩니다. 이벤트 전달용 Compose 설정을 선택하지 않았다면
 `WATCH_EVENT_DELIVERY_ENABLED: "false"`, 선택했다면 `"true"`와
 `watch.event-delivery.bearer-token` 비밀 대상이 렌더링되어야 합니다.
 
@@ -526,7 +526,7 @@ WATCH의 Compose healthcheck는 `/actuator/health/readiness`로 준비 상태와
 두 경로는 관리 포트의 컨테이너 루프백에서만 사용합니다. Docker unhealthy는
 자동 재시작이나 실행 중인 터널의 자동 트래픽 차단을 뜻하지 않습니다.
 NGINX의 `127.0.0.1:8082/health`는 프록시 생존 확인만 담당합니다.
-프로브와 DB 포함 기준은 [Spring Boot 공식 문서](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes)를 참고하세요.
+상태 확인에 DB 상태를 포함하는 기준은 [Spring Boot 공식 문서](https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.kubernetes-probes)를 참고하세요.
 
 API·유지보수를 유지하면서 점검만 중지하려면 `WATCH_CHECK_ENABLED`를 변경하고
 WATCH 컨테이너만 재생성합니다. 개별 리소스의 점검·전달 실패는 기존 PostgreSQL을
@@ -658,7 +658,7 @@ test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
 ~~~
 
 데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
-비활성화 검증과 V1~V4 마이그레이션 증거 검사는 종료 코드 0으로
+비활성화 검증과 V1~V4 마이그레이션 적용 결과 검사는 종료 코드 0으로
 끝나야 합니다. WATCH 상태는 런타임 역할의 데이터베이스 연결 성공을
 확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
 `TEMPORARY`, 모니터 조회와 삭제 거부, 시도 보존 삭제와 불변 열 갱신 거부,
@@ -743,9 +743,9 @@ WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com \
 요청 전에 거부하고, 인증서를 기본 검증하며 리다이렉트를 따르지 않습니다. 상태
 경로가 리다이렉트 없이 HTTP `200`을 반환하고 JSON이 `baton-watch`의 `UP`
 상태인지 판정합니다. `CF-Ray`가 정확히 하나 존재하고 `CF-Cache-Status`가
-정확히 하나의 `DYNAMIC` 또는 `BYPASS`인지도 확인합니다. 이는 해당 응답이
-Cloudflare에서 처리되고 캐시되지 않았다는 HTTP 증거이며, 의도한 Tunnel 연결
-자체의 정본은 계속 Cloudflare 대시보드/API입니다. 이어서 인증하지 않고
+정확히 하나의 `DYNAMIC` 또는 `BYPASS`인지도 확인합니다. 이 헤더로 Cloudflare
+처리와 캐시 미사용을 확인합니다. 실제 Tunnel 연결은 Cloudflare 대시보드/API에서
+확인해야 합니다. 이어서 인증하지 않고
 잘못된 형식으로 보낸 모니터 요청의 `401`과 인그레스 기타 경로의 `404`를
 판정합니다. 터널 없음, Cloudflare 엣지 오류, 캐시된 응답, 다른 서비스의 JSON
 또는 잘못된 인그레스 규칙이 확인되면 스크립트가 실패합니다.

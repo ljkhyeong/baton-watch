@@ -18,9 +18,8 @@ import java.util.concurrent.TimeoutException;
 import org.apache.hc.core5.io.IOFunction;
 
 /**
- * 제한된 실행기에서 JVM 리졸버를 실행한다. Future를 취소해도 플랫폼 리졸버 자체를 강제로
- * 중지할 수 없으므로, 제한된 풀은 스레드가 무한히 생성되는 것을 방지하고 인프라 이그레스
- * 정책은 심층 방어 수단으로 유지된다.
+ * JVM DNS 조회를 제한된 스레드 풀에서 실행한다. Future를 취소해도 DNS 조회 자체는
+ * 강제로 중지할 수 없다. 스레드 수를 제한하고 인프라의 외부 통신 차단 정책도 유지한다.
  */
 public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
@@ -73,6 +72,10 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
                 throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
             }
             throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
+        } finally {
+            if (future.isCancelled() && executor instanceof ThreadPoolExecutor pool) {
+                pool.purge();
+            }
         }
     }
 

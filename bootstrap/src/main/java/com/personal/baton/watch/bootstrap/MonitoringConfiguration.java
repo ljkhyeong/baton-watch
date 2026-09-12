@@ -8,6 +8,7 @@ import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPe
 import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
@@ -84,6 +85,11 @@ public class MonitoringConfiguration {
     @Bean
     GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
         return persistence::findProjection;
+    }
+
+    @Bean
+    GetMonitorProjectionsUseCase getMonitorProjectionsUseCase(MonitorPersistencePort persistence) {
+        return persistence::findProjections;
     }
 
     @Bean

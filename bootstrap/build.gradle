@@ -17,14 +17,28 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'com.tngtech.archunit:archunit:1.4.2'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-postgresql'
 }
 
 tasks.named('test', Test) {
+    dependsOn 'architectureTest'
+    exclude '**/ArchitectureTest.class'
     useJUnitPlatform {
         excludeTags 'runtime-load', 'capacity'
+    }
+}
+
+tasks.register('architectureTest', Test) {
+    description = 'DB 기동 없이 전체 운영 코드의 계층 의존성을 검사한다.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    filter {
+        includeTestsMatching '*ArchitectureTest'
+        failOnNoMatchingTests = true
     }
 }
 

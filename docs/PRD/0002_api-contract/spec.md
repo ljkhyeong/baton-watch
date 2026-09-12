@@ -2,7 +2,7 @@
 
 상태: 유지 관리 계약
 
-수정일: 2026-09-05
+수정일: 2026-09-12
 
 ## 시스템 상태
 
@@ -20,15 +20,15 @@
 `observedAt`은 서버가 생성한 UTC 시각이며 ISO 8601 형식으로 직렬화된다.
 이 경로는 리소스 데이터를 노출하지 않는다.
 
-## 채택된 모니터링 경로
+## 점검 대상 관리 API
 
 ### 공개 진입 경로의 요청 속도 제한
 
-스테이징 터널 오버레이의 NGINX는 상태 경로와 나머지 `/api/v1/` 경로를
-서로 다른 전체 요청 예산으로 제한한다. 초기값은 상태 경로 초당 10건·버스트 20건,
+스테이징 터널용 Compose 설정의 NGINX는 상태 경로와 나머지 `/api/v1/` 경로의
+요청 수를 각각 제한한다. 초기값은 상태 경로 초당 10건·버스트 20건,
 나머지 API 초당 5건·버스트 10건이며, 승인된 운영 처리량을 뜻하지 않는다.
 제한 초과는 WATCH 인증 전에 HTTP 429, `application/problem+json`,
-`Cache-Control: no-store`와 다음 고정 응답을 반환한다.
+`Cache-Control: no-store`, `Retry-After: 1`과 다음 고정 응답을 반환한다.
 
 ~~~json
 {"type":"urn:baton-watch:problem:rate-limited","title":"요청이 너무 많습니다","status":429,"code":"RATE_LIMITED"}
@@ -38,6 +38,8 @@
 인증 후 16 KiB 본문 제한은 기존 WATCH 계약을 유지한다. 내부 직접 접근과 로컬
 Compose에는 이 프록시 제한이 적용되지 않는다. NGINX 자체의 잘못된 HTTP 요청,
 연결 실패 등 다른 프록시 오류는 WATCH의 Problem Details 응답으로 보장하지 않는다.
+호출자는 최소 1초 뒤 재시도하며, 계속 혼잡하면 다시 429를 받을 수 있다.
+WATCH가 반환한 수동 재점검 429·DB 장애 503의 `Retry-After`는 원래 값으로 전달한다.
 구성과 공개 배포 전 검증은 [요청 제한 런북](../../runbooks/request-rate-limit.md)을 따른다.
 
 ### 모니터 동기화와 조회
@@ -84,6 +86,11 @@ HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 비활성 스냅샷은 `"monitoringState": "INACTIVE"`를 사용하며 `targetUrl`을
 생략하거나 null로 설정해야 한다.
 
+`sourceRevision`의 범위는 0부터 9223372036854775807까지다. 소수나 지수 표기 숫자는
+정수로 변환하지 않고 HTTP 400 `INVALID_REQUEST`로 거부한다. `42.0`·`4.2e1`도 거부하며,
+클라이언트는 `42`처럼 정수로 전송한다. `-0.5`가 0으로 바뀌어 음수 검증을 통과할 수 없다.
+숫자 해석에는 Spring Boot의 `spring.jackson.deserialization.accept-float-as-int=false`를 사용한다.
+
 PUT과 GET은 `application/json`을 반환한다.
 
 ~~~json
@@ -91,6 +98,7 @@ PUT과 GET은 `application/json`을 반환한다.
   "resourceReference": "role-resource-123",
   "sourceRevision": 42,
   "monitoringState": "ACTIVE",
+  "checkStatus": "QUEUED",
   "health": "UNKNOWN",
   "consecutiveFailures": 0,
   "lastOutcome": null,
@@ -99,6 +107,23 @@ PUT과 GET은 `application/json`을 반환한다.
   "nextCheckAt": "2026-08-01T00:00:00Z"
 }
 ~~~
+
+`checkStatus`는 응답 생성 시각의 점검 진행 상태이며 링크의 연결 상태인 `health`와 구분한다.
+
+| `checkStatus` | 의미 | 조건 |
+| --- | --- | --- |
+| `INACTIVE` | 비활성 | 비활성 모니터 |
+| `SCHEDULED` | 예약 | 유효한 리스가 없고 다음 점검 시각 전 |
+| `QUEUED` | 대기 | 유효한 리스가 없고 다음 점검 시각이 됐거나 지남 |
+| `IN_PROGRESS` | 진행 중 | 만료 전인 리스가 있음 |
+
+리스가 유효하면 다음 점검 시각과 관계없이 `IN_PROGRESS`다. 리스 만료 시각부터는 일정으로
+판단한다. 중단된 작업자의 리스도 만료 전까지 유효하므로 실제 작업자 생존이나 시작 시각을
+보장하는 값은 아니다. 작업자 실행을 설정으로 꺼도 활성 모니터의 도래한 일정은 `QUEUED`로 표시한다.
+리스 만료 시각·토큰·시도 ID는 응답에 포함하지 않는다.
+
+기존 응답 필드는 유지하고 `checkStatus`만 추가한다. 클라이언트는 알 수 없는 응답 필드를
+허용해야 한다. 수동 재점검 POST의 `status`는 요청 접수 결과이며 이 진행 상태와 구분한다.
 
 `lastCheckedAt`은 결과 분류와 관계없이 마지막으로 완료 처리한 점검 시각이다.
 `lastConclusiveAt`은 상태 도출에 반영할 수 있는 마지막 확정 결과의 완료 시각이며,
@@ -109,13 +134,48 @@ PUT과 GET은 `application/json`을 반환한다.
 HTTP 409, 유효하지 않은 대상 정책은 HTTP 422, 인증된 JSON PUT의 16 KiB
 본문 한도 초과는 HTTP 413, 존재하지 않는 모니터는 HTTP 404,
 누락되었거나 유효하지 않은 자격 증명은 HTTP 401, 예기치 않았지만
-안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 오류는 안정적인 `type`,
+안전하게 처리된 서버 실패는 HTTP 500을 반환한다. 일시적 DB 장애는 아래 HTTP 503 계약을 따른다.
+오류는 안정적인 `type`,
 `title`, `status`, `code` 필드를 포함하는 `application/problem+json`을
-사용한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
+사용한다. `title`은 원인을 설명하는 한국어 문구이며 클라이언트는 `code`로 오류를 구분한다.
+예를 들어 `STALE_SOURCE_REVISION`은 "저장된 리비전보다 오래된 요청입니다",
+`SOURCE_REVISION_CONFLICT`는 "같은 리비전에 다른 내용이 등록되어 있습니다"로 안내한다. 대상 URL, 조회된 주소, 자격 증명, 응답 본문, 원시 예외 또는 BATON의
 인가 결정을 포함해서는 안 된다.
 
+### 일시적 DB 장애
+
+단건·묶음 조회, 모니터 PUT과 수동 재점검 POST에서 DB 연결 실패·시간 초과·일시적 경합이
+발생하면 HTTP 503과 `Retry-After: 5`를 반환한다. 본문은 `application/problem+json`이다.
+
+```json
+{
+  "type": "urn:baton-watch:problem:service-unavailable",
+  "title": "일시적으로 요청을 처리할 수 없습니다",
+  "status": 503,
+  "instance": "urn:baton-watch:request",
+  "code": "SERVICE_UNAVAILABLE"
+}
+```
+
+Spring이 분류한 `TransientDataAccessException`, `DataAccessResourceFailureException`,
+`RecoverableDataAccessException`, `TransactionTimedOutException`을 처리한다.
+`CannotCreateTransactionException`은 원인에 JDBC `SQLException`이 있을 때만 503으로 처리한다.
+데이터 제약 위반·잘못된 API 사용·그 밖의 서버 오류는 기존 500을 유지하며 재시도 헤더를 붙이지 않는다.
+공용 JDBC 설정은 PostgreSQL용 Spring 오류 변환기를 사용한다. 실제 DB 행 잠금 시간 초과도
+503으로 처리하며, 잠금 해제 후 같은 리비전·본문의 PUT을 다시 보내면 정상 처리할 수 있다.
+
+인증과 요청 검증 순서는 유지한다. 오류 응답과 로그에는 SQL·연결 정보·예외 원문을 포함하지 않고
+로그에는 기존처럼 예외 클래스만 남긴다. 서버 안에서 실패한 요청을 자동 재실행하지 않는다.
+
+호출자는 최소 5초 뒤 재시도한다. 5초는 대기 안내이며 복구 완료나 DB 미반영을 보장하지 않는다.
+PUT을 다시 보낼 때는 같은 리비전·본문을 사용한다. POST는 기존 일정·리스 합류와 429 제한을 따른다.
+HTTP 의미는 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-15.6.4), 예외 분류는
+[Spring 데이터 접근 예외](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/dao/TransientDataAccessException.html)를 따른다.
+
+### 프레임워크 오류
+
 인증에 성공한 뒤 본문 제한 필터나 Spring MVC가 요청을 거부할 때도
-다음과 같이 동일한 안정적 문제 계약을 사용한다.
+다음과 같이 같은 오류 응답 형식을 사용한다.
 
 - 잘못된 JSON 또는 요청 검증 실패: HTTP 400,
   `urn:baton-watch:problem:invalid-request`, `INVALID_REQUEST`
@@ -155,7 +215,7 @@ MVC 예외 응답과 인증·본문 제한·방화벽 오류 응답은 같은 �
 
 Spring Security의 엄격한 HTTP 방화벽이 경로 일치 전에 거부한 요청은 이러한
 인증 우선 순서의 바깥에 있다. 모호한 구분자, 매트릭스 구문 및 그 밖의 의심스러운
-경로 형식은 인증 전에 안전한 방향으로 거부되며 HTTP 400,
+경로 형식은 인증 전에 거부되며 HTTP 400,
 `application/problem+json`, `urn:baton-watch:problem:request-rejected` 및
 `REQUEST_REJECTED`를 반환한다. 이 응답은 동일한 고정 비식별 `instance`를
 사용하며 원시 경로, 리소스 참조 또는 방화벽 예외를 절대로 포함하지 않는다.
@@ -164,10 +224,55 @@ Spring Security의 엄격한 HTTP 방화벽이 경로 일치 전에 거부한 �
 시도 이력, 인바운드 웹훅 또는 이벤트 전달 경로는 채택하지 않았다.
 수동 재점검은 아래 예약 경로만 제공한다.
 PRD-0004의 직접 전달은 WATCH의 아웃바운드 콜백이며 이러한 인바운드 경로를
-변경하지 않는다. 이후 조회 경로는 구현 전에 커서 페이지네이션을 정의해야 한다.
+변경하지 않는다. 전체 목록이나 시도 이력 조회를 추가할 때는 먼저 커서 페이지네이션을 정의한다.
 
 모든 애플리케이션 경로는 `/api/v1` 아래에 유지하고 이름이 있는 전송 DTO를
 사용하며 인바운드 애플리케이션 포트에 위임한다.
+
+## 여러 점검 대상 조회
+
+`GET /api/v1/resource-monitors`는 `resourceReference` 쿼리 매개변수를 반복해 최대 20개를 조회한다.
+단건 조회와 같은 Bearer 서비스 인증을 사용한다. BATON은 요청 전후에 각 자료의 접근 권한과
+원본 리비전을 확인해야 한다. WATCH는 자료의 소유권이나 공유 권한을 판단하지 않는다.
+
+```text
+GET /api/v1/resource-monitors?resourceReference=role-resource-123&resourceReference=missing-resource
+```
+
+HTTP 200과 `application/json` 응답 예시:
+
+```json
+{
+  "monitors": [
+    {
+      "resourceReference": "role-resource-123",
+      "sourceRevision": 42,
+      "monitoringState": "ACTIVE",
+      "checkStatus": "QUEUED",
+      "health": "UNKNOWN",
+      "consecutiveFailures": 0,
+      "lastOutcome": null,
+      "lastCheckedAt": null,
+      "lastConclusiveAt": null,
+      "nextCheckAt": "2026-08-01T00:00:00Z"
+    }
+  ],
+  "missingResourceReferences": ["missing-resource"]
+}
+```
+
+- `monitors`의 각 항목은 단건 조회와 같은 응답이다. 비활성 대상도 포함한다.
+- 등록되지 않은 대상은 `missingResourceReferences`에 담는다. 모두 미등록이어도 HTTP 200이며
+  `monitors`는 빈 배열이다. DB 조회 실패를 미등록으로 처리하지 않는다.
+- 중복은 한 번만 반환한다. 두 배열은 각각 요청에서 처음 나타난 순서를 유지한다.
+- 입력은 중복 제거 전 1~20개다. 누락·빈 값·잘못된 식별자·20개 초과는 HTTP 400 `INVALID_REQUEST`다.
+  인증을 먼저 확인하므로 자격 증명이 없거나 잘못되면 HTTP 401이다.
+- DB 조회는 한 번이며 모든 항목의 `checkStatus`를 같은 시각으로 판단한다. URL·리스 정보는 반환하지 않는다.
+- 지정한 대상만 조회하므로 커서는 제공하지 않는다. 전체 대상 목록이나 이력을 열거하는 API가 아니다.
+
+묶음 응답을 처리하는 클라이언트는 단건보다 큰 응답을 받을 수 있도록 크기 제한을 검토해야 한다.
+URL 인코딩과 인증 헤더를 포함한 기존 8 KiB 요청 헤더 한도도 계속 적용한다.
+기존 단건 경로와 수동 재점검 경로의 계약은 유지한다.
 
 ## 수동 재점검 요청
 
@@ -198,6 +303,7 @@ HTTP 202와 `application/json` 응답 예시:
 | 404 | `MONITOR_NOT_FOUND` | `monitor-not-found` | 모니터 없음 |
 | 409 | `MONITOR_INACTIVE` | `monitor-inactive` | 비활성 모니터 |
 | 429 | `CHECK_REQUEST_RATE_LIMITED` | `check-request-rate-limited` | 직전 새 수동 예약 이후 30초 이내에 다시 앞당기려는 요청 |
+| 503 | `SERVICE_UNAVAILABLE` | `service-unavailable` | 일시적 DB 장애. `Retry-After: 5` 반환 |
 
 `type` 접두사는 `urn:baton-watch:problem:`이다. 429의 `Retry-After`는 남은 시간을
 올림한 양의 정수 초다. 30초 정각부터 허용한다. 대기·실행 중 작업에 합류할 때는

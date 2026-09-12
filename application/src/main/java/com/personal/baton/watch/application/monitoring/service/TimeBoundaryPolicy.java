@@ -3,7 +3,7 @@ package com.personal.baton.watch.application.monitoring.service;
 import java.time.Duration;
 import java.util.Objects;
 
-/** 설정 가능한 시각 오프셋의 지원 범위를 한곳에서 소유한다. */
+/** 시간 간격 설정이 양수이고 상한 이내인지 공통으로 검증한다. */
 public final class TimeBoundaryPolicy {
 
     public static final long MAX_SUPPORTED_OFFSET_DAYS = 365;

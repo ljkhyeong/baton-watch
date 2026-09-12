@@ -46,7 +46,8 @@ class EventDeliveryConfiguration {
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            Clock clock) {
         if (properties.bearerToken().equals(watchProperties.apiToken())) {
             throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
         }
@@ -66,7 +67,8 @@ class EventDeliveryConfiguration {
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
                 http.requestQueueCapacity(),
-                objectMapper);
+                objectMapper,
+                clock);
     }
 
     @Bean

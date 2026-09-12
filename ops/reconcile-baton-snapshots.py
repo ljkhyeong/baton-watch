@@ -14,12 +14,14 @@ import stat
 import subprocess
 import sys
 import time
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 import uuid
 
 MAX_MANIFEST_BYTES = 32 * 1024 * 1024
 MAX_SNAPSHOTS = 10_000
 MAX_RESPONSE_BYTES = 8_192
+MAX_BATCH_RESPONSE_BYTES = 32 * 1024
+BATCH_SIZE = 20
 FIELDS = {"resourceReference", "sourceRevision", "monitoringState", "targetUrl"}
 SPEC = importlib.util.spec_from_file_location("url_policy", Path(__file__).with_name("staging-url-policy.py"))
 URL_POLICY = importlib.util.module_from_spec(SPEC)
@@ -28,6 +30,10 @@ SPEC.loader.exec_module(URL_POLICY)
 
 class RecoveryError(Exception):
     """원문이나 인증값을 포함하지 않는 운영 오류."""
+
+
+class AccessDeniedError(RecoveryError):
+    """같은 연결 정보로 후속 요청을 보내지 않아야 하는 인증·접근 거부."""
 
 
 def private_file(path, limit):
@@ -106,11 +112,19 @@ class WatchClient:
         self.last_request = None
 
     def request(self, method, reference, payload=None):
+        return self._request(method, f"/api/v1/resource-monitors/{quote(reference, safe='')}", payload)
+
+    def get_batch(self, references):
+        query = urlencode({"resourceReference": references}, doseq=True)
+        return self._request("GET", f"/api/v1/resource-monitors?{query}",
+                             max_response_bytes=MAX_BATCH_RESPONSE_BYTES)
+
+    def _request(self, method, path, payload=None, max_response_bytes=MAX_RESPONSE_BYTES):
         if self.last_request is not None:
             time.sleep(max(0, self.interval - (time.monotonic() - self.last_request)))
         address = public_address(self.host)
         pinned = f"[{address}]" if ":" in address else address
-        url = f"{self.origin}/api/v1/resource-monitors/{quote(reference, safe='')}"
+        url = self.origin + path
         config = [f"url = {json.dumps(url)}", f"header = {json.dumps('Authorization: Bearer ' + self.token)}",
                   'header = "Accept: application/json, application/problem+json"']
         if payload is not None:
@@ -118,16 +132,19 @@ class WatchClient:
                        f"data = {json.dumps(json.dumps(payload, ensure_ascii=True, separators=(',', ':')))}"]
         command = ["curl", "--disable", "--config", "-", "--silent", "--noproxy", "*",
                    "--proto", "=https", "--tlsv1.2", "--connect-timeout", "3", "--max-time", "10",
-                   "--max-filesize", str(MAX_RESPONSE_BYTES), "--max-redirs", "0",
+                   "--max-filesize", str(max_response_bytes), "--max-redirs", "0",
                    "--resolve", f"{self.host}:443:{pinned}", "--request", method,
                    "--write-out", "\n%{http_code}"]
         self.last_request = time.monotonic()
         try:
             response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=True)
             body, code = response.stdout.rsplit(b"\n", 1)
-            if len(body) > MAX_RESPONSE_BYTES:
+            status = int(code)
+            if status in (401, 403):
+                raise AccessDeniedError("WATCH API 토큰과 접근 권한을 확인하세요")
+            if len(body) > max_response_bytes:
                 raise ValueError()
-            return int(code), json.loads(body) if body else None
+            return status, json.loads(body) if body else None
         except (OSError, subprocess.SubprocessError, ValueError):
             raise RecoveryError("WATCH 요청 또는 응답 확인에 실패했습니다") from None
 
@@ -138,8 +155,13 @@ def inspect_remote(client, snapshot):
         return "MISSING", None
     if status != 200 or not isinstance(body, dict):
         return "LOOKUP_FAILED", None
+    return compare_projection(snapshot, body)
+
+
+def compare_projection(snapshot, body):
     revision = body.get("sourceRevision")
-    if body.get("resourceReference") != snapshot["resourceReference"] or type(revision) is not int or revision < 1:
+    if (body.get("resourceReference") != snapshot["resourceReference"]
+            or type(revision) is not int or not 0 <= revision <= 2**63 - 1):
         return "LOOKUP_FAILED", None
     if body.get("monitoringState") not in ("ACTIVE", "INACTIVE"):
         return "LOOKUP_FAILED", None
@@ -152,28 +174,84 @@ def inspect_remote(client, snapshot):
     return "REVISION_MATCH_UNVERIFIED", revision
 
 
+def inspect_remote_batch(client, snapshots):
+    requested = [snapshot["resourceReference"] for snapshot in snapshots]
+    status, body = client.get_batch(requested)
+    if status != 200 or not isinstance(body, dict):
+        return None
+    monitors, missing = body.get("monitors"), body.get("missingResourceReferences")
+    if not isinstance(monitors, list) or not isinstance(missing, list):
+        return None
+    if any(not isinstance(monitor, dict) for monitor in monitors):
+        return None
+    received = [monitor.get("resourceReference") for monitor in monitors] + missing
+    if (any(not isinstance(reference, str) for reference in received)
+            or len(received) != len(requested) or set(received) != set(requested)):
+        return None
+    projections = {reference: None for reference in missing}
+    projections.update({monitor["resourceReference"]: monitor for monitor in monitors})
+    return projections
+
+
+def report(snapshot, status, remote_revision):
+    return {"resourceReference": snapshot["resourceReference"], "sourceRevision": snapshot["sourceRevision"],
+            "remoteRevision": remote_revision, "status": status}
+
+
+def audit(client, snapshots):
+    for start in range(0, len(snapshots), BATCH_SIZE):
+        batch = snapshots[start:start + BATCH_SIZE]
+        try:
+            projections = inspect_remote_batch(client, batch)
+        except AccessDeniedError:
+            for offset, snapshot in enumerate(snapshots[start:]):
+                status = "ACCESS_DENIED" if offset < len(batch) else "NOT_ATTEMPTED"
+                yield report(snapshot, status, None)
+            return
+        except RecoveryError:
+            for snapshot in batch:
+                yield report(snapshot, "LOOKUP_OR_REPLAY_FAILED", None)
+            continue
+        for snapshot in batch:
+            if projections is None:
+                status, remote_revision = "LOOKUP_FAILED", None
+            elif projections[snapshot["resourceReference"]] is None:
+                status, remote_revision = "MISSING", None
+            else:
+                status, remote_revision = compare_projection(snapshot, projections[snapshot["resourceReference"]])
+            yield report(snapshot, status, remote_revision)
+
+
 def reconcile(client, snapshots, apply=False):
-    for snapshot in snapshots:
+    if not apply:
+        yield from audit(client, snapshots)
+        return
+    for index, snapshot in enumerate(snapshots):
         try:
             status, remote_revision = inspect_remote(client, snapshot)
-            if apply and status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
+            if status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
                 payload = {key: value for key, value in snapshot.items() if key != "resourceReference"}
                 http_status, body = client.request("PUT", snapshot["resourceReference"], payload)
+                remote_revision = None
                 if (http_status == 200 and isinstance(body, dict)
                         and body.get("resourceReference") == snapshot["resourceReference"]
                         and type(body.get("sourceRevision")) is int
                         and body["sourceRevision"] == snapshot["sourceRevision"]
                         and body.get("monitoringState") == snapshot["monitoringState"]):
                     # PUT의 200은 같은 리비전의 원본 URL까지 동일하다는 계약 확인이다.
-                    status = "REPLAYED"
+                    status, remote_revision = "REPLAYED", body["sourceRevision"]
                 elif http_status == 409 and isinstance(body, dict) and body.get("code") in ("STALE_SOURCE_REVISION", "SOURCE_REVISION_CONFLICT"):
                     status = "REMOTE_AHEAD" if body["code"] == "STALE_SOURCE_REVISION" else "PAYLOAD_CONFLICT"
                 else:
                     status = "REPLAY_FAILED"
+        except AccessDeniedError:
+            yield report(snapshot, "ACCESS_DENIED", None)
+            for remaining in snapshots[index + 1:]:
+                yield report(remaining, "NOT_ATTEMPTED", None)
+            return
         except RecoveryError:
             status, remote_revision = "LOOKUP_OR_REPLAY_FAILED", None
-        yield {"resourceReference": snapshot["resourceReference"], "sourceRevision": snapshot["sourceRevision"],
-               "remoteRevision": remote_revision, "status": status}
+        yield report(snapshot, status, remote_revision)
 
 
 def main(argv=None):
@@ -192,7 +270,7 @@ def main(argv=None):
         if args.apply and digest != args.expected_sha256:
             raise RecoveryError("재전송에는 사전 검토한 스냅샷 파일의 SHA-256이 필요합니다")
         token = private_file(args.token_file, 202).decode("ascii").rstrip("\r\n")
-        if not re.fullmatch(r"[A-Za-z0-9._~-]{32,200}", token):
+        if len(token) > 200 or not re.fullmatch(r"[A-Za-z0-9._~+/-]{32,}=*", token):
             raise RecoveryError("WATCH API 토큰 형식을 확인하세요")
         client = WatchClient(args.origin, token)
         print(json.dumps({"mode": "REPLAY" if args.apply else "AUDIT", "manifestSha256": digest, "count": len(snapshots)}), flush=True)

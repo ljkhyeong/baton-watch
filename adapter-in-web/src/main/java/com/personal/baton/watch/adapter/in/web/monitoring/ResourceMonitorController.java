@@ -2,10 +2,15 @@ package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import java.time.Clock;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,6 +19,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -22,15 +28,21 @@ public final class ResourceMonitorController {
 
     private final SynchronizeMonitorUseCase synchronizeMonitor;
     private final GetMonitorProjectionUseCase getMonitorProjection;
+    private final GetMonitorProjectionsUseCase getMonitorProjections;
     private final RequestMonitorCheckUseCase requestMonitorCheck;
+    private final Clock clock;
 
     public ResourceMonitorController(
             SynchronizeMonitorUseCase synchronizeMonitor,
             GetMonitorProjectionUseCase getMonitorProjection,
-            RequestMonitorCheckUseCase requestMonitorCheck) {
+            GetMonitorProjectionsUseCase getMonitorProjections,
+            RequestMonitorCheckUseCase requestMonitorCheck,
+            Clock clock) {
         this.synchronizeMonitor = synchronizeMonitor;
         this.getMonitorProjection = getMonitorProjection;
+        this.getMonitorProjections = getMonitorProjections;
         this.requestMonitorCheck = requestMonitorCheck;
+        this.clock = clock;
     }
 
     @PutMapping(path = "/{resourceReference}", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -39,7 +51,7 @@ public final class ResourceMonitorController {
             @Valid @RequestBody SynchronizeMonitorRequest request) {
         SynchronizationResult result = synchronizeMonitor.synchronize(request.toCommand(resourceReference));
         return switch (result.status()) {
-            case APPLIED, UNCHANGED -> MonitorResponse.from(result.projection());
+            case APPLIED, UNCHANGED -> MonitorResponse.from(result.projection(), clock.instant());
             case STALE_REVISION -> throw MonitorApiException.staleRevision();
             case REVISION_CONFLICT -> throw MonitorApiException.revisionConflict();
         };
@@ -48,8 +60,16 @@ public final class ResourceMonitorController {
     @GetMapping("/{resourceReference}")
     public MonitorResponse get(@PathVariable ResourceReference resourceReference) {
         return getMonitorProjection.get(resourceReference)
-                .map(MonitorResponse::from)
+                .map(projection -> MonitorResponse.from(projection, clock.instant()))
                 .orElseThrow(MonitorApiException::notFound);
+    }
+
+    @GetMapping
+    public MonitorBatchResponse getBatch(
+            @RequestParam("resourceReference") @Size(min = 1, max = 20)
+                    List<@NotNull ResourceReference> resourceReferences) {
+        return MonitorBatchResponse.from(
+                resourceReferences, getMonitorProjections.get(resourceReferences), clock.instant());
     }
 
     @PostMapping("/{resourceReference}/check-requests")

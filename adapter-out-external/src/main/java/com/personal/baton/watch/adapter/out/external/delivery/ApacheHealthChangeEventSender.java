@@ -7,6 +7,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryObserv
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.net.URI;
+import java.time.Clock;
 import java.util.Objects;
 import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
@@ -28,8 +29,10 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
             int dnsQueueCapacity,
             int httpThreadCount,
             int httpQueueCapacity,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            Clock clock) {
         Objects.requireNonNull(limits, "limits");
+        Objects.requireNonNull(clock, "clock");
         ValidatedDeliveryEndpoint validatedEndpoint = new DeliveryEndpointPolicy().validate(endpoint);
         requireValidBearerToken(bearerToken);
         OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
@@ -37,7 +40,7 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
         HealthChangeEventJsonSerializer serializer = new HealthChangeEventJsonSerializer(objectMapper);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheEventDeliveryTransport apacheTransport =
-                new ApacheEventDeliveryTransport(limits, httpThreadCount, httpQueueCapacity);
+                new ApacheEventDeliveryTransport(limits, httpThreadCount, httpQueueCapacity, clock);
         this.engine = new SafeEventDeliveryEngine(
                 validatedEndpoint,
                 bearerToken,

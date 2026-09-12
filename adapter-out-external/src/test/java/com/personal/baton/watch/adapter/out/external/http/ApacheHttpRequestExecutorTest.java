@@ -25,6 +25,8 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.core5.http.MessageConstraintException;
 import org.apache.hc.core5.io.IOFunction;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ApacheHttpRequestExecutorTest {
 
@@ -197,6 +199,69 @@ class ApacheHttpRequestExecutorTest {
         } finally {
             releaseWorker.countDown();
             worker.shutdownNow();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void releasesCancelledQueueCapacityBeforeTheBusyWorkerFinishes(boolean interruptCaller) throws Exception {
+        var queue = new ArrayBlockingQueue<Runnable>(1);
+        var worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, queue);
+        CountDownLatch occupied = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        worker.execute(() -> {
+            occupied.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        HttpGet request = new HttpGet("https://check.test/cancelled");
+        AtomicBoolean operationCalled = new AtomicBoolean();
+        AtomicBoolean interruptRestored = new AtomicBoolean();
+        AtomicReference<OutboundHttpFailure.Kind> kind = new AtomicReference<>();
+        try (var executor = new ApacheHttpRequestExecutor(worker)) {
+            Thread caller = Thread.ofPlatform().unstarted(() -> {
+                try {
+                    executor.execute(request, interruptCaller ? Duration.ofSeconds(10) : Duration.ofMillis(200),
+                            onResponseStarted -> {
+                                operationCalled.set(true);
+                                return null;
+                            });
+                } catch (OutboundHttpFailure failure) {
+                    kind.set(failure.kind());
+                    interruptRestored.set(Thread.currentThread().isInterrupted());
+                }
+            });
+            try {
+                assertTrue(occupied.await(1, TimeUnit.SECONDS));
+                caller.start();
+                Runnable queued = queue.poll(1, TimeUnit.SECONDS);
+                assertNotNull(queued);
+                queue.add(queued);
+                if (interruptCaller) {
+                    caller.interrupt();
+                }
+                caller.join(1_500);
+                assertFalse(caller.isAlive());
+                assertEquals(interruptCaller ? OutboundHttpFailure.Kind.INTERNAL_FAILURE
+                        : OutboundHttpFailure.Kind.CONNECT_TIMEOUT, kind.get());
+                assertEquals(interruptCaller, interruptRestored.get());
+                assertTrue(request.isCancelled());
+                assertFalse(operationCalled.get());
+                // 기존 작업자가 계속 점유 중이어도 새 작업을 대기열에 넣을 수 있어야 한다.
+                var next = worker.submit(() -> "accepted");
+                release.countDown();
+                assertEquals("accepted", next.get(1, TimeUnit.SECONDS));
+            } finally {
+                caller.interrupt();
+                caller.join(1_000);
+            }
+        } finally {
+            release.countDown();
+            worker.shutdownNow();
+            assertTrue(worker.awaitTermination(1, TimeUnit.SECONDS));
         }
     }
 

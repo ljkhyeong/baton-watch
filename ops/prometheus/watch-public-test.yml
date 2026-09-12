@@ -1,0 +1,56 @@
+rule_files:
+  - watch-public-alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: 5분 간격의 정상 점검은 결과 누락으로 처리하지 않음
+    interval: 5m
+    input_series:
+      - series: probe_success{job="baton-watch-public",instance="https://watch.b4ton.com/api/v1/system/status",probe="test-probe"}
+        values: '1x4'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: []
+  - name: 실패 결과가 계속 도착하면 점검 중단으로 처리하지 않음
+    interval: 5m
+    input_series:
+      - series: probe_success{job="baton-watch-public",instance="https://watch.b4ton.com/api/v1/system/status",probe="test-probe"}
+        values: '0x4'
+    alert_rule_test:
+      - eval_time: 19m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: []
+  - name: 마지막 결과부터 15분 뒤 경보 발생하고 실패 결과라도 다시 받으면 해제
+    interval: 1m
+    input_series:
+      - series: probe_success{job="baton-watch-public",instance="https://watch.b4ton.com/api/v1/system/status",probe="test-probe"}
+        values: '1 stale _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: &missing
+          - exp_labels: {job: baton-watch-public, namespace: synthetic_monitoring, severity: warning}
+            exp_annotations: {summary: WATCH 외부 점검 결과 누락}
+      - eval_time: 16m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: []
+  - name: 다른 서비스나 같은 이름의 다른 주소가 대상 결과 누락을 가리지 않음
+    interval: 5m
+    input_series:
+      - series: probe_success{job="baton-cal-public",instance="https://watch.b4ton.com/api/v1/system/status"}
+        values: '1x4'
+      - series: probe_success{job="baton-watch-public",instance="https://unrelated.invalid/status"}
+        values: '1x4'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: *missing
+  - name: 한 번도 점검하지 않은 대상은 처음부터 누락 상태이므로 연결 전 경보를 일시정지
+    input_series: []
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: WatchPublicCheckMissing
+        exp_alerts: *missing
