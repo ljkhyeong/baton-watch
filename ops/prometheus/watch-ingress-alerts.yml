@@ -36,3 +36,13 @@ groups:
           severity: warning
         annotations:
           summary: WATCH 인바운드 점검 대상 누락
+      - alert: WatchIngressTlsExpiring
+        expr: |
+          (probe_ssl_earliest_cert_expiry{job="baton-watch-ingress",route="public"} - time() <= 7 * 24 * 60 * 60)
+          and on (job, instance)
+          (up{job="baton-watch-ingress",route="public"} == 1)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 공개 TLS 인증서 만료 임박

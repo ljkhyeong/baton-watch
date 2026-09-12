@@ -28,5 +28,5 @@ scrape_configs:
     # URL·인증서 식별자가 포함될 수 있는 나머지 측정값은 수집하지 않는다.
     metric_relabel_configs:
       - source_labels: [__name__]
-        regex: probe_success|probe_http_status_code|probe_duration_seconds
+        regex: probe_success|probe_http_status_code|probe_duration_seconds|probe_ssl_earliest_cert_expiry
         action: keep
