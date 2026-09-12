@@ -21,9 +21,11 @@ promtool() {
 }
 
 promtool check rules watch-alerts.yml
+promtool check rules watch-public-alerts.yml
 promtool check config watch-ingress-scrape.yml
 promtool check config --syntax-only watch-cloud-free.yml
 promtool test rules watch-ingress-test.yml
 promtool test rules watch-alerts-test.yml
 promtool test rules watch-workers-test.yml
+promtool test rules watch-public-test.yml
 promtool test rules /dashboard-tests/queries.json

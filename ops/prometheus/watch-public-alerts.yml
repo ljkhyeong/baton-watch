@@ -1,0 +1,19 @@
+# Grafana Cloud의 Synthetic Monitoring 데이터 소스로 가져온다. 로컬 수집기에는 적용하지 않는다.
+groups:
+  - name: baton-watch-public
+    interval: 1m
+    rules:
+      - alert: WatchPublicCheckMissing
+        # 0은 점검 실패 결과다. 결과 자체가 없을 때만 알리고 URL 레이블은 제거한다.
+        expr: |
+          sum(
+            absent_over_time(
+              probe_success{job="baton-watch-public",instance="https://watch.b4ton.com/api/v1/system/status"}[15m]
+            )
+          )
+        labels:
+          job: baton-watch-public
+          namespace: synthetic_monitoring
+          severity: warning
+        annotations:
+          summary: WATCH 외부 점검 결과 누락
