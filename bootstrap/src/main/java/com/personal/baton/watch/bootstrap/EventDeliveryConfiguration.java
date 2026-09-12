@@ -60,7 +60,7 @@ class EventDeliveryConfiguration {
                 http.maxHeaderCount(),
                 http.maxHeaderLineLength());
         return new ApacheHealthChangeEventSender(
-                properties.endpoint(),
+                properties.endpointUri(),
                 properties.bearerToken(),
                 limits,
                 http.dnsThreads(),

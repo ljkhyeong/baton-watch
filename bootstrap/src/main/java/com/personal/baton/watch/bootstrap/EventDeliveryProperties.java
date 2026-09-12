@@ -18,7 +18,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("watch.event-delivery")
 public record EventDeliveryProperties(
         boolean enabled,
-        URI endpoint,
+        String endpoint,
         String bearerToken,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
@@ -41,6 +41,15 @@ public record EventDeliveryProperties(
         if (enabled) {
             Objects.requireNonNull(endpoint, "endpoint");
             Objects.requireNonNull(bearerToken, "bearerToken");
+        }
+    }
+
+    URI endpointUri() {
+        try {
+            return URI.create(endpoint.trim());
+        } catch (IllegalArgumentException exception) {
+            // 변환 예외의 메시지와 원인에는 URL 원문이 포함되므로 전달하지 않는다.
+            throw new IllegalArgumentException("콜백 URL 문법이 올바르지 않습니다.");
         }
     }
 
