@@ -55,7 +55,8 @@ BATON 콜백 전달까지 검증하지 않는다. 429도 요청 실패로 처리
    비루트·읽기 전용 실행과 CPU·메모리·프로세스 상한도 배포 환경에서 적용한다.
 6. 수집 예시의 `instance`는 URL이 아니라 `watch-gateway`, `watch-public`이다.
    URL은 내부 요청 매개변수로만 사용한다. 허용하는 측정값도 `probe_success`,
-   `probe_http_status_code`, `probe_duration_seconds` 세 개로 제한한다.
+   `probe_http_status_code`, `probe_duration_seconds`, `probe_ssl_earliest_cert_expiry`
+   네 개로 제한한다. 인증서는 만료 시각만 수집하며 지문·발급자·도메인 목록은 제외한다.
    Prometheus가 자동으로 만드는 `up` 등 수집 자체의 지표는 유지된다.
 7. 경보 수신·해제와 주기를 승인한 뒤 적용한다. 수집기·Exporter·Alertmanager의
    장애까지 같은 점검이 보장하지 않으므로 기존 모니터링 시스템의 운영 기준도 유지한다.
@@ -67,6 +68,13 @@ BATON 콜백 전달까지 검증하지 않는다. 429도 요청 실패로 처리
 | `WatchIngressRequestFailed` | 수집 대상이 있지만 정상 응답을 2분간 확인하지 못함 | 수집 실패 보조 경보와 경로별 DNS·TLS·터널·NGINX·WATCH 응답 |
 | `WatchIngressProbeUnavailable` | Exporter 수집 실패 또는 성공 지표 누락이 2분간 지속 | Exporter·수집 주소·모듈·허용 지표 설정 |
 | `WatchIngressTargetMissing` | 내부 또는 공개 수집 대상 자체가 5분간 없음 | 수집 작업·고정 경로 레이블 |
+| `WatchIngressTlsExpiring` | 공개 경로의 수집이 정상이고 인증서 만료까지 7일 이하인 상태가 2분간 지속 | 공개 인증서 만료일·자동 갱신 상태 |
+
+인증서 경보는 기존 60초 주기의 HTTPS 점검 결과를 사용하므로 요청이 추가되지 않는다.
+인증서 체인에서 가장 이른 만료 시각을 기준으로 하며, 갱신 후 7일 넘게 남으면 해제된다.
+Cloudflare를 거치는 공개 주소는 Cloudflare의 공개 인증서를 확인한다. 홈서버 내부
+인증서의 만료를 감시하는 것은 아니다. 만료 지표가 없으면 유효 기간을 판단할 수 없으며,
+TLS 연결 실패는 기존 `WatchIngressRequestFailed`로 확인한다.
 
 주 경보는 같은 대상의 `up == 1`과 `probe_success == 1`이 함께 확인된 경우만
 정상으로 제외한다. `up`의 고정 레이블을 사용하므로 요청 실패·수집 실패·성공 지표
@@ -91,6 +99,8 @@ python3 -B ops/tests/gateway-test.py
 첫 명령은 Prometheus 설정 문법과 장애·복구·수집 실패·대상 누락 경보를 검사한다.
 실패 종류가 교차해도 주 경보가 유지되는지, 정상 응답 후 해제되는지, 복구 직후의
 짧은 오류에는 다시 경보가 발생하지 않는지도 확인한다.
+인증서 경보는 7일 경계·2분 대기·갱신 후 해제, 수집 실패·만료 지표 누락 제외와
+TLS 실패 시 기존 요청 실패 경보의 발생을 확인한다.
 두 번째는 실제 NGINX·Blackbox Exporter와 HTTP 대역만 격리 실행한다. 정상 요청,
 공개 모듈의 평문 거부, 리다이렉트 비추적, 다른 서비스·서비스 이름 누락·잘못된 본문,
 백엔드 중단·복구와 프록시 생존 확인의 차이를 확인하고 시험 환경을 제거한다.
@@ -103,6 +113,7 @@ config`를 통과시킨다. 승인된 장애·복구 시험으로 수신·해제
 
 모듈과 실행 옵션은 공식 [Blackbox Exporter](https://github.com/prometheus/blackbox_exporter/tree/v0.28.0),
 [HTTP 모듈 설정](https://github.com/prometheus/blackbox_exporter/blob/v0.28.0/CONFIGURATION.md)을 따른다.
+인증서 만료 시각은 같은 버전의 [HTTP 점검 구현](https://github.com/prometheus/blackbox_exporter/blob/v0.28.0/prober/http.go)이 제공한다.
 주 경보의 시계열 유지·제외 조건은 Prometheus의
 [경보 규칙](https://prometheus.io/docs/prometheus/latest/configuration/alerting_rules/)과
 [집합 연산자](https://prometheus.io/docs/prometheus/latest/querying/operators/#logical-set-binary-operators)를 따른다.

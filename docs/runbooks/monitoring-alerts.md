@@ -23,8 +23,8 @@ DB 연결 풀, 진행 중인 외부 요청 수를 보여준다. 임계치는 운
 
 ## 경보 범위
 
-프록시와 공개 HTTPS의 실제 요청 경로는 [인바운드 점검 절차](ingress-monitoring.md)의
-Blackbox Exporter 수집 템플릿과 선택적 경보 3개로 별도 확인한다. 아래 WATCH 내부
+프록시·공개 HTTPS 요청과 공개 TLS 인증서 만료는 [인바운드 점검 절차](ingress-monitoring.md)의
+Blackbox Exporter 수집 템플릿과 선택적 경보 4개로 별도 확인한다. 아래 WATCH 내부
 지표 11개 규칙만으로는 프록시 경로 장애를 감지할 수 없다.
 
 `ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다.
