@@ -25,12 +25,11 @@ final class TargetUriPolicy {
     }
 
     private static String loopKey(URI uri, String scheme, String hostname) {
-        URI normalized = uri.normalize();
-        String path = normalized.getRawPath();
+        String path = uri.getRawPath();
         if (path == null || path.isEmpty()) {
             path = "/";
         }
-        String query = normalized.getRawQuery();
+        String query = uri.getRawQuery();
         return scheme
                 + "://"
                 + hostname.toLowerCase(Locale.ROOT)

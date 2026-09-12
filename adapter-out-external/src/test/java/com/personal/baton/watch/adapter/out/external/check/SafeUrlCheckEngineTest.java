@@ -98,6 +98,25 @@ class SafeUrlCheckEngineTest {
         assertEquals(1, transport.targets.size());
     }
 
+    @ParameterizedTest
+    @CsvSource({"/docs//page, /docs/page", "/docs/page, /docs//page"})
+    void doesNotTreatDistinctSlashPathsAsARedirectLoop(String path, String location) throws Exception {
+        MutableNanoClock clock = new MutableNanoClock();
+        RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
+        ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
+        transport.add(redirect(302, location));
+        transport.add(finalStatus(204));
+
+        CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
+                .check(new TargetUrl("https://example.com" + path));
+
+        assertEquals(CheckOutcome.SUCCESS, observation.outcome());
+        assertEquals(1, observation.redirectCount());
+        assertEquals(List.of("example.com", "example.com"), dns.hostnames);
+        assertEquals("https://example.com" + location, transport.targets.get(1).target().uri().toString());
+        assertEquals(publicAnswer(), transport.targets.get(1).addresses());
+    }
+
     @Test
     void rejectsAMixedDnsAnswerAfterRedirectBeforeASecondConnection() throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
@@ -171,15 +190,19 @@ class SafeUrlCheckEngineTest {
         assertEquals(0, transport.targets.size());
     }
 
-    @Test
-    void rejectsRedirectLoopUsingCanonicalHostAndDefaultPort() throws Exception {
+    @ParameterizedTest
+    @CsvSource({
+        "https://example.com, https://EXAMPLE.com:443/",
+        "https://example.com/docs//page, https://EXAMPLE.com:443/docs//page"
+    })
+    void rejectsRedirectLoopUsingCanonicalHostAndDefaultPort(String target, String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(redirect(308, "https://EXAMPLE.com:443/"));
+        transport.add(redirect(308, location));
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://example.com"));
+                .check(new TargetUrl(target));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         assertEquals(0, observation.redirectCount());

@@ -73,6 +73,23 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void preservesRepeatedSlashesInTheRequestPath() throws Exception {
+        AtomicReference<String> path = new AtomicReference<>();
+        server = server();
+        server.createContext("/docs", exchange -> {
+            path.set(exchange.getRequestURI().getRawPath());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/docs//page"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals("/docs//page", path.get());
+    }
+
+    @Test
     void acceptsALargeDeclaredBodyWithoutWaitingForIt() throws Exception {
         CountDownLatch releaseBody = new CountDownLatch(1);
         server = server();
