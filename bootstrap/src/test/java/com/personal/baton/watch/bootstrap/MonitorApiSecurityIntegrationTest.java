@@ -205,6 +205,26 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(valid.statusCode()).isEqualTo(200);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1"})
+    void rejectsFloatingPointRevisionsBeforeSynchronization(String revision) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+        String body = "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0, Long.MAX_VALUE})
+    void acceptsIntegerRevisionBoundaries(long revision) throws Exception {
+        HttpResponse<String> response = put("/api/v1/resource-monitors/resource-1", API_TOKEN,
+                "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+    }
+
     @Test
     void authenticationPrecedesContentLengthAndChunkedBodyLimits() throws Exception {
         String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);

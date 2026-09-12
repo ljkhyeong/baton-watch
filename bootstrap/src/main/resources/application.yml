@@ -1,6 +1,9 @@
 spring:
   application:
     name: baton-watch
+  jackson:
+    deserialization:
+      accept-float-as-int: false
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
     username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
