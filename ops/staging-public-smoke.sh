@@ -83,22 +83,7 @@ if [[ "$(grep -Eic '^CF-Cache-Status:' "$response_headers" || true)" != "1" ]] \
         || ! grep -Eiq '^CF-Cache-Status:[[:space:]]*(DYNAMIC|BYPASS)[[:space:]]*$' "$response_headers"; then
     fail "공개 상태 응답의 CF-Cache-Status는 DYNAMIC 또는 BYPASS여야 합니다"
 fi
-if ! python3 - "$response_body" <<'PY'
-import json
-import sys
-
-try:
-    with open(sys.argv[1], encoding="utf-8") as response:
-        payload = json.load(response)
-except (OSError, UnicodeError, json.JSONDecodeError):
-    raise SystemExit(1)
-
-if not isinstance(payload, dict):
-    raise SystemExit(1)
-if payload.get("service") != "baton-watch" or payload.get("status") != "UP":
-    raise SystemExit(1)
-PY
-then
+if ! python3 "$SCRIPT_DIR/check-watch-status.py" "$response_body"; then
     fail "공개 상태 응답이 baton-watch의 UP 상태 JSON이 아닙니다"
 fi
 

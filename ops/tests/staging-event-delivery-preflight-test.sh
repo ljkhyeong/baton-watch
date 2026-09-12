@@ -13,6 +13,7 @@ TEMP_DIR="$(mktemp -d)"
 readonly TEMP_DIR
 readonly FAKE_BIN="$TEMP_DIR/bin"
 readonly CURL_CALLS="$TEMP_DIR/curl-calls"
+failure_case=0
 
 cleanup() {
     rm -rf "$TEMP_DIR"
@@ -63,17 +64,27 @@ if [[ -z "${FAKE_CURL_CALLS-}" ]]; then
 fi
 
 readonly -a ACTUAL_ARGUMENTS=("$@")
+body_file=
+while (( $# > 0 )); do
+    if [[ "$1" == "--output" ]]; then
+        body_file="$2"
+        shift 2
+    else
+        shift
+    fi
+done
 readonly -a COMMON_ARGUMENTS=(
     --disable
     --config -
     --silent
     --noproxy '*'
-    --output /dev/null
+    --output "$body_file"
     --write-out '%{http_code}'
     --proto '=https'
     --tlsv1.2
     --connect-timeout 5
     --max-time 10
+    --max-filesize 65536
 )
 readonly WATCH_STATUS_CONFIG='url = "https://watch.staging.example.com/api/v1/system/status"'
 readonly RECEIVER_CONFIG='url = "https://baton.staging.example.com/api/v1/internal/resource-health-events"'
@@ -110,7 +121,10 @@ done
 if [[ "$config" == "$WATCH_STATUS_CONFIG" ]]; then
     assert_arguments "${COMMON_ARGUMENTS[@]}"
     printf 'watch\n' >>"$FAKE_CURL_CALLS"
+    default_body='{"service":"baton-watch","status":"UP"}'
+    printf '%s' "${FAKE_WATCH_BODY-$default_body}" >"$body_file"
     printf '%s' "${FAKE_WATCH_STATUS:-200}"
+    exit "${FAKE_WATCH_CURL_EXIT:-0}"
 elif [[ "$config" == "$RECEIVER_CONFIG" ]]; then
     assert_arguments \
         "${COMMON_ARGUMENTS[@]}" \
@@ -118,6 +132,7 @@ elif [[ "$config" == "$RECEIVER_CONFIG" ]]; then
         --header 'Content-Type: application/json' \
         --data-binary "$MALFORMED_RECEIVER_BODY"
     printf 'receiver\n' >>"$FAKE_CURL_CALLS"
+    [[ "$body_file" == /dev/null ]] || fail_curl_contract
     printf '%s' "${FAKE_RECEIVER_STATUS:-401}"
 else
     printf 'unexpected curl request\n' >&2
@@ -130,6 +145,7 @@ run_preflight() {
     : >"$CURL_CALLS"
     env \
         PATH="$FAKE_BIN:/usr/bin:/bin" \
+        TMPDIR="$TEMP_DIR" \
         FAKE_CURL_CALLS="$CURL_CALLS" \
         WATCH_PUBLIC_BASE_URL="https://watch.staging.example.com" \
         WATCH_EVENT_DELIVERY_ENABLED="true" \
@@ -148,24 +164,33 @@ assert_curl_calls() {
     if [[ "$actual" != "$expected" ]]; then
         fail "curl 호출 순서가 예상과 다릅니다"
     fi
+    local leftover
+    for leftover in "$TEMP_DIR"/baton-watch-preflight.*; do
+        [[ ! -e "$leftover" ]] || fail "응답을 저장한 임시 디렉터리가 남았습니다"
+    done
 }
 
 assert_safe_output() {
     local output="$1"
 
     if [[ "$output" == *"monitor-api-token-0123456789-abcdef"* \
-            || "$output" == *"delivery-token-0123456789-abcdefg"* ]]; then
-        fail "실행 출력이 서비스 토큰을 노출했습니다"
+            || "$output" == *"delivery-token-0123456789-abcdefg"* \
+            || "$output" == *"sensitive-response-marker"* \
+            || "$output" == *"unbound variable"* \
+            || "$output" == *"Traceback"* ]]; then
+        fail "실행 출력에 토큰·응답 원문·처리되지 않은 오류가 포함됐습니다"
     fi
 }
 
 assert_failure() {
+    failure_case=$((failure_case + 1))
     local expected_calls="$1"
     shift
     local output
 
     if output="$(run_preflight "$@" 2>&1)"; then
-        fail "실패해야 하는 사전 검사가 성공했습니다"
+        assert_safe_output "$output"
+        fail "실패 사례 ${failure_case}번이 통과했습니다: $output"
     fi
     if [[ -z "$output" ]]; then
         fail "실패한 사전 검사가 진단을 남기지 않았습니다"
@@ -194,7 +219,18 @@ assert_failure "" \
     WATCH_EVENT_DELIVERY_ENABLED="false"
 assert_failure "watch" \
     FAKE_WATCH_STATUS="503"
+for body in \
+    'sensitive-response-marker' \
+    '{"service":"other","status":"UP"}' \
+    '{"service":"baton-watch","status":"DOWN"}' \
+    '{"status":"UP"}' \
+    '[]' \
+    ''; do
+    assert_failure "watch" FAKE_WATCH_BODY="$body"
+done
+assert_failure "watch" FAKE_WATCH_CURL_EXIT=63
+assert_failure "watch" FAKE_WATCH_CURL_EXIT=28
 assert_failure $'watch\nreceiver' \
     FAKE_RECEIVER_STATUS="400"
 
-printf '[staging-event-delivery-preflight-test] 9개 사례와 curl 요청 계약이 통과했습니다\n'
+printf '[staging-event-delivery-preflight-test] 17개 사례와 curl 요청 계약이 통과했습니다\n'
