@@ -34,6 +34,15 @@ def snapshots(count):
             for index in range(count)]
 
 
+def curl_result(returncode, stdout):
+    def run(command, **options):
+        result = subprocess.CompletedProcess(command, returncode, stdout, b"private-error")
+        if options.get("check"):
+            result.check_returncode()
+        return result
+    return run
+
+
 class SnapshotRecoveryTest(unittest.TestCase):
     def test_audit_does_not_mutate_missing_older_matching_or_conflicting_monitors(self):
         """조회 모드는 누락·낮은 리비전·일치·충돌을 구분하고 PUT을 보내지 않는다."""
@@ -274,6 +283,42 @@ class SnapshotRecoveryTest(unittest.TestCase):
                                      [item["resourceReference"] for item in items])
                     self.assertTrue(all(item["remoteRevision"] is None for item in results[20:]))
                     self.assertNotIn("private-error", json.dumps(results))
+
+    def test_access_denied_stops_requests_even_when_response_transfer_fails(self):
+        """본문 초과·전송 중단·시간 초과 뒤에도 받은 401·403으로 후속 요청을 중단한다."""
+        items = snapshots(21)
+        for code in (401, 403):
+            for returncode in (18, 28, 63):
+                for apply in (False, True):
+                    with self.subTest(code=code, returncode=returncode, apply=apply):
+                        client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                        with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
+                             patch.object(recovery.subprocess, "run", side_effect=curl_result(
+                                 returncode, f"private-error\n{code}".encode())) as run:
+                            results = list(recovery.reconcile(client, items, apply))
+                        self.assertEqual(run.call_count, 1)
+                        self.assertEqual(dns.call_count, 1)
+                        denied_count = 1 if apply else 20
+                        self.assertEqual([item["status"] for item in results],
+                                         ["ACCESS_DENIED"] * denied_count + ["NOT_ATTEMPTED"] * (21 - denied_count))
+                        self.assertEqual([item["resourceReference"] for item in results],
+                                         [item["resourceReference"] for item in items])
+                        self.assertTrue(all(item["remoteRevision"] is None for item in results))
+                        self.assertNotIn("private-error", json.dumps(results))
+
+    def test_other_transfer_failures_are_not_accepted_as_successful_responses(self):
+        """200과 JSON을 받았어도 전송 실패면 거부하고 연결·TLS 오류도 그대로 실패 처리한다."""
+        body = json.dumps(remote()[1]).encode()
+        for returncode, stdout in [(code, body + b"\n200") for code in (18, 28, 63)] + [
+                (7, b"\n000"), (60, b"\n000")]:
+            with self.subTest(returncode=returncode):
+                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                     patch.object(recovery.subprocess, "run", side_effect=curl_result(returncode, stdout)):
+                    with self.assertRaises(recovery.RecoveryError) as failure:
+                        client.request("GET", REFERENCE)
+                self.assertEqual(type(failure.exception), recovery.RecoveryError)
+                self.assertNotIn("private-error", str(failure.exception))
 
     def test_access_denied_during_replay_stops_gets_and_puts(self):
         """GET 또는 PUT의 인증 거부 뒤에는 남은 항목을 조회하거나 재전송하지 않는다."""

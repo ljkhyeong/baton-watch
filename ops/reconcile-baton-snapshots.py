@@ -144,11 +144,13 @@ class WatchClient:
                    "--write-out", "\n%{http_code}"]
         self.last_request = time.monotonic()
         try:
-            response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=True)
+            response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=False)
             body, code = response.stdout.rsplit(b"\n", 1)
             status = int(code)
+            # 본문 수신에 실패해도 이미 받은 인증·접근 거부는 후속 요청을 중단한다.
             if status in (401, 403):
                 raise AccessDeniedError("WATCH API 토큰과 접근 권한을 확인하세요")
+            response.check_returncode()
             if len(body) > max_response_bytes:
                 raise ValueError()
             return status, json.loads(body) if body else None
