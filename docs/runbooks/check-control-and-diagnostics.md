@@ -104,7 +104,7 @@ WATCH_DIAGNOSTIC_CONTAINER="$(staging_compose ps -q postgres)"
 | `observedAt`, `readOnly` | DB 조회 시각과 실제 읽기 전용 트랜잭션 여부 |
 | `monitor` | 원본 리비전, 활성 상태, 점검 진행 상태(`checkStatus`), 연결 상태, 연속 실패 수, 마지막 결과·확정 시각과 다음 점검 시각 |
 | `checks` | 시도 ID·시각, 결과 분류, HTTP 상태, 소요 초, 응답 바이트 수와 리다이렉트 횟수 |
-| `deliveries` | 이벤트 ID·변경 시각, 상태, 전달 완료 여부, 전달 시도 횟수, 마지막 결과·HTTP 상태, 다음 재시도·완료 시각 |
+| `deliveries` | 이벤트 ID·변경 시각, 연결 상태, 전달 완료 여부(`deliveryStatus`)·진행 상태(`deliveryProgress`), 시도 횟수, 마지막 결과·HTTP 상태, 다음 재시도·완료 시각 |
 
 `monitor.checkStatus`는 DB 조회 시각인 `observedAt`을 기준으로 계산하며 API와 같은 구분을 사용한다.
 
@@ -117,6 +117,19 @@ WATCH_DIAGNOSTIC_CONTAINER="$(staging_compose ps -q postgres)"
 
 작업자가 멈췄어도 점유가 만료될 때까지 `IN_PROGRESS`일 수 있다.
 API와 진단 도구의 조회 시각이 다르면 상태도 다를 수 있다.
+
+`deliveries[].deliveryProgress`도 `observedAt`을 기준으로 계산한다.
+기존 `deliveryStatus`의 `PENDING`·`DELIVERED`는 유지하며, 미전달 이벤트의 대기 이유를 구분한다.
+
+| 상태 | 의미 |
+| --- | --- |
+| `SCHEDULED` | 유효한 점유가 없고 다음 전달 시각 전인 이벤트 |
+| `QUEUED` | 유효한 점유가 없고 전달 시각이 되어 실행을 기다리는 이벤트 |
+| `IN_PROGRESS` | 작업자의 점유가 아직 만료되지 않은 이벤트 |
+| `DELIVERED` | 콜백의 성공 응답을 받아 전달 완료로 저장한 이벤트 |
+
+전달을 꺼 두거나 작업자가 멈춘 경우에도 예약·대기 상태가 표시된다. `IN_PROGRESS`도
+작업자의 가동을 보장하지 않으며, 점유가 만료되고 전달 시각이 지났으면 `QUEUED`로 표시한다.
 
 - 점검은 시도 시각, 이벤트는 상태 변경 시각의 내림차순이다. 같은 시각은 ID 내림차순이다.
 - 두 이력을 **각각** 기본 50건, 최대 100건 반환한다. 전체 건수나 모든 과거 이력을 뜻하지 않는다.
