@@ -39,18 +39,17 @@ log_path = Path(sys.argv[1])
 forbidden_values_path = Path(sys.argv[2])
 secret_paths = [Path(value) for value in sys.argv[3:]]
 
-def load_values(paths):
+def load_values(paths, label):
     values = []
     for path in paths:
-        values.extend(value for value in path.read_bytes().splitlines() if value)
+        file_values = [value for value in path.read_bytes().splitlines() if value]
+        if not file_values:
+            raise SystemExit(f"[staging-log-redaction-audit] {label} 파일에 검사할 값이 없습니다")
+        values.extend(file_values)
     return tuple(values)
 
-secret_values = load_values(secret_paths)
-forbidden_values = load_values((forbidden_values_path,))
-if not secret_values:
-    raise SystemExit("[staging-log-redaction-audit] 비밀 파일에 검사할 값이 없습니다")
-if not forbidden_values:
-    raise SystemExit("[staging-log-redaction-audit] 금지 값 파일에 검사할 값이 없습니다")
+secret_values = load_values(secret_paths, "비밀")
+forbidden_values = load_values((forbidden_values_path,), "금지 값")
 
 findings = {
     "정확한 비밀값": False,
@@ -61,12 +60,17 @@ findings = {
 authorization_pattern = re.compile(rb"\bauthorization\s*[:=]", re.IGNORECASE)
 bearer_pattern = re.compile(rb"\bbearer\s+[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE)
 
+has_log_content = False
 with log_path.open("rb") as log:
     for line in log:
+        has_log_content |= bool(line.strip())
         findings["정확한 비밀값"] |= any(value in line for value in secret_values)
         findings["지정한 금지 값"] |= any(value in line for value in forbidden_values)
         findings["Authorization 헤더"] |= authorization_pattern.search(line) is not None
         findings["Bearer 자격 증명"] |= bearer_pattern.search(line) is not None
+
+if not has_log_content:
+    raise SystemExit("[staging-log-redaction-audit] 검사할 로그가 없습니다. 수집 대상과 기간을 확인하세요")
 
 failed = False
 for category, matched in findings.items():
