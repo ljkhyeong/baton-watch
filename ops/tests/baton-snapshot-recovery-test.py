@@ -217,6 +217,77 @@ class SnapshotRecoveryTest(unittest.TestCase):
                 with self.assertRaises(recovery.RecoveryError):
                     client.get_batch([REFERENCE])
 
+    def test_access_denied_stops_audit_and_reports_every_item(self):
+        """인증 거부 시 다음 묶음을 요청하지 않고 완료·거부·미요청 결과를 구분한다."""
+        items = snapshots(41)
+        accepted = json.dumps(batch_response(
+            *(remote(reference=item["resourceReference"])[1] for item in items[:20]))[1]).encode()
+        for code in (401, 403):
+            for body in (b'{"code":"UNAUTHORIZED"}', b"<html>private-error</html>", b""):
+                with self.subTest(code=code, body=body):
+                    client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                    denied = subprocess.CompletedProcess([], 0, body + f"\n{code}".encode())
+                    with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
+                         patch.object(recovery.subprocess, "run", side_effect=[
+                             subprocess.CompletedProcess([], 0, accepted + b"\n200"), denied, denied]) as run:
+                        results = list(recovery.reconcile(client, items))
+                    self.assertEqual(run.call_count, 2)
+                    self.assertEqual(dns.call_count, 2)
+                    self.assertEqual([item["status"] for item in results],
+                                     ["REVISION_MATCH_UNVERIFIED"] * 20 + ["ACCESS_DENIED"] * 20 + ["NOT_ATTEMPTED"])
+                    self.assertEqual([item["resourceReference"] for item in results],
+                                     [item["resourceReference"] for item in items])
+                    self.assertTrue(all(item["remoteRevision"] is None for item in results[20:]))
+                    self.assertNotIn("private-error", json.dumps(results))
+
+    def test_access_denied_during_replay_stops_gets_and_puts(self):
+        """GET 또는 PUT의 인증 거부 뒤에는 남은 항목을 조회하거나 재전송하지 않는다."""
+        items = snapshots(3)
+        for code in (401, 403):
+            for denied_method in ("GET", "PUT"):
+                with self.subTest(code=code, method=denied_method):
+                    client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+                    completed = subprocess.CompletedProcess([], 0,
+                        json.dumps(remote(reference=items[0]["resourceReference"])[1]).encode() + b"\n200")
+                    pending = subprocess.CompletedProcess([], 0,
+                        json.dumps(remote(reference=items[1]["resourceReference"])[1]).encode() + b"\n200")
+                    denied = subprocess.CompletedProcess([], 0, f"private-error\n{code}".encode())
+                    responses = [completed, completed] + ([pending] if denied_method == "PUT" else []) + [denied]
+                    with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                         patch.object(recovery.subprocess, "run", side_effect=responses + [denied]) as run:
+                        results = list(recovery.reconcile(client, items, True))
+                    self.assertEqual(run.call_count, len(responses))
+                    self.assertEqual([item["status"] for item in results],
+                                     ["REPLAYED", "ACCESS_DENIED", "NOT_ATTEMPTED"])
+                    self.assertEqual([item["remoteRevision"] for item in results], [7, None, None])
+
+    def test_cli_summarizes_access_denial_and_returns_a_failure_code(self):
+        """중단된 실행도 모든 항목과 요약을 출력하고 성공 종료로 보고하지 않는다."""
+        items = snapshots(21)
+        token = "watch-test-token-with-at-least-32-characters"
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "snapshots.jsonl"
+            manifest.write_text("\n".join(json.dumps(item) for item in items))
+            manifest.chmod(0o600)
+            token_file = Path(temporary) / "token"
+            token_file.write_text(token)
+            token_file.chmod(0o600)
+            output, errors = io.StringIO(), io.StringIO()
+            with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
+                 patch.object(recovery.subprocess, "run", return_value=subprocess.CompletedProcess(
+                     [], 0, b"private-error\n401")) as run, \
+                 contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                code = recovery.main(["--snapshots", str(manifest), "--source-namespace", "pilot",
+                                      "--origin", "https://watch.example.com", "--token-file", str(token_file)])
+        self.assertEqual(code, 2)
+        run.assert_called_once()
+        rows = [json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(rows[0]["count"], 21)
+        self.assertEqual(len(rows[1:-1]), 21)
+        self.assertEqual(rows[-1], {"summary": {"ACCESS_DENIED": 20, "NOT_ATTEMPTED": 1}})
+        for private in (token, SNAPSHOT["targetUrl"], "private-error"):
+            self.assertNotIn(private, output.getvalue() + errors.getvalue())
+
     def test_non_public_dns_or_mixed_answers_are_rejected(self):
         """DNS 응답에 사설·루프백·멀티캐스트가 하나라도 있으면 접속하지 않는다."""
         for addresses in [["127.0.0.1"], ["224.0.0.1"], ["93.184.216.34", "10.0.0.1"]]:

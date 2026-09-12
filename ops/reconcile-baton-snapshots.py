@@ -32,6 +32,10 @@ class RecoveryError(Exception):
     """원문이나 인증값을 포함하지 않는 운영 오류."""
 
 
+class AccessDeniedError(RecoveryError):
+    """같은 연결 정보로 후속 요청을 보내지 않아야 하는 인증·접근 거부."""
+
+
 def private_file(path, limit):
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -135,9 +139,12 @@ class WatchClient:
         try:
             response = subprocess.run(command, input="\n".join(config).encode(), capture_output=True, timeout=12, check=True)
             body, code = response.stdout.rsplit(b"\n", 1)
+            status = int(code)
+            if status in (401, 403):
+                raise AccessDeniedError("WATCH API 토큰과 접근 권한을 확인하세요")
             if len(body) > max_response_bytes:
                 raise ValueError()
-            return int(code), json.loads(body) if body else None
+            return status, json.loads(body) if body else None
         except (OSError, subprocess.SubprocessError, ValueError):
             raise RecoveryError("WATCH 요청 또는 응답 확인에 실패했습니다") from None
 
@@ -196,6 +203,11 @@ def audit(client, snapshots):
         batch = snapshots[start:start + BATCH_SIZE]
         try:
             projections = inspect_remote_batch(client, batch)
+        except AccessDeniedError:
+            for offset, snapshot in enumerate(snapshots[start:]):
+                status = "ACCESS_DENIED" if offset < len(batch) else "NOT_ATTEMPTED"
+                yield report(snapshot, status, None)
+            return
         except RecoveryError:
             for snapshot in batch:
                 yield report(snapshot, "LOOKUP_OR_REPLAY_FAILED", None)
@@ -214,7 +226,7 @@ def reconcile(client, snapshots, apply=False):
     if not apply:
         yield from audit(client, snapshots)
         return
-    for snapshot in snapshots:
+    for index, snapshot in enumerate(snapshots):
         try:
             status, remote_revision = inspect_remote(client, snapshot)
             if status in ("MISSING", "REMOTE_BEHIND", "REVISION_MATCH_UNVERIFIED"):
@@ -232,6 +244,11 @@ def reconcile(client, snapshots, apply=False):
                     status = "REMOTE_AHEAD" if body["code"] == "STALE_SOURCE_REVISION" else "PAYLOAD_CONFLICT"
                 else:
                     status = "REPLAY_FAILED"
+        except AccessDeniedError:
+            yield report(snapshot, "ACCESS_DENIED", None)
+            for remaining in snapshots[index + 1:]:
+                yield report(remaining, "NOT_ATTEMPTED", None)
+            return
         except RecoveryError:
             status, remote_revision = "LOOKUP_OR_REPLAY_FAILED", None
         yield report(snapshot, status, remote_revision)
