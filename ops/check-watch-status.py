@@ -4,9 +4,17 @@
 import json
 import sys
 
+
+def unique_json_object(pairs):
+    item = dict(pairs)
+    if len(item) != len(pairs):
+        raise ValueError()
+    return item
+
+
 try:
     with open(sys.argv[1], encoding="utf-8") as response:
-        payload = json.load(response)
+        payload = json.load(response, object_pairs_hook=unique_json_object)
 except (OSError, UnicodeError, ValueError, RecursionError):
     raise SystemExit(1) from None
 

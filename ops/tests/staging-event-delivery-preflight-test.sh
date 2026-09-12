@@ -223,6 +223,9 @@ for body in \
     'sensitive-response-marker' \
     '{"service":"other","status":"UP"}' \
     '{"service":"baton-watch","status":"DOWN"}' \
+    '{"service":"baton-watch","status":"DOWN","status":"UP"}' \
+    '{"service":"other","service":"baton-watch","status":"UP"}' \
+    '{"service":"baton-watch","status":"UP","sta\u0074us":"UP"}' \
     '{"status":"UP"}' \
     '[]' \
     ''; do
@@ -233,4 +236,4 @@ assert_failure "watch" FAKE_WATCH_CURL_EXIT=28
 assert_failure $'watch\nreceiver' \
     FAKE_RECEIVER_STATUS="400"
 
-printf '[staging-event-delivery-preflight-test] 17개 사례와 curl 요청 계약이 통과했습니다\n'
+printf '[staging-event-delivery-preflight-test] 20개 사례와 curl 요청 계약이 통과했습니다\n'
