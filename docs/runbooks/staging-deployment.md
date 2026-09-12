@@ -760,7 +760,8 @@ NGINX 접근 로그는 상태·처리 시간·제한 결과만 기록합니다. 
 있는 오류 로그는 꺼져 있으므로, 연결 문제는 프록시 상태·접근 상태 코드·WATCH의
 상태와 설정 검사로 진단합니다. 임시로 원본 요청 로그를 켜지 마세요.
 
-WATCH는 요청 경로·본문·응답·예외 원문을 출력하는 Spring MVC·Security 로거 6개를 `OFF`로 고정합니다.
+WATCH는 요청 경로·본문·응답·예외 원문을 출력하는 Spring MVC·Security 로거 6개와
+Tomcat의 요청 파싱 로거를 `OFF`로 고정합니다. 잘못된 주소는 HTTP 400으로 거부하고 주소·쿼리는 로그에 남기지 않습니다.
 상위 범주나 개별 로거를 상세 수준으로 설정해도 [보호 설정](../../bootstrap/src/main/java/com/personal/baton/watch/bootstrap/RuntimeSafetyEnvironmentPostProcessor.java)이 우선합니다.
 API 장애는 WATCH가 기록하는 `failureType`으로 확인합니다.
 
