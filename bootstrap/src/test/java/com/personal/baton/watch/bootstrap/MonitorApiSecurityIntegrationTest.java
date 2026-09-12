@@ -206,10 +206,25 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1"})
-    void rejectsFloatingPointRevisionsBeforeSynchronization(String revision) throws Exception {
+    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1", "\"42\"", "\"0\"", "\"9223372036854775807\""})
+    void rejectsNonIntegerRevisionTokensBeforeSynchronization(String revision) throws Exception {
         String path = "/api/v1/resource-monitors/storage-unavailable";
         String body = "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"sourceRevision\":42,\"monitoringState\":0,\"targetUrl\":\"https://example.com/health\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":1}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"0\",\"targetUrl\":\"https://example.com/health\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"1\"}"
+    })
+    void rejectsNumericMonitoringStatesBeforeSynchronization(String body) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
 
         assertUnauthorized(put(path, null, body));
         assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
