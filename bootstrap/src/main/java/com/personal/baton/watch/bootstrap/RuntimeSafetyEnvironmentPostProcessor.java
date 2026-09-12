@@ -27,6 +27,7 @@ public final class RuntimeSafetyEnvironmentPostProcessor
             Map.entry("logging.level.org.apache.hc.client5.http.wire", "OFF"),
             Map.entry("logging.level.org.apache.hc.client5.http.impl", "OFF"),
             Map.entry("logging.level.org.apache.hc.client5.http.ssl", "OFF"),
+            Map.entry("logging.level.org.apache.coyote.http11.Http11Processor", "OFF"),
             Map.entry("logging.level.org.springframework.jdbc.core.StatementCreatorUtils", "OFF"),
             Map.entry("logging.level.org.springframework.web.servlet.DispatcherServlet", "OFF"),
             Map.entry("logging.level.org.springframework.web.method.HandlerMethod", "OFF"),

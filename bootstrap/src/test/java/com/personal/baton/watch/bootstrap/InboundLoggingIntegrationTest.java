@@ -2,10 +2,14 @@ package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,7 +33,8 @@ import org.springframework.boot.test.web.server.LocalServerPort;
             "logging.level.org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver=TRACE",
             "logging.level.org.springframework.security.web=TRACE",
             "logging.level.org.springframework.security.web.FilterChainProxy=TRACE",
-            "logging.level.org.springframework.security.web.access.intercept.RequestMatcherDelegatingAuthorizationManager=TRACE"
+            "logging.level.org.springframework.security.web.access.intercept.RequestMatcherDelegatingAuthorizationManager=TRACE",
+            "logging.level.org.apache.coyote.http11.Http11Processor=DEBUG"
         })
 @ExtendWith(OutputCaptureExtension.class)
 class InboundLoggingIntegrationTest {
@@ -41,6 +46,25 @@ class InboundLoggingIntegrationTest {
 
     @LocalServerPort
     private int serverPort;
+
+    @Test
+    void keepsRejectedRequestTargetsOutOfContainerLogs(CapturedOutput output) throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", serverPort)) {
+            socket.setSoTimeout(5_000);
+            String request = "GET /api/v1/resource-monitors/" + REFERENCE + "{invalid}?token=" + QUERY
+                    + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            var response = new BufferedReader(new InputStreamReader(
+                    socket.getInputStream(), StandardCharsets.US_ASCII));
+            assertThat(response.readLine()).startsWith("HTTP/1.1 400 ");
+        }
+
+        String logs = output.getAll();
+        assertThat(List.of(REFERENCE, QUERY).stream().filter(logs::contains).toList())
+                .as("웹 서버가 거부한 요청 주소와 쿼리를 로그에 남기지 않는다")
+                .isEmpty();
+    }
 
     @Test
     void keepsRequestAndResponseValuesOutOfDetailedFrameworkLogs(CapturedOutput output) throws Exception {
