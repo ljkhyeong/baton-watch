@@ -53,6 +53,7 @@ python3 ops/reconcile-baton-snapshots.py \
 결과를 파일 순서대로 남긴다. 1만 건의 조회 요청은 500번으로 줄어든다.
 응답에서 참조가 빠지거나 중복되거나 요청 밖 참조가 섞이면 해당 묶음을 조회 실패로 처리한다.
 통신 실패가 발생해도 항목별 실패를 기록하고 다음 묶음을 계속 확인한다.
+단, HTTP 401·403이면 인증 또는 접근 권한 문제로 보고 후속 요청을 중단한다.
 
 | 결과 | 의미와 다음 행동 |
 | --- | --- |
@@ -61,7 +62,14 @@ python3 ops/reconcile-baton-snapshots.py \
 | `REVISION_MATCH_UNVERIFIED` | 리비전·감시 상태 일치. GET에 URL이 없어 전체 본문 일치는 아직 미확인 |
 | `REMOTE_AHEAD` | WATCH 리비전이 높음. 복원 지점·현재 BATON 원본 확인, 자동 재기준화 금지 |
 | `PAYLOAD_CONFLICT` | 같은 리비전의 감시 상태 또는 PUT 본문 충돌. 원본과 복원 지점 확인 |
-| `LOOKUP_FAILED`·`LOOKUP_OR_REPLAY_FAILED` | 인증·HTTP 계약·DNS·네트워크 실패 등으로 확인 불가 |
+| `ACCESS_DENIED` | HTTP 401·403으로 확인 불가. API 토큰·프록시 접근 정책을 확인한 뒤 재실행 |
+| `NOT_ATTEMPTED` | 앞선 인증·접근 거부로 요청하지 않은 항목 |
+| `LOOKUP_FAILED`·`LOOKUP_OR_REPLAY_FAILED` | HTTP 계약·DNS·네트워크 실패 등으로 확인 불가 |
+
+인증·접근 거부는 JSON·HTML·빈 응답 본문과 관계없이 HTTP 상태로 판단한다. 거부된 요청의
+항목은 `ACCESS_DENIED`, 이후 요청하지 않은 항목은 `NOT_ATTEMPTED`로 파일 순서대로 출력한다.
+두 결과의 `remoteRevision`은 `null`이며, 앞서 완료한 결과와 마지막 건수 요약은 보존한다.
+종료 코드는 2다. 재전송 모드의 GET·PUT에도 같은 중단 규칙을 적용한다.
 
 WATCH의 원격 리비전은 API와 같은 음이 아닌 64비트 정수로 비교한다. `0`도 유효하므로
 더 높은 BATON 스냅샷과 비교하면 `REMOTE_BEHIND`다. 입력 파일의 BATON 아웃박스 ID는 기존처럼 1 이상이어야 한다.
@@ -91,7 +99,8 @@ WATCH가 원본 URL의 동일성까지 확인하며, 다른 URL이면 409로 거
 리비전을 표시한다. PUT이 실패하거나 충돌하면 재전송 후 리비전을 확인할 수 없으므로 `null`이다.
 
 전체 `REPLAYED`이면 종료 코드 0, 충돌·확인 불가·`REPLAY_FAILED`가 있으면 2다. 한 항목의
-실패 후에도 나머지를 확인하며 자동 재시도는 하지 않는다. 재실행은 멱등하다. BATON의 아웃박스
+실패 후에도 나머지를 확인하되, 401·403이면 위 중단 규칙을 적용한다. 자동 재시도는 하지 않는다.
+재실행은 멱등하다. BATON의 아웃박스
 전달 상태는 변경하지 않으므로 기존 작업자가 같은 스냅샷을 다시 보낼 수도 있다.
 
 ## 통신 제한과 검증 한계
