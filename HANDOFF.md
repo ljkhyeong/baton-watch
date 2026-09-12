@@ -4,6 +4,9 @@
 
 ## 현재 작업
 
+- `43045da`에서 밀리초 미만 HTTP 시간 제한이 소켓의 0(무제한)으로 변환되는 문제를 수정했다.
+  공통 Apache 클라이언트에서 연결·응답 제한에 최소 1밀리초를 적용하며 기존 전체 요청 기한은 유지한다.
+  점검·전달 PRD에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - `47af573`에서 짝이 맞지 않는 유니코드 서로게이트가 URL 검증을 통과하는 문제를 수정했다.
   기존 `TargetUrl` 문자 검사에 JDK 문자 분류 조건을 추가했다. 등록은 `422 INVALID_TARGET_URL`,
   리다이렉트는 추가 DNS 조회·연결 전에 `REDIRECT_REJECTED`로 처리하며 정상 한글·이모지는 보존한다.
@@ -233,6 +236,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| HTTP 시간 제한 변환 `43045da` | 변경 전 실제 로컬 HTTP에서 1ns·999999ns 응답 제한이 작동하지 않는 오류 재현. 변경 후 두 사례의 `READ_TIMEOUT`과 외부 통신 모듈 전체 278개 통과, 실패·건너뜀 없음. 기존 GET·콜백 POST·TLS·전체 기한·취소 경로 포함. 공통 클라이언트의 시간 변환만 변경해 전체 Java·DB·이미지·공급망 검사는 반복하지 않음 |
 | URL 유니코드 검증 `47af573` | 변경 전 값 타입·API 동기화 대역까지 잘못된 입력이 통과하고 리다이렉트가 `INTERNAL_FAILURE`가 되는 문제 재현. 변경 후 관련 115개, 전체 614개(ArchUnit 3개·실제 PostgreSQL 포함) 실행·통과, 실패·건너뜀 없음. API 422·Problem Details·동기화 미호출, 리다이렉트의 후속 DNS·연결 차단, 정상 한글·JSON 서로게이트 쌍 보존 확인. 의존성·이미지 변경이 없어 이미지·공급망 검사는 미실행 |
 | 공개 상태 중복 필드 `878b3a0` | 변경 전 사전 검사와 대역을 고친 공개 스모크에서 잘못된 성공 재현. 변경 후 각 20개 사례·변경 셸 2개의 ShellCheck 통과. 상태·서비스 중복, 같은 값·이스케이프 이름의 중복 거부와 후속 요청 중단 확인. 지정한 정상 JSON의 성공도 확인. HTTP 대역을 사용했으며 요청 인자·애플리케이션·DB·이미지 변경이 없어 실제 외부 연결·Java·DB·이미지 검사는 미실행 |
 | 공급망 보고서 누락 `6efdaca` | 변경 전 도구가 0으로 종료하고 이미지 보고서를 만들지 않아도 완료 처리되는 오류 재현. 변경 후 공급망 스크립트 검사·라이선스 정책 6개·변경 셸 2개의 ShellCheck 통과. 보고서 누락·빈 JAR 보고서·도구 실패의 실패 전파, 후속 검사와 실패 보고서 보존, 완료 체크섬·배포용 JAR 미생성 확인. 검사 도구 대역을 사용했으며 Docker 호출 인자·이미지·정책은 바꾸지 않아 실제 Trivy 재검사·이미지 빌드·Java·DB 검사는 반복하지 않음 |
@@ -299,6 +303,11 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+HTTP 시간 제한 변환의 작업 기준은 `9292ddc`이며 검증한 코드·테스트는 `43045da`와 같다.
+`.gradle/agent-validation/`의 `*-http-timeout-resolution-reproduction/`에 변경 전 실패,
+`*-http-timeout-resolution-regression/`·`*-http-timeout-resolution-external-tests/`에 변경 후 성공,
+`*-http-timeout-resolution-complete/`에 종료 검사를 기록한다.
+
 URL 유니코드 검증의 작업 기준은 `dc4ec29`이며 검증한 코드·테스트는 `47af573`과 같다.
 `.gradle/agent-validation/`의 `*-url-unicode-domain-reproduction/`·`*-url-unicode-boundaries-reproduction/`에 변경 전 실패,
 `*-url-unicode-related-tests/`·`*-url-unicode-full-tests/`에 변경 후 성공, `*-url-unicode-complete/`에 종료 검사를 기록한다.
