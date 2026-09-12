@@ -1,5 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +57,33 @@ class MonitoringMetricsTest {
             Map.entry("baton.watch.event.delivery.finalizations", Set.of("status")),
             Map.entry("baton.watch.maintenance.items", Set.of("operation")),
             Map.entry("baton.watch.database.clock.offset", Set.of()));
+
+    @Test
+    void exposesZeroFailureAndRecoveryCountersBeforeFirstIncident() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+
+        assertAll(
+                () -> assertEquals(0.0, registry.get("baton.watch.check.finalizations")
+                        .tag("status", "failure").counter().count()),
+                () -> assertEquals(0.0, registry.get("baton.watch.event.delivery.finalizations")
+                        .tag("status", "failure").counter().count()),
+                () -> assertEquals(0.0, registry.get("baton.watch.check.lease.recoveries").counter().count()),
+                () -> assertEquals(0.0, registry.get("baton.watch.event.delivery.lease.recoveries").counter().count()));
+
+        metrics.recordCheckFinalizationFailure();
+        metrics.recordEventDeliveryFinalizationFailure();
+        metrics.recordCheckClaim(claimedCheck(true));
+        metrics.recordEventDeliveryClaim(claimedEvent(true));
+
+        assertAll(
+                () -> assertEquals(1.0, registry.get("baton.watch.check.finalizations")
+                        .tag("status", "failure").counter().count()),
+                () -> assertEquals(1.0, registry.get("baton.watch.event.delivery.finalizations")
+                        .tag("status", "failure").counter().count()),
+                () -> assertEquals(1.0, registry.get("baton.watch.check.lease.recoveries").counter().count()),
+                () -> assertEquals(1.0, registry.get("baton.watch.event.delivery.lease.recoveries").counter().count()));
+    }
 
     @Test
     void emitsOnlyBoundedCheckAndDeliveryTags() {

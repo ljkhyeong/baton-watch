@@ -75,6 +75,11 @@ final class MonitoringMetrics {
                 .baseUnit("seconds")
                 .description("JVM 시각에서 PostgreSQL 시각을 뺀 값")
                 .register(registry);
+        // 첫 실패·리스 회수 전의 0도 수집하도록 경보용 카운터를 미리 등록한다.
+        record(() -> registry.counter(CHECK_FINALIZATIONS, "status", "failure"));
+        record(() -> registry.counter(DELIVERY_FINALIZATIONS, "status", "failure"));
+        record(() -> registry.counter(CHECK_LEASE_RECOVERIES));
+        record(() -> registry.counter(DELIVERY_LEASE_RECOVERIES));
     }
 
     void checkStarted() {
