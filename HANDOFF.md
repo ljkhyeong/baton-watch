@@ -4,6 +4,9 @@
 
 ## 현재 작업
 
+- `977de2c`에서 [읽기 전용 진단](docs/runbooks/check-control-and-diagnostics.md)에 `monitor.checkStatus`를 추가했다.
+  기존 일정·점유와 DB 조회 시각으로 예약·대기·진행 중·비활성을 구분한다. API와 같은 판단 규칙을 사용하며
+  리스 토큰·만료 시각은 출력하지 않는다. 추가 의존성·스키마 변경·비용은 없으며 운영 배포는 미실행이다.
 - `d9eb4dd`에서 [PR #43](https://github.com/ljkhyeong/baton-watch/pull/43)의 런타임 부하 검사가
   DB 연결 부족에 예전 500 응답을 기대하던 문제를 수정했다. 현재 계약인 503·`SERVICE_UNAVAILABLE`과
   `Retry-After: 5`를 검증하며 [검증 절차](docs/runbooks/runtime-load-test.md)도 맞췄다.
@@ -145,6 +148,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 진단 진행 상태 `977de2c` | 실제 PostgreSQL 진단 테스트 16개 후 영속성 모듈 전체 79개 통과, 실패·건너뜀 없음. 일정·점유 조합 7개의 상태와 같은 조회 시각의 도메인 판단 일치, 읽기 전용·정보 제외·이력 제한·잠금 시간 초과 확인. 점검 실행·API·외부 통신·스키마 변경이 없어 전체 Java·부하·이미지 검사는 재실행하지 않음 |
 | 런타임 부하 검사 `d9eb4dd` | [원격 검사](https://github.com/ljkhyeong/baton-watch/actions/runs/34675952314)에서 실제 503과 예전 기대값 500의 불일치 확인. 수정 후 `:bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 통과, 테스트 1개·실패·건너뜀 없음. 실제 PostgreSQL의 풀 고갈·복구, 503·재시도 안내, 25개 점검·전달 복구와 최종 미전달 0건 확인. 외부 점검·콜백은 테스트 대역이며 운영 코드·이미지 변경은 없음 |
 | 복구 인증 실패 중단 `75fdde4` | 수정 전 401·403의 후속 요청 10개 조건 재현. 수정 후 복구 도구 16개와 추가 CLI 검사 1개, 총 17개 통과. JSON·HTML·빈 본문, 묶음 조회와 재전송 GET·PUT 중단, 이전 결과·전체 항목·요약·종료 코드 2와 비밀값 비노출 확인. DNS·curl 응답을 모의했으며 실제 서버 인증·운영 복구는 미실행. Java·DB·이미지 변경이 없어 관련 검사는 반복하지 않음 |
 | 리다이렉트 경로 비교 `c7a4948` | 실제 로컬 HTTP에서 연속 슬래시 전송을 확인하고, 점검 엔진이 서로 다른 두 경로의 이동을 거부하는 오류 재현. 수정 후 외부 어댑터 전체 243개 통과, 실패·건너뜀 없음. 양방향 이동 허용·실제 순환 거부·DNS 재검증·IP 고정 확인. 해당 모듈만 변경해 전체 Java·DB·이미지·배포 검사는 재실행하지 않음 |
@@ -190,6 +194,9 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+진단 진행 상태의 작업 기준은 `697e60b`이며 검증한 SQL·테스트는 `977de2c`와 같다.
+`.gradle/agent-validation/`의 `*-diagnostic-check-status-tests/`와
+`*-diagnostic-check-status-persistence/`에 동작 검사, `*-diagnostic-check-status-complete/`에 종료 검사를 기록한다.
 PR #43 병합 작업 기준은 `9e7f647`이며 검증한 런타임 부하 테스트는 `d9eb4dd`와 같다.
 수정 후 검사는 `.gradle/agent-validation/`의 `*-main-merge-runtime-load/`,
 전체 변경의 종료 검사는 `*-main-merge-runtime-complete/`에 기록한다.
