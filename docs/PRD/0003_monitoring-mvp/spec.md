@@ -240,6 +240,7 @@ V6 DB 제약은 필수 상태 코드가 `NULL`인 결과도 거부한다.
   `baton.watch.check.lease.recoveries` 카운터는 점유, 완료 처리 상태와 만료
   리스 회수를 영속성 포트 경계에서 기록한다. 배치 중간에 완료 처리가 실패해도
   앞서 처리한 항목의 기록을 잃지 않으며 식별자 레이블을 사용하지 않는다.
+  완료 실패(`status="failure"`)와 리스 회수 카운터는 시작 시 0으로 등록해 첫 증가량의 기준을 제공한다.
 - `baton.watch.database.clock.offset` 게이지는 JDBC 왕복 전후 JVM 시각의
   중간점에서 PostgreSQL `clock_timestamp()`를 뺀 부호 있는 초 단위 근사값이다.
 - Actuator `scheduledtasks` 엔드포인트는 노출하지 않는다. 런타임 작업 진단은
