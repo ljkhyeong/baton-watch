@@ -53,6 +53,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 | 지연·적체 메트릭 | 실행 가능한 가장 오래된 점검의 지연, JVM·DB 시계 편차, Spring 예약 실행 시간, 미전달 이벤트 수·최대 대기 시간 |
 | 상태 감시 | Blackbox Exporter가 내부 프록시·공개 HTTPS 응답의 서비스 이름과 `UP` 확인. Prometheus 수집·경보 템플릿과 Grafana 대시보드 JSON 제공 |
 | 운영 알림 연결 | Alertmanager의 Telegram·Slack 연결 설정. 같은 경보 묶기·복구 알림, 내부 주소와 자료 참조를 제외한 공통 한글 문구 제공 |
+| 개발 알림 연결 | [GitHub 공식 Slack 앱](docs/runbooks/github-slack.md)의 검증 결과·PR·리뷰·IANA 검사 구독 안내 |
 | 외부 상태 점검 연결 | Grafana Cloud 공개 HTTP 점검과 15분간 결과 누락 경보 예시. 홈서버 중단·공개 TLS 만료·점검 중단 알림 연결 절차 제공 |
 | 외부 요청 처리 | 스테이징 NGINX 경로별 요청 속도 제한, 비공개 네트워크 분리 |
 | Compose 상태 확인 | Spring Boot 기본 liveness와 DB를 포함한 readiness 사용 |
