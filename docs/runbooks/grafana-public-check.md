@@ -59,12 +59,42 @@ Grafana Cloud의 점검 편집 화면에서 `Alerting → Per-check alerts`를 �
 
 임계치는 시작값이다. 지속 장애·복구 때 실제 알림을 확인하고 운영 요구에 맞춘다.
 복구 알림은 최근 15분의 실패 횟수가 임계치 아래로 내려간 뒤 발생하므로 바로 해제되지 않을 수 있다.
-점검 미실행·Grafana 자체 장애는 HTTP 실패 횟수와 별개이므로 이 설정이 모든 감시 장애를 보장하지는 않는다.
+점검 결과가 들어오지 않는 경우는 아래 결과 누락 경보로 구분한다.
 [공식 점검별 경보](https://grafana.com/docs/grafana-cloud/observe-and-act/testing/synthetic-monitoring/configure-alerts/configure-per-check-alerts/)를 기준으로 설정한다.
+
+## 점검 결과 누락 알림
+
+[결과 누락 규칙](../../ops/prometheus/watch-public-alerts.yml)은 해당 점검의 `probe_success`가
+최근 15분 동안 없으면 `WatchPublicCheckMissing`을 발생시킨다. 실패값 `0`도 결과로 취급하며,
+결과가 다시 들어오면 해제한다. 점검 중지·공개 점검 위치 장애·수집 지연의 원인은 별도로 확인한다.
+경보 레이블에는 서비스 이름·심각도처럼 고정된 값만 남기며 대상 URL과 점검 위치를 넣지 않는다.
+
+1. Grafana Cloud의 `Alerting → Alert rules → Import to Grafana-managed rules`에서
+   `Prometheus YAML file`을 선택해 위 규칙 파일을 올린다.
+2. Synthetic Monitoring 결과가 저장되는 Prometheus 데이터 소스를 선택한다.
+   기존 규칙을 덮어쓰지 않도록 빈 전용 폴더를 사용하고 `Pause imported alerting rules`를 켠다.
+   이미 이 규칙이 있으면 기존 규칙을 수정하고 중복 등록하지 않는다.
+3. 미리보기에서 규칙 1개만 가져오는지 확인한다. 가져오기가 만든 빈 결과→정상 처리는 유지한다.
+   이 쿼리는 결과가 있을 때 비어 있고, 누락됐을 때 `1`을 반환한다.
+4. 실제 점검 결과가 도착하고 `job`·대상 주소가 규칙과 일치하는지 확인한 뒤 경보를 활성화한다.
+   한 번도 실행하지 않은 점검은 처음부터 누락으로 판단한다. 위와 같은
+   `namespace=synthetic_monitoring`, `job=baton-watch-public` 알림 정책으로 Slack·Telegram에 연결한다.
+
+규칙은 1분마다 평가한다. 15분 기준에 Grafana 가져오기의 쿼리 지연(기본 1분)과 평가·알림 대기가 더해진다.
+이 규칙은 Grafana Cloud에서 평가하며 로컬 Prometheus에는 적용하지 않는다.
+Grafana 자체나 데이터 소스 조회 장애까지 이 규칙으로 감지하는 것은 아니다.
+[공식 가져오기 절차](https://grafana.com/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/alerting/alerting-rules/alerting-migration/)를 따른다.
+
+새 API 점검 없이 기존 지표를 조회하므로 월 점검 횟수는 늘지 않는다.
+2026-09-12 [공식 Free 한도](https://grafana.com/docs/grafana-cloud/observe-and-act/alert-and-measure-reliability/alerting/alerting-rules/create-grafana-managed-rule/)인
+경보 규칙 500개 중 1개를 사용한다. 계정의 기존 규칙 수와 Free 요금제를 확인한다.
 
 ## 검증과 중지
 
 JSON 형식과 현재 OpenAPI의 필드·타입을 확인한다. 인증키와 점검 위치가 없으면
 실제 등록·외부 요청·경보 발생을 검증한 것으로 보고하지 않는다.
-운영 연결 후 정상 응답, 점검 사용량, 장애·복구 알림을 확인한다.
-중지할 때는 Grafana에서 이 점검을 비활성화한다. 기존 내부 메트릭 수집과 알림은 유지된다.
+결과 누락 규칙은 `./ops/tests/prometheus-rules-test.sh`로 정상·실패 결과 수신, 15분 경계,
+다른 점검의 영향과 복구를 검사한다. 실제 Grafana 가져오기·평가·수신은 별도 확인이 필요하다.
+운영 연결 후 정상 응답, 점검 사용량, 장애·복구·결과 누락 알림을 확인한다.
+중지할 때는 결과 누락 경보를 먼저 일시정지한 뒤 이 점검을 비활성화한다.
+기존 내부 메트릭 수집과 알림은 유지된다.
