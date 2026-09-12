@@ -18,13 +18,16 @@ import org.springframework.security.web.firewall.CompositeRequestRejectedHandler
 import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class MonitorApiSecurityConfiguration {
 
-    private static final PathPatternRequestMatcher PUBLIC_SYSTEM_STATUS =
-            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/system/status");
+    private static final RequestMatcher PUBLIC_SYSTEM_STATUS = new OrRequestMatcher(
+            PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/system/status"),
+            PathPatternRequestMatcher.pathPattern(HttpMethod.HEAD, "/api/v1/system/status"));
     private static final PathPatternRequestMatcher VERSIONED_API =
             PathPatternRequestMatcher.pathPattern("/api/v1/**");
 

@@ -38,6 +38,7 @@ import java.util.stream.IntStream;
 import org.apache.coyote.http11.AbstractHttp11Protocol;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -184,6 +185,36 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.body()).contains("\"status\":\"UP\"");
         assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"wrong-token", API_TOKEN})
+    void exactSystemStatusHeadIsPublicAndReturnsOnlyHeaders(String token) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(uri("/api/v1/system/status"))
+                .method("HEAD", HttpRequest.BodyPublishers.noBody()), token);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).isEmpty();
+        assertHeaderContains(response, HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE);
+        assertHeaderContains(response, HttpHeaders.CACHE_CONTROL, "no-store");
+        assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/api/v1/resource-monitors/resource-1",
+        "/api/v1/system/status/",
+        "/api/v1/system/status/extra"
+    })
+    void headOnOtherPathsStillRequiresAuthentication(String path) throws Exception {
+        HttpResponse<String> response = send(HttpRequest.newBuilder(uri(path))
+                .method("HEAD", HttpRequest.BodyPublishers.noBody()), null);
+
+        assertThat(response.statusCode()).isEqualTo(401);
+        assertThat(response.body()).isEmpty();
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).contains("Bearer");
     }
 
     @Test
