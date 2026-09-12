@@ -92,6 +92,9 @@ HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 비활성 스냅샷은 `"monitoringState": "INACTIVE"`를 사용하며 `targetUrl`을
 생략하거나 null로 설정해야 한다.
 
+`targetUrl`의 짝이 맞지 않는 유니코드 서로게이트는 HTTP 422 `INVALID_TARGET_URL`로 거부한다.
+경로·쿼리의 정상 한글·이모지는 그대로 유지하며, JSON의 정상 서로게이트 쌍도 허용한다.
+
 `sourceRevision`은 0부터 9223372036854775807까지의 JSON 정수로 전송한다.
 소수·지수 표기·숫자 문자열(`-0.5`·`42.0`·`4.2e1`·`"42"`)은 자동 변환하지 않고
 HTTP 400 `INVALID_REQUEST`로 거부한다.

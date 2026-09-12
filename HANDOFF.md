@@ -4,6 +4,10 @@
 
 ## 현재 작업
 
+- `47af573`에서 짝이 맞지 않는 유니코드 서로게이트가 URL 검증을 통과하는 문제를 수정했다.
+  기존 `TargetUrl` 문자 검사에 JDK 문자 분류 조건을 추가했다. 등록은 `422 INVALID_TARGET_URL`,
+  리다이렉트는 추가 DNS 조회·연결 전에 `REDIRECT_REJECTED`로 처리하며 정상 한글·이모지는 보존한다.
+  API·점검 PRD와 README에 반영했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - `878b3a0`에서 공개 상태 JSON의 중복 필드가 마지막 정상 값으로 덮여 검사가 통과하는 문제를 수정했다.
   공개 스모크·이벤트 전달 사전 검사의 공통 파서에서 중복을 거부하고 후속 요청을 중단한다.
   스모크 테스트 대역이 지정한 JSON에 `}`를 추가하던 오류도 수정했다. 두 배포 런북에 반영했으며
@@ -229,6 +233,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| URL 유니코드 검증 `47af573` | 변경 전 값 타입·API 동기화 대역까지 잘못된 입력이 통과하고 리다이렉트가 `INTERNAL_FAILURE`가 되는 문제 재현. 변경 후 관련 115개, 전체 614개(ArchUnit 3개·실제 PostgreSQL 포함) 실행·통과, 실패·건너뜀 없음. API 422·Problem Details·동기화 미호출, 리다이렉트의 후속 DNS·연결 차단, 정상 한글·JSON 서로게이트 쌍 보존 확인. 의존성·이미지 변경이 없어 이미지·공급망 검사는 미실행 |
 | 공개 상태 중복 필드 `878b3a0` | 변경 전 사전 검사와 대역을 고친 공개 스모크에서 잘못된 성공 재현. 변경 후 각 20개 사례·변경 셸 2개의 ShellCheck 통과. 상태·서비스 중복, 같은 값·이스케이프 이름의 중복 거부와 후속 요청 중단 확인. 지정한 정상 JSON의 성공도 확인. HTTP 대역을 사용했으며 요청 인자·애플리케이션·DB·이미지 변경이 없어 실제 외부 연결·Java·DB·이미지 검사는 미실행 |
 | 공급망 보고서 누락 `6efdaca` | 변경 전 도구가 0으로 종료하고 이미지 보고서를 만들지 않아도 완료 처리되는 오류 재현. 변경 후 공급망 스크립트 검사·라이선스 정책 6개·변경 셸 2개의 ShellCheck 통과. 보고서 누락·빈 JAR 보고서·도구 실패의 실패 전파, 후속 검사와 실패 보고서 보존, 완료 체크섬·배포용 JAR 미생성 확인. 검사 도구 대역을 사용했으며 Docker 호출 인자·이미지·정책은 바꾸지 않아 실제 Trivy 재검사·이미지 빌드·Java·DB 검사는 반복하지 않음 |
 | Tomcat 요청 거부 로그 `9f91333` | 변경 전 실제 TCP 요청으로 잘못된 주소의 HTTP 400과 INFO·DEBUG 원문 노출 재현. 변경 후 로그 통합 2개·bootstrap 전체 125개 통과, 실패·건너뜀 없음. 개별 Tomcat DEBUG 설정의 차단, 요청 거부·주소와 쿼리 비노출, 기존 정상·미인증·DB 장애 요청과 오류 종류 로그 유지 확인. 합성 입력만 사용했으며 DB·외부 통신·이미지 동작 변경이 없어 해당 검사는 반복하지 않음 |
@@ -294,6 +299,11 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+URL 유니코드 검증의 작업 기준은 `dc4ec29`이며 검증한 코드·테스트는 `47af573`과 같다.
+`.gradle/agent-validation/`의 `*-url-unicode-domain-reproduction/`·`*-url-unicode-boundaries-reproduction/`에 변경 전 실패,
+`*-url-unicode-related-tests/`·`*-url-unicode-full-tests/`에 변경 후 성공, `*-url-unicode-complete/`에 종료 검사를 기록한다.
+초기 JShell 확인은 클래스 로딩 오류로 유효한 결과가 없어 기존 Gradle 테스트로 재현했고 임시 프로세스는 정리했다.
+
 공개 상태 중복 필드의 작업 기준은 `8003409`이며 검증한 코드·테스트는 `878b3a0`과 같다.
 `.gradle/agent-validation/`의 `*-status-duplicates-preflight-reproduction/`·`*-status-duplicates-smoke-reproduction-fixed-fixture/`에 변경 전 실패,
 `*-status-duplicates-smoke-tests/`·`*-status-duplicates-preflight-tests/`·`*-status-duplicates-shellcheck/`에 변경 후 성공,
