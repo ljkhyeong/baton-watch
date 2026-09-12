@@ -4,6 +4,10 @@
 
 ## 현재 작업
 
+- `389e677`에서 터널 이미지의 gRPC를 1.83.2, 필수 의존성 `x/net`을 0.58.0으로 갱신했다.
+  GitHub 경보 #1의 CVE-2026-84445 수정 버전을 적용하고 표시 버전을 `2026.8.3-watch.2`로 올렸다.
+  모듈 체크섬·라이선스 버전 고정을 함께 갱신했으며 [빌드 입력](ops/cloudflared/README.md)에 근거를 정리했다.
+  작업 브랜치만 수정했으며 `main` 병합·실제 터널 연결·배포·xDS 공격 재현은 미실행이다.
 - 2026-09-12 GitHub API로 공개 저장소의 비밀값 탐지·푸시 차단·Dependabot 보안 업데이트가
   모두 활성화된 것을 확인했다. [외부 API 검토](docs/runbooks/external-api-options.md)에 실제 상태와
   남은 Telegram·Slack·Grafana 연결을 반영했다. 추가로 적용할 무료 연동은 확인되지 않았다.
@@ -97,7 +101,7 @@
 - `304bd0c`에서 필수 CI를 막던 배포 의존성·이미지 취약점을 수정했다. Tomcat은 11.0.25,
   PostgreSQL의 OpenSSL은 3.5.8-r0, libuuid는 2.42.3-r1로 고정하고 gosu를 su-exec으로 교체했다.
   NGINX는 수정된 공식 다이제스트를 사용한다. cloudflared는 공식 2026.8.3 소스를
-  Go 1.26.6·x/crypto 0.55.0·gRPC 1.83.1로 빌드한다. [빌드 입력](ops/cloudflared/README.md)을 참고한다.
+  당시 Go 1.26.6·x/crypto 0.55.0·gRPC 1.83.1로 빌드했다. 현재 버전은 [빌드 입력](ops/cloudflared/README.md)을 참고한다.
   자체 이미지 5개의 보관·복원과 OCI·LICENSE 검증을 CI·배포 절차에 반영했다.
 - `454360b`에서 V6 마이그레이션으로 점검 결과·전달 결과·전달 완료 상태의 DB 제약 3개를 보강했다.
   수정 전에는 필수 값이 `NULL`인 잘못된 조합 9가지가 저장됐다. 이제 `CASE`와 `IS TRUE`로 거부한다.
@@ -121,6 +125,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 터널 gRPC 패치 `389e677` | linux/arm64 빌드와 CLI·RPC 테스트 3개 패키지 통과. 최종 이미지의 비루트·네트워크 차단 실행, gRPC 1.83.2·x/net 0.58.0 포함, 라이선스 원문 확인. Trivy 0.74.0과 2026-09-12 갱신 DB로 수정 가능한 HIGH·CRITICAL 0건. 첫 빌드에서 하위 의존성 누락을 검출해 Go 도구로 보완 후 재검사. Java·DB·다른 이미지는 변경하지 않아 관련 검사는 반복하지 않음 |
 | GitHub 기본 기능 활성 상태 | `gh api repos/ljkhyeong/baton-watch`의 공개 여부와 `security_and_analysis`만 조회. 비밀값 탐지·푸시 차단·Dependabot 보안 업데이트의 `enabled` 확인. 실제 탐지 시험·개별 보안 경보 해결 검증은 미실행. 문서만 변경해 애플리케이션 검사는 재실행하지 않음 |
 | GitHub Slack 연결 안내 | 공식 구독 문법·필터와 실제 워크플로 2개의 이름·실행 조건 대조, 문서 링크·형식 검사 통과. 실제 앱·채널 수신은 미확인. 문서만 변경해 Java·PromQL·Alertmanager 검사는 재실행하지 않음 |
 | 외부 점검 결과 누락 `cd53727` | 공식 `promtool`로 새 규칙의 5개 시나리오·7개 시점 검사와 기존 경보·대시보드 검사 통과. 정상·실패 결과 수신, 15분 경계·복구, 다른 점검 제외, 최초 결과 없음 확인. ShellCheck 통과. 실제 Grafana 가져오기·평가·수신은 미확인. Java·Alertmanager·배포 설정은 변경하지 않아 관련 동작 검사는 재실행하지 않음 |
@@ -160,6 +165,10 @@
 
 검증 소스가 바뀌지 않은 문서 수정은 링크·형식만 확인한다. 환경·의존성·원격 상태가 바뀌면
 이전 성공을 새 실행 결과로 보고하지 않는다. 긴 검사는 실행 도구로 로그를 남기고 종료 코드를 확인한다.
+터널 gRPC 패치의 작업 기준은 `f559e28`이며 검증한 빌드 입력은 `389e677`과 같다.
+빌드·공급망 로그는 `.gradle/agent-validation/`의 `*-cloudflared-grpc-build-fixed/`,
+`*-cloudflared-grpc-supply-chain/`, 종료 검사는 `*-cloudflared-grpc-complete/`에 있다.
+이미지 정보·실행 파일 의존성·SBOM·검사 DB 시각은 `.gradle/security-grpc-20260912/`에 보관했다.
 GitHub 기본 기능 확인 작업 기준은 `2dac22f`다. 전체 변경의 종료 검사는
 `.gradle/agent-validation/` 아래 `*-native-integrations-complete/`에서 확인한다.
 GitHub Slack 안내 작업 기준은 `2b1ec98`이다. 전체 변경의 종료 검사는
