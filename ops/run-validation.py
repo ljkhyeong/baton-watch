@@ -3,6 +3,7 @@
 
 import argparse
 from collections import deque
+from contextlib import contextmanager, suppress
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -10,9 +11,54 @@ import os
 from pathlib import Path
 import platform
 import re
+import signal
 import subprocess
 import sys
 import time
+
+CANCEL_GRACE_SECONDS = 5
+
+
+@contextmanager
+def cancellation_signals():
+    received = [0]
+
+    def remember(signum, _frame):
+        if not received[0]:
+            received[0] = signum
+
+    previous = {signum: signal.signal(signum, remember)
+                for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    try:
+        yield received
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+
+
+def execute(command, root, output, interruption):
+    if interruption[0]:
+        return 0
+    with subprocess.Popen(command, cwd=root, stdout=output, stderr=subprocess.STDOUT,
+                          start_new_session=True) as process:
+        while not interruption[0]:
+            try:
+                code = process.wait(timeout=1)
+                if not interruption[0]:
+                    return code
+            except subprocess.TimeoutExpired:
+                pass
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, interruption[0])
+        try:
+            process.wait(timeout=CANCEL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            output.write("제한 시간 안에 끝나지 않아 검증 명령을 강제 종료합니다.\n")
+        finally:
+            # 직접 실행한 명령이 먼저 종료됐어도 같은 그룹의 하위 명령은 남기지 않는다.
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+        return process.wait()
 
 
 def git(root, *args):
@@ -45,7 +91,7 @@ def status(root, evidence):
               f"(종료 {record['exit_code']}, 파일 {'동일' if unchanged else '변경됨'})\n  {path}")
 
 
-def run(root, evidence, label, command):
+def run(root, evidence, label, command, interruption):
     started = datetime.now(timezone.utc)
     directory = evidence / f"{started:%Y%m%dT%H%M%S%fZ}-{label}"
     directory.mkdir(parents=True, mode=0o700)
@@ -58,7 +104,7 @@ def run(root, evidence, label, command):
     with log.open("x", encoding="utf-8") as output:
         log.chmod(0o600)
         try:
-            code = subprocess.run(command, cwd=root, stdout=output, stderr=subprocess.STDOUT).returncode
+            code = execute(command, root, output, interruption)
             code = code if code >= 0 else 128 - code
         except FileNotFoundError as error:
             output.write(f"실행 파일을 찾을 수 없습니다: {error.filename}\n")
@@ -66,9 +112,9 @@ def run(root, evidence, label, command):
         except PermissionError as error:
             output.write(f"실행 권한이 없습니다: {error.filename}\n")
             code = 126
-        except KeyboardInterrupt:
-            output.write("검증 실행이 중단됐습니다.\n")
-            code = 130
+        if interruption[0]:
+            output.write(f"검증 실행이 중단됐습니다 ({signal.Signals(interruption[0]).name}).\n")
+            code = 128 + interruption[0]
     record.update(after=workspace(root), exit_code=code, outcome="passed" if code == 0 else "failed",
                   elapsed_seconds=round(time.monotonic() - begin, 3),
                   finished_at=datetime.now(timezone.utc).isoformat())
@@ -106,7 +152,8 @@ def main():
         if args.mode == "status":
             status(root, evidence)
             return 0
-        return run(root, evidence, args.label, args.command)
+        with cancellation_signals() as interruption:
+            return run(root, evidence, args.label, args.command, interruption)
     except (OSError, subprocess.CalledProcessError) as error:
         print(f"검증 기록을 만들 수 없습니다: {error}", file=sys.stderr)
         return 2
