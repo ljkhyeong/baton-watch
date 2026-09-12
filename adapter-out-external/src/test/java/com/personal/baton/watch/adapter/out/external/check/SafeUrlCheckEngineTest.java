@@ -75,6 +75,13 @@ class SafeUrlCheckEngineTest {
             https://Example.COM | next | https://Example.COM/next
             https://Example.COM//docs/page | ../next | https://Example.COM//next
             https://Example.COM/docs//page | a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b | https://Example.COM/docs//a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b
+            https://Example.COM/start | /docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | /./guide | https://Example.COM/guide
+            https://Example.COM/start | /../../guide | https://Example.COM/guide
+            https://Example.COM/start | /docs/. | https://Example.COM/docs/
+            https://Example.COM/start | https://Example.COM/docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | //Example.COM/docs/../guide | https://Example.COM/guide
+            https://Example.COM/start | /docs//./a/../%2e%2E/x%2Fy?next=/../&tag=%2f | https://Example.COM/docs//%2e%2E/x%2Fy?next=/../&tag=%2f
             """)
     void resolvesRedirectsWithoutChangingPathOrQueryEncoding(String target, String location, String expected)
             throws Exception {
@@ -98,13 +105,17 @@ class SafeUrlCheckEngineTest {
         "https://example.com/docs/page?page=2, ?page=2",
         "https://example.com/docs//page, page",
         "https://example.com/docs//page, ./page",
-        "https://example.com/docs//page, next/../page"
+        "https://example.com/docs//page, next/../page",
+        "https://example.com/docs/page, /docs/./page",
+        "https://example.com/docs/page, https://example.com/docs/other/../page",
+        "https://example.com/docs/page, //example.com/docs/other/../page"
     })
     void rejectsARedirectToTheSamePageBeforeAnotherConnection(String target, String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
         transport.add(redirect(302, location));
+        transport.add(finalStatus(200));
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
                 .check(new TargetUrl(target));
@@ -176,9 +187,14 @@ class SafeUrlCheckEngineTest {
         "%0d/../safe",
         "%5c/../safe",
         "?next=%0d%0aHost:internal",
-        "?next=%5c%5cevil.example"
+        "?next=%5c%5cevil.example",
+        "https:guide",
+        "https:/docs/../guide",
+        "ftp://example.com/docs/../guide",
+        "https://user:password@example.com/docs/../guide",
+        "/docs/../guide#section"
     })
-    void rejectsEncodedControlOrBackslashRedirectsBeforeASecondConnection(String location) throws Exception {
+    void rejectsUnsafeRedirectsBeforeASecondConnection(String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);

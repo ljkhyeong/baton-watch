@@ -23,17 +23,28 @@ final class TargetUriPolicy {
             return URIUtils.resolve(current.uri(), location);
         }
         URI reference = URI.create(location);
+        URI resolved;
         if (reference.isAbsolute() || reference.getRawAuthority() != null
                 || reference.getRawPath().isEmpty() || reference.getRawPath().startsWith("/")) {
-            return current.uri().resolve(reference);
+            resolved = current.uri().resolve(reference);
+        } else {
+            // JDK의 상대 경로 정규화는 빈 구간도 제거하므로, 경로 병합에서는 슬래시를 보존한다.
+            String basePath = current.uri().getRawPath();
+            String directory = basePath.isEmpty() ? "/" : basePath.substring(0, basePath.lastIndexOf('/') + 1);
+            String suffix = location.substring(reference.getRawPath().length());
+            resolved = URI.create(current.uri().getScheme() + "://" + current.uri().getRawAuthority()
+                    + directory + reference.getRawPath() + suffix);
         }
 
-        // JDK의 상대 경로 정규화는 빈 구간도 제거하므로, 경로 병합에서는 슬래시를 보존한다.
-        String basePath = current.uri().getRawPath();
-        String directory = basePath.isEmpty() ? "/" : basePath.substring(0, basePath.lastIndexOf('/') + 1);
-        String path = removeDotSegments(directory + reference.getRawPath());
-        String suffix = location.substring(reference.getRawPath().length());
-        return URI.create(current.uri().getScheme() + "://" + current.uri().getRawAuthority() + path + suffix);
+        String path = resolved.getRawPath();
+        if (path == null || path.isEmpty() || resolved.getRawAuthority() == null) {
+            return resolved;
+        }
+        String query = resolved.getRawQuery();
+        String fragment = resolved.getRawFragment();
+        return URI.create(resolved.getScheme() + "://" + resolved.getRawAuthority() + removeDotSegments(path)
+                + (query == null ? "" : "?" + query)
+                + (fragment == null ? "" : "#" + fragment));
     }
 
     /** 합친 절대 경로에서 RFC 3986의 점 구간만 제거하고 빈 구간과 인코딩은 유지한다. */
