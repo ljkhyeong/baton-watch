@@ -94,6 +94,8 @@ bootstrap -> adapters -> application -> domain
 
 개발 중에는 [변경 범위별 검증 절차](docs/runbooks/development-validation.md)에 따라 필요한 검사부터 실행합니다.
 `python3 ops/run-validation.py status`로 이전 결과를 확인하고, 같은 도구의 `run` 명령으로 로그와 종료 코드를 보관할 수 있습니다.
+파일 작성 직후에는 `ops/check-feedback.py file`, 완료 전에는 작업 시작 커밋을 지정한 `finish --base`로 검사합니다.
+Java·빌드 변경은 ArchUnit으로 계층 방향과 어댑터 간 직접 의존을 확인하며, 구조 검사는 기존 테스트·CI에서도 실행됩니다.
 
 ### 빌드·검증 조건
 
