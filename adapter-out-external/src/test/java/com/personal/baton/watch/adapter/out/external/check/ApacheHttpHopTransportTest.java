@@ -22,6 +22,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ApacheHttpHopTransportTest {
 
@@ -202,6 +203,47 @@ class ApacheHttpHopTransportTest {
                     assertEquals(204, transport.execute(target("/quick"),
                             Duration.ofSeconds(1)).statusCode());
                 }
+            } finally {
+                releaseHeaders.countDown();
+                caller.interrupt();
+                caller.join(1_000);
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1, 999_999})
+    void keepsSubMillisecondResponseTimeoutsEnabled(long timeoutNanos) throws Exception {
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseHeaders = new CountDownLatch(1);
+        server = server();
+        server.createContext("/slow", exchange -> {
+            try (exchange) {
+                requestStarted.countDown();
+                await(releaseHeaders);
+                exchange.sendResponseHeaders(204, -1);
+            }
+        });
+        server.start();
+        CheckerLimits limits = new CheckerLimits(
+                Duration.ofSeconds(1), Duration.ofNanos(timeoutNanos), Duration.ofSeconds(10),
+                3, 100, 8_192);
+        ApprovedTarget target = target("/slow");
+        try (var transport = new ApacheHttpHopTransport(limits, 1, 1)) {
+            AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
+            Thread caller = new Thread(() -> {
+                try {
+                    transport.execute(target, Duration.ofSeconds(10));
+                } catch (OutboundHttpFailure exception) {
+                    failure.set(exception);
+                }
+            }, "test-submillisecond-timeout");
+            caller.start();
+            try {
+                assertTrue(requestStarted.await(5, TimeUnit.SECONDS));
+                caller.join(2_000);
+                assertFalse(caller.isAlive(), "응답 제한이 꺼져 전체 요청 기한까지 대기했습니다");
+                assertEquals(OutboundHttpFailure.Kind.READ_TIMEOUT, failure.get().kind());
             } finally {
                 releaseHeaders.countDown();
                 caller.interrupt();
