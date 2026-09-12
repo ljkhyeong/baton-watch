@@ -744,7 +744,8 @@ WATCH_PUBLIC_BASE_URL=https://watch-staging.b4ton.com \
 요청 전에 거부하고, 인증서를 기본 검증하며 리다이렉트를 따르지 않습니다. 상태
 경로가 리다이렉트 없이 HTTP `200`을 반환하고 JSON이 `baton-watch`의 `UP`
 상태인지 [공통 판정 코드](../../ops/check-watch-status.py)로 확인합니다. 이벤트 전달 사전 검사도
-같은 기준을 사용합니다. `CF-Ray`가 정확히 하나 존재하고 `CF-Cache-Status`가
+같은 기준을 사용합니다. JSON 필드가 중복되면 값이 같아도 실패하며 후속 요청을 중단합니다.
+`CF-Ray`가 정확히 하나 존재하고 `CF-Cache-Status`가
 정확히 하나의 `DYNAMIC` 또는 `BYPASS`인지도 확인합니다. 이 헤더로 Cloudflare
 처리와 캐시 미사용을 확인합니다. 실제 Tunnel 연결은 Cloudflare 대시보드/API에서
 확인해야 합니다. 이어서 인증하지 않고
