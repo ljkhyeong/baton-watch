@@ -284,6 +284,7 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 
 콜백 주소는 포트 `443`을 사용하는 절대 HTTPS URL이며, DNS 조회 결과가 모두 공개 IP여야 합니다.
 사용자 정보, 쿼리, 프래그먼트나 IP 주소를 직접 쓴 호스트는 허용하지 않습니다.
+경로에 공백이 필요하면 `%20`으로 입력하세요. `%20`·`%2F` 같은 인코딩은 그대로 유지합니다.
 
 BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은지 확인해야 합니다.
 중복 처리를 막기 위해 `2xx` 응답 전에 처리한 `eventId`를 DB에 기록합니다.
