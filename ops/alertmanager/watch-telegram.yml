@@ -1,0 +1,28 @@
+# WATCH 전용 예시다. 공용 Alertmanager에서는 기존 route·receivers·templates에 병합한다.
+route:
+  receiver: ignore
+  routes:
+    - receiver: watch-telegram
+      group_by: [alertname]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      matchers:
+        - 'job=~"baton-watch|baton-watch-ingress"'
+        - 'alertname=~"Watch.+"'
+
+receivers:
+  - name: ignore
+  - name: watch-telegram
+    telegram_configs:
+      - api_url: https://api.telegram.org
+        bot_token_file: /run/secrets/watch-telegram-bot-token
+        chat_id_file: /run/secrets/watch-telegram-chat-id
+        send_resolved: true
+        parse_mode: ""
+        message: '{{ template "watch.telegram" . }}'
+        http_config:
+          follow_redirects: false
+
+templates:
+  - /etc/alertmanager/watch-telegram.tmpl

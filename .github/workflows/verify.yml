@@ -143,6 +143,9 @@ jobs:
       - name: Prometheus 경보 규칙 검증
         run: ./ops/tests/prometheus-rules-test.sh
 
+      - name: Telegram 알림 설정과 수신 경로 검증
+        run: python3 ops/tests/alertmanager-config-test.py
+
       - name: 운영 시험 결과 보관
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
