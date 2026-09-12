@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "prom/alertmanager:v0.31.1@sha256:88b605de9aba0410775c1eb3438f951115054e0d307f23f274a4c705f51630c1"
-CONFIG = "/etc/alertmanager/watch-telegram.yml"
+CONFIGS = {channel: f"/etc/alertmanager/watch-{channel}.yml" for channel in ("telegram", "slack")}
 
 
 class AlertmanagerConfigTest(unittest.TestCase):
@@ -23,6 +23,7 @@ class AlertmanagerConfigTest(unittest.TestCase):
         for name, value in {
             "watch-telegram-bot-token": "123456789:LOCAL_TEST_TOKEN",
             "watch-telegram-chat-id": "-1001234567890",
+            "watch-slack-webhook-url": "https://hooks.slack.com/services/LOCAL/TEST/NOT_A_SECRET",
         }.items():
             self.write_fixture(name, value)
 
@@ -46,20 +47,24 @@ class AlertmanagerConfigTest(unittest.TestCase):
         return result.stdout
 
     def test_native_config(self):
-        self.amtool("check-config", CONFIG)
+        for channel, config in CONFIGS.items():
+            with self.subTest(channel=channel):
+                self.amtool("check-config", config)
 
     def test_watch_only_routing(self):
-        for job, alertname, receiver in (
-            ("baton-watch", "WatchScrapeFailed", "watch-telegram"),
-            ("baton-watch-ingress", "WatchIngressTargetMissing", "watch-telegram"),
-            ("baton-cal", "WatchScrapeFailed", "ignore"),
-            ("baton-watch", "UnrelatedAlert", "ignore"),
-        ):
-            with self.subTest(job=job, alertname=alertname):
-                self.amtool(
-                    "config", "routes", "test", f"--config.file={CONFIG}",
-                    f"--verify.receivers={receiver}", f"job={job}", f"alertname={alertname}",
-                )
+        for channel, config in CONFIGS.items():
+            for job, alertname, notify in (
+                ("baton-watch", "WatchScrapeFailed", True),
+                ("baton-watch-ingress", "WatchIngressTargetMissing", True),
+                ("baton-cal", "WatchScrapeFailed", False),
+                ("baton-watch", "UnrelatedAlert", False),
+            ):
+                with self.subTest(channel=channel, job=job, alertname=alertname):
+                    receiver = f"watch-{channel}" if notify else "ignore"
+                    self.amtool(
+                        "config", "routes", "test", f"--config.file={config}",
+                        f"--verify.receivers={receiver}", f"job={job}", f"alertname={alertname}",
+                    )
 
     def test_grouped_failure_and_recovery_without_private_details(self):
         for status, title, counts in (
@@ -89,7 +94,7 @@ class AlertmanagerConfigTest(unittest.TestCase):
                 self.write_fixture(f"alerts-{status}.json", json.dumps(fixture))
                 rendered = self.amtool(
                     "template", "render", "--template.glob=/etc/alertmanager/*.tmpl",
-                    '--template.text={{ template "watch.telegram" . }}',
+                    '--template.text={{ template "watch.notification" . }}',
                     f"--template.data=/run/secrets/alerts-{status}.json",
                 )
                 self.assertIn(f"BATON WATCH · {title}", rendered)

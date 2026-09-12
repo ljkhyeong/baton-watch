@@ -1,4 +1,4 @@
-{{ define "watch.telegram" -}}
+{{ define "watch.notification" -}}
 BATON WATCH · {{ if eq .Status "firing" }}장애{{ else }}복구{{ end }}
 경보: {{ .CommonLabels.alertname }}
 {{ .CommonAnnotations.summary }}
