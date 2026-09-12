@@ -86,13 +86,20 @@ class ResourceMonitorControllerTest {
 
     @Test
     void synchronizesAnActiveMonitorWithoutExposingItsTarget() throws Exception {
+        synchronizeMonitor = command -> {
+            assertThat(command.targetUrl().orElseThrow().value())
+                    .isEqualTo("https://example.com/자료/\uD83D\uDE00?secret=hidden");
+            return new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
+        };
+        rebuildMockMvc();
+
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "sourceRevision": 42,
                                   "monitoringState": "ACTIVE",
-                                  "targetUrl": "https://example.com/health?secret=hidden"
+                                  "targetUrl": "https://example.com/자료/\\uD83D\\uDE00?secret=hidden"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -205,8 +212,14 @@ class ResourceMonitorControllerTest {
                 Arguments.of((Object) IntStream.range(0, 21).mapToObj(index -> "resource-1").toArray(String[]::new)));
     }
 
-    @Test
-    void rejectsInvalidTargetsWithAStableProblem() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "https://example.com/%0d%0aHost:internal",
+        "https://example.com/\\uD800",
+        "https://example.com/\\uDC00",
+        "https://example.com/?query=\\uDFFF"
+    })
+    void rejectsInvalidTargetsWithAStableProblem(String target) throws Exception {
         synchronizeMonitor = command -> {
             throw new AssertionError("invalid target reached the synchronization use case");
         };
@@ -218,9 +231,9 @@ class ResourceMonitorControllerTest {
                                 {
                                   "sourceRevision": 42,
                                   "monitoringState": "ACTIVE",
-                                  "targetUrl": "https://example.com/%0d%0aHost:internal"
+                                  "targetUrl": "%s"
                                 }
-                                """))
+                                """.formatted(target)))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
                 .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))

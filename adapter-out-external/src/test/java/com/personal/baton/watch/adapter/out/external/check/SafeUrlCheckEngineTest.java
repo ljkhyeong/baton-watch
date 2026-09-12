@@ -188,6 +188,8 @@ class SafeUrlCheckEngineTest {
         "%5c/../safe",
         "?next=%0d%0aHost:internal",
         "?next=%5c%5cevil.example",
+        "/\uD800",
+        "?query=\uDC00",
         "https:guide",
         "https:/docs/../guide",
         "ftp://example.com/docs/../guide",
