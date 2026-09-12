@@ -20,6 +20,12 @@
 `observedAt`은 서버가 생성한 UTC 시각이며 ISO 8601 형식으로 직렬화된다.
 이 경로는 리소스 데이터를 노출하지 않는다.
 
+`HEAD /api/v1/system/status`도 인증 없이 HTTP 200과 `application/json` 헤더를 반환하며
+응답 본문은 없다. 상태 코드·헤더만 확인하는 점검에 사용할 수 있다. 서비스 이름과 `UP`을
+본문으로 확인하려면 `GET`을 사용한다. 공개 메서드는 이 경로의 `GET`·`HEAD`뿐이며,
+모니터 API와 다른 경로의 인증 기준은 유지한다. 두 메서드 모두 `Cache-Control`에 `no-store`를 포함한다.
+별도 컨트롤러 없이 [Spring MVC의 HEAD 처리](https://docs.spring.io/spring-framework/reference/web/webmvc/mvc-controller/ann-requestmapping.html#mvc-ann-requestmapping-head-options)를 사용한다.
+
 ## 점검 대상 관리 API
 
 ### 공개 진입 경로의 요청 속도 제한
