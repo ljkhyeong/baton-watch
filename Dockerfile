@@ -84,7 +84,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS cloudflared-build
+FROM golang:1.27.1-alpine3.24@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS cloudflared-build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
 ADD --checksum=sha256:04cd85af52c2c012f08212c878b4c403eadf410865f2356a80f361d475d2fc92 \
