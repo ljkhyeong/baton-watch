@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Locale;
 import org.apache.hc.client5.http.utils.URIUtils;
 
@@ -18,10 +19,39 @@ final class TargetUriPolicy {
 
     URI resolveRedirect(ValidatedUri current, String location) {
         TargetUrl.requireSafeReferenceCharacters(location);
-        // 쿼리만 바뀔 때 JDK가 경로를 버리는 문제를 보완하고, 나머지 참조는 기존 해석을 유지한다.
-        return location.startsWith("?")
-                ? URIUtils.resolve(current.uri(), location)
-                : current.uri().resolve(location);
+        if (location.startsWith("?")) {
+            return URIUtils.resolve(current.uri(), location);
+        }
+        URI reference = URI.create(location);
+        if (reference.isAbsolute() || reference.getRawAuthority() != null
+                || reference.getRawPath().isEmpty() || reference.getRawPath().startsWith("/")) {
+            return current.uri().resolve(reference);
+        }
+
+        // JDK의 상대 경로 정규화는 빈 구간도 제거하므로, 경로 병합에서는 슬래시를 보존한다.
+        String basePath = current.uri().getRawPath();
+        String directory = basePath.isEmpty() ? "/" : basePath.substring(0, basePath.lastIndexOf('/') + 1);
+        String path = removeDotSegments(directory + reference.getRawPath());
+        String suffix = location.substring(reference.getRawPath().length());
+        return URI.create(current.uri().getScheme() + "://" + current.uri().getRawAuthority() + path + suffix);
+    }
+
+    /** 합친 절대 경로에서 RFC 3986의 점 구간만 제거하고 빈 구간과 인코딩은 유지한다. */
+    private static String removeDotSegments(String path) {
+        var segments = new ArrayList<String>();
+        for (String segment : path.substring(1).split("/", -1)) {
+            if (segment.equals("..")) {
+                if (!segments.isEmpty()) {
+                    segments.removeLast();
+                }
+            } else if (!segment.equals(".")) {
+                segments.add(segment);
+            }
+        }
+        if (path.endsWith("/.") || path.endsWith("/..")) {
+            segments.add("");
+        }
+        return "/" + String.join("/", segments);
     }
 
     private static String loopKey(URI uri, String scheme, String hostname) {

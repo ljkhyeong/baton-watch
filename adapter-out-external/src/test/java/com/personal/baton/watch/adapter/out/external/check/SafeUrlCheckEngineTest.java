@@ -64,8 +64,19 @@ class SafeUrlCheckEngineTest {
             https://Example.COM/docs/page | ?page=2 | https://Example.COM/docs/page?page=2
             https://Example.COM/docs/a%2Fb?old=%2F | ?next=%2f%3F&tag=a+b | https://Example.COM/docs/a%2Fb?next=%2f%3F&tag=a+b
             https://Example.COM/docs/page?old=1 | ? | https://Example.COM/docs/page?
+            https://Example.COM/docs//page | next | https://Example.COM/docs//next
+            https://Example.COM/docs//page | ./next | https://Example.COM/docs//next
+            https://Example.COM/docs//page | ../next | https://Example.COM/docs/next
+            https://Example.COM/docs//page | a//next | https://Example.COM/docs//a//next
+            https://Example.COM/docs//page | a/..//next | https://Example.COM/docs///next
+            https://Example.COM/docs//page | . | https://Example.COM/docs//
+            https://Example.COM/docs//page | .. | https://Example.COM/docs/
+            https://Example.COM/docs/page | ../../../next | https://Example.COM/next
+            https://Example.COM | next | https://Example.COM/next
+            https://Example.COM//docs/page | ../next | https://Example.COM//next
+            https://Example.COM/docs//page | a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b | https://Example.COM/docs//a//%2e%2E/x%2Fy?next=%2f%3F&tag=a+b
             """)
-    void preservesThePathWhenARedirectOnlyChangesTheQuery(String target, String location, String expected)
+    void resolvesRedirectsWithoutChangingPathOrQueryEncoding(String target, String location, String expected)
             throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
@@ -82,15 +93,21 @@ class SafeUrlCheckEngineTest {
         assertEquals(publicAnswer(), transport.targets.get(1).addresses());
     }
 
-    @Test
-    void rejectsAQueryOnlyRedirectToTheSamePageBeforeAnotherConnection() throws Exception {
+    @ParameterizedTest
+    @CsvSource({
+        "https://example.com/docs/page?page=2, ?page=2",
+        "https://example.com/docs//page, page",
+        "https://example.com/docs//page, ./page",
+        "https://example.com/docs//page, next/../page"
+    })
+    void rejectsARedirectToTheSamePageBeforeAnotherConnection(String target, String location) throws Exception {
         MutableNanoClock clock = new MutableNanoClock();
         RecordingDnsLookup dns = new RecordingDnsLookup(publicAnswer());
         ScriptedTransport transport = new ScriptedTransport(clock, Duration.ZERO);
-        transport.add(redirect(302, "?page=2"));
+        transport.add(redirect(302, location));
 
         CheckObservation observation = engine(DEFAULT_LIMITS, dns, transport, clock)
-                .check(new TargetUrl("https://example.com/docs/page?page=2"));
+                .check(new TargetUrl(target));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         assertEquals(0, observation.redirectCount());
