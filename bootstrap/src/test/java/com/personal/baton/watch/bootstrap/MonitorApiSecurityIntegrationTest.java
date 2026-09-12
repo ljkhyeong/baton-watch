@@ -232,6 +232,22 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(strings = {
+        "{\"sourceRevision\":41,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"targetUrl\":\"https://example.com/first\",\"targetUrl\":\"https://example.com/second\"}",
+        "{\"sourceRevision\":42,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":41,\"source\\u0052evision\":42,\"monitoringState\":\"INACTIVE\"}"
+    })
+    void rejectsDuplicateJsonFieldsBeforeSynchronization(String body) throws Exception {
+        String path = "/api/v1/resource-monitors/storage-unavailable";
+
+        assertUnauthorized(put(path, null, body));
+        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+    }
+
+    @ParameterizedTest
     @ValueSource(longs = {0, Long.MAX_VALUE})
     void acceptsIntegerRevisionBoundaries(long revision) throws Exception {
         HttpResponse<String> response = put("/api/v1/resource-monitors/resource-1", API_TOKEN,

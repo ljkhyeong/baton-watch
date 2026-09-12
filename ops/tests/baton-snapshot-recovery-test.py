@@ -143,6 +143,41 @@ class SnapshotRecoveryTest(unittest.TestCase):
             with self.assertRaises(recovery.RecoveryError):
                 recovery.private_file(manifest, 10000)
 
+    def test_duplicate_json_fields_fail_before_network(self):
+        """뒤쪽 레코드에 중복 필드가 있어도 파일 전체를 거부하고 통신하지 않는다."""
+        first, second, replacement = snapshots(3)
+        duplicates = {
+            "resourceReference": json.dumps(replacement["resourceReference"]),
+            "sourceRevision": "8",
+            "monitoringState": json.dumps(second["monitoringState"]),
+            "targetUrl": json.dumps("https://docs.example.com/other"),
+            r"source\u0052evision": "8",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            manifest = Path(temporary) / "snapshots.jsonl"
+            token_file = Path(temporary) / "token"
+            token = "x" * 32
+            token_file.write_text(token)
+            token_file.chmod(0o600)
+            for field, value in duplicates.items():
+                with self.subTest(field=field):
+                    duplicate_record = json.dumps(second)[:-1] + f',"{field}":{value}' + "}"
+                    manifest.write_text(json.dumps(first) + "\n" + duplicate_record + "\n")
+                    manifest.chmod(0o600)
+                    output, errors = io.StringIO(), io.StringIO()
+                    with patch.object(recovery, "WatchClient") as client, \
+                         contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+                        client.return_value.get_batch.return_value = batch_response(
+                            missing=[first["resourceReference"], second["resourceReference"]])
+                        result = recovery.main(["--snapshots", str(manifest), "--source-namespace", "pilot",
+                                                "--origin", "https://watch.example.com", "--token-file", str(token_file)])
+                    self.assertEqual(result, 1)
+                    client.assert_not_called()
+                    self.assertEqual(output.getvalue(), "")
+                    self.assertIn("스냅샷의 형식", errors.getvalue())
+                    for private_value in [token, second["resourceReference"], second["targetUrl"]]:
+                        self.assertNotIn(private_value, errors.getvalue())
+
     def test_token_file_matches_api_format_without_exposing_credentials(self):
         """API와 같은 문자·패딩·길이 기준을 적용하고 토큰은 출력하지 않는다."""
         valid = ["x" * 32, "x" * 30 + "+/==", "x" * 200, "x" * 198 + "=="]

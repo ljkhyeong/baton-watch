@@ -2,6 +2,8 @@ spring:
   application:
     name: baton-watch
   jackson:
+    read:
+      strict-duplicate-detection: true
     deserialization:
       accept-float-as-int: false
     mapper:

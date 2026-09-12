@@ -51,6 +51,13 @@ def private_file(path, limit):
         raise RecoveryError("입력 파일을 안전하게 읽지 못했습니다") from None
 
 
+def unique_json_object(pairs):
+    item = dict(pairs)
+    if len(item) != len(pairs):
+        raise ValueError()
+    return item
+
+
 def read_snapshots(raw, namespace):
     if not re.fullmatch(r"[A-Za-z0-9._-]{1,63}", namespace):
         raise RecoveryError("소스 이름공간 형식이 올바르지 않습니다")
@@ -60,7 +67,7 @@ def read_snapshots(raw, namespace):
         for line in raw.decode("utf-8").splitlines():
             if not line.strip():
                 raise ValueError()
-            item = json.loads(line)
+            item = json.loads(line, object_pairs_hook=unique_json_object)
             if not isinstance(item, dict) or set(item) != FIELDS:
                 raise ValueError()
             reference = item["resourceReference"]
