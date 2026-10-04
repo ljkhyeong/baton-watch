@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- `0473d8e`에서 Alpine 3.24 저장소가 OpenSSL을 3.5.9-r0, libexpat을 2.8.5-r0으로 올려 이미지 빌드가 실패하는 문제를 수정했다.
+  저장소는 최신 버전만 제공해 기존 고정값 3.5.8-r0·2.8.4-r0의 `apk add`가 종료 코드 8로 실패했고, 코드 변경 없이 PR #57의 `verify`가 막혔다.
+  postgres·migrations·runtime 단계의 고정값 9곳만 올리고 나머지 패키지와 기반 이미지 다이제스트는 유지했다.
+  Renovate 서비스가 꺼져 있어 같은 문제가 반복될 수 있으므로 [배포 절차](docs/runbooks/staging-deployment.md)에 확인·갱신 방법을 적었다.
+  추가 비용은 없으며 운영 배포는 미실행이다.
 - `285bc26`에서 macOS 파일 검사가 `docs/prd`처럼 대소문자만 다른 Markdown 링크를 통과시키는 문제를 수정했다.
   경로 요소마다 `os.listdir`의 실제 이름과 비교해 Git·GitHub·Linux와 같은 기준으로 판정하며 표준 라이브러리만 사용한다.
   상대 경로·`..`·디렉터리·앵커 링크 처리와 외부 링크·코드 블록 제외는 유지한다. 새 검사로 찾은 HANDOFF의 소문자 PRD 링크 2개를 고쳤고
@@ -257,6 +262,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| Alpine 고정 버전 `0473d8e` | 변경 전 amd64 PostgreSQL 기반 이미지에서 3.5.8-r0 설치가 CI와 같은 종료 코드 8로 실패하는 것 재현. 변경 후 amd64에서 세 단계의 고정 패키지 설치 성공. 로컬 arm64에서 CI와 같은 5개 대상 빌드, 이미지 내 3.5.9-r0·2.8.5-r0 설치, `verify-runtime-images.py` 라이선스·OCI 검사와 실제 PostgreSQL DB 작업 검증 통과. Java·SQL 변경이 없어 Gradle 테스트는 반복하지 않았고, Trivy 공급망 검사는 CI 결과로 확인 |
 | Markdown 링크 대소문자 `285bc26`·`e09d5ee` | 변경 전 디렉터리·파일 이름의 대소문자만 다른 링크 3개가 macOS에서 통과하는 오류 재현. 변경 후 파일 검사 도구 전체 10개 통과. 대소문자 불일치 거부와 정확한 경로의 `..`·`./`·디렉터리·앵커 링크 허용 확인. 추적 Markdown 전체를 새 검사로 확인해 HANDOFF 링크 2개 외 불일치 0개. 오류 문구 전체 비교로 파일 이름 중복 3건 재현 후 제거, 전체 10개 재통과와 XML 구문 오류 거부 유지 확인. 임시 Git 저장소의 합성 파일만 사용했으며 애플리케이션·DB·이미지 변경이 없어 해당 검사는 반복하지 않음 |
 | 중복 코드 정리 `b4fb5b5`·`75c0cba` | 전체 622개(ArchUnit 3개·실제 PostgreSQL 포함) 통과, 실패·건너뜀 없음. domain 22·application 54·web 50·외부 통신 279·영속성 84·bootstrap 130개. 다른 테스트와 같은 값을 검증하던 domain 1개를 지웠고, 병합한 매개변수 테스트로 application·외부 통신이 각 1개 늘었다. 영속성 클래스별 개수는 그대로다. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. Compose 6개 조합의 `config --format json`과 역할 SQL 출력이 변경 전과 바이트 단위로 같고, 변경한 ops 테스트 10종과 ShellCheck가 통과했다. 전체 `./gradlew test`는 모듈별 실행 뒤 입력이 같아 `UP-TO-DATE`로 재사용했다. 고정 Blackbox 이미지가 로컬에 없어 `gateway-test.py`는 미실행이다. 역할 스크립트의 실제 이미지 실행은 이미지 재빌드가 필요해 CI에서 확인한다. `capacityTest`도 미실행 |
 | 에이전트 스킬 | 변경 파일 16개의 파일 검사와 종료 검사 통과. Git 경로 기준 대소문자 구분 링크 검사에서 끊긴 링크 0개, Claude 스킬 9개의 이름·frontmatter 키 확인. 스킬이 참조한 클래스·경로의 존재 확인. 집계 스크립트는 기존 결과에서 bootstrap 130개·외부 통신 278개로 이전 기록과 일치했고, `domain` 필터 실행 뒤 해당 스위트만 남는 동작도 확인. PyYAML 경로가 없어 YAML 파서 검사는 미실행. 문서·스킬만 변경해 애플리케이션 테스트는 실행하지 않음 |
