@@ -27,6 +27,8 @@
 - 로그·메트릭·대시보드·경보: [관측성](.agents/skills/baton-watch-observability/SKILL.md)
 - README·HANDOFF·PRD·ADR: [문서](.agents/skills/baton-watch-documentation-flows/SKILL.md)
 
+Claude Code는 `.claude/skills/`의 같은 이름 스킬을 사용한다. 외부 통신 정책은 `baton-watch-outbound-http`, 결함 수정·검증·변경 검토 절차는 `baton-watch-defect-fix`·`baton-watch-validation`·`baton-watch-review`를 추가로 사용한다. 공통 규칙을 바꾸면 두 위치의 같은 이름 스킬을 함께 맞춘다.
+
 ## 검증과 완료
 
 - 검증 전에 [개발 검증 절차](docs/runbooks/development-validation.md)와 기존 실행 결과를 확인한다. 긴 검사는 `ops/run-validation.py`로 명령·파일 지문·종료 코드·로그를 남기고, 같은 입력의 성공 결과나 환경 차단을 이유 없이 재실행하지 않는다.
