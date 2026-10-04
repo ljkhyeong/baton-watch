@@ -76,8 +76,8 @@ def check_file(root, name):
                 if link.scheme or link.netloc or not link.path:
                     continue
                 if not exists_with_exact_case(path.parent, unquote(link.path)):
-                    raise ValueError(f"{name}: 로컬 링크 대상을 찾을 수 없습니다: {target}")
-    except (SyntaxError, ValueError, ElementTree.ParseError) as error:
+                    raise ValueError(f"로컬 링크 대상을 찾을 수 없습니다: {target}")
+    except (SyntaxError, ValueError) as error:
         line = getattr(error, "lineno", None)
         detail = getattr(error, "msg", str(error))
         raise ValueError(f"{name}{':' + str(line) if line else ''}: {detail}") from error
