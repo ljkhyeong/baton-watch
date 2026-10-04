@@ -1,9 +1,15 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-10-04
+최종 수정일: 2026-10-05
 
 ## 현재 작업
 
+- `b4fb5b5`·`75c0cba`에서 동작을 바꾸지 않고 중복 코드를 정리했다. 68개 파일에서 순 1,008줄이 줄었다
+  (운영 Java 39줄, 테스트 763줄, Gradle 12줄, ops·Compose 194줄).
+  운영 코드는 Problem 정의, 모니터 행 잠금 조회, 실행기 생성의 같은 계층 중복만 합쳤다. 응답·SQL·스레드 설정은 그대로다.
+  테스트는 영속성 동시 실행·잠금 틀을 지원 클래스로 모으고 같은 검사를 반복한 케이스를 매개변수 테스트로 합쳤다.
+  Compose 공통 보안 설정은 YAML 앵커로 공유하고 런타임 역할 SQL은 heredoc으로 바꿨다.
+  서로 다른 경계의 검증, 보안 상한, 자원 생성 전 검증, 응답 처리 골격, 이미지 구성은 유지했다. 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - Codex 스킬 5개를 Claude Code용 `.claude/skills/`로 옮기고 위치·테스트 클래스·검증 명령을 보강했다.
   외부 통신 정책은 `baton-watch-outbound-http`로 분리했다. 반복되는 재현→수정→`fix:`·`docs:` 커밋 절차,
   검증 기록·결과 재사용, 서비스 불변식 검토는 `baton-watch-defect-fix`·`baton-watch-validation`·`baton-watch-review`로 추가했다.
@@ -246,6 +252,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 중복 코드 정리 `b4fb5b5`·`75c0cba` | 전체 622개(ArchUnit 3개·실제 PostgreSQL 포함) 통과, 실패·건너뜀 없음. domain 22·application 54·web 50·외부 통신 279·영속성 84·bootstrap 130개. 다른 테스트와 같은 값을 검증하던 domain 1개를 지웠고, 병합한 매개변수 테스트로 application·외부 통신이 각 1개 늘었다. 영속성 클래스별 개수는 그대로다. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. Compose 6개 조합의 `config --format json`과 역할 SQL 출력이 변경 전과 바이트 단위로 같고, 변경한 ops 테스트 10종과 ShellCheck가 통과했다. 전체 `./gradlew test`는 모듈별 실행 뒤 입력이 같아 `UP-TO-DATE`로 재사용했다. 고정 Blackbox 이미지가 로컬에 없어 `gateway-test.py`는 미실행이다. 역할 스크립트의 실제 이미지 실행은 이미지 재빌드가 필요해 CI에서 확인한다. `capacityTest`도 미실행 |
 | 에이전트 스킬 | 변경 파일 16개의 파일 검사와 종료 검사 통과. Git 경로 기준 대소문자 구분 링크 검사에서 끊긴 링크 0개, Claude 스킬 9개의 이름·frontmatter 키 확인. 스킬이 참조한 클래스·경로의 존재 확인. 집계 스크립트는 기존 결과에서 bootstrap 130개·외부 통신 278개로 이전 기록과 일치했고, `domain` 필터 실행 뒤 해당 스위트만 남는 동작도 확인. PyYAML 경로가 없어 YAML 파서 검사는 미실행. 문서·스킬만 변경해 애플리케이션 테스트는 실행하지 않음 |
 | 콜백 URL 설정 `a11fb0c` | 변경 전 `%2F`→`%252F`·`%20`→`%2520`과 잘못된 호스트 구문의 시작 로그 노출 재현. 변경 후 관련 19개·bootstrap 전체 130개 통과, 실패·건너뜀 없음. 실제 Spring 시작 과정에서 문법 오류·사용자 정보의 거부와 원문 비노출 확인. DB·외부 통신 구현·이미지 변경이 없어 해당 검사는 반복하지 않음 |
 | HTTP 시간 제한 변환 `43045da` | 변경 전 실제 로컬 HTTP에서 1ns·999999ns 응답 제한이 작동하지 않는 오류 재현. 변경 후 두 사례의 `READ_TIMEOUT`과 외부 통신 모듈 전체 278개 통과, 실패·건너뜀 없음. 기존 GET·콜백 POST·TLS·전체 기한·취소 경로 포함. 공통 클라이언트의 시간 변환만 변경해 전체 Java·DB·이미지·공급망 검사는 반복하지 않음 |
