@@ -73,8 +73,8 @@ def gradle_tasks(paths, finish):
     structural = False
     for name in paths:
         path = Path(name)
-        if (path.suffix in {".java", ".gradle"} or name in {"gradle.properties", "gradlew", "gradlew.bat"}
-                or name.startswith("gradle/") or name == "ops/check-feedback.py"):
+        build_file = path.suffix == ".gradle" or name in {"gradle.properties", "gradlew", "gradlew.bat"} or name.startswith("gradle/")
+        if build_file or path.suffix == ".java" or name == "ops/check-feedback.py":
             structural = True
         if finish:
             continue
@@ -83,8 +83,7 @@ def gradle_tasks(paths, finish):
             tasks.add(f":{parts[0]}:compileJava")
         elif path.suffix == ".java" and len(parts) > 4 and parts[1:3] == ("src", "test"):
             tasks.add(f":{parts[0]}:compileTestJava")
-        elif (path.suffix == ".gradle" or name in {"gradle.properties", "gradlew", "gradlew.bat"}
-              or name.startswith("gradle/")):
+        elif build_file:
             tasks.add("help")
     if finish and structural:
         return [":bootstrap:architectureTest"]

@@ -1,6 +1,18 @@
 services:
   watch-gateway:
     image: nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6
+    # 인그레스 서비스에 읽기 전용 루트·권한 제거·로그 제한을 같은 값으로 적용한다.
+    <<: &hardened-edge-service
+      read_only: true
+      cap_drop:
+        - ALL
+      security_opt:
+        - no-new-privileges:true
+      logging:
+        driver: json-file
+        options:
+          max-size: "10m"
+          max-file: "3"
     user: "101:101"
     entrypoint: ["nginx"]
     command: ["-g", "daemon off;"]
@@ -27,13 +39,8 @@ services:
     restart: unless-stopped
     stop_signal: SIGQUIT
     stop_grace_period: 30s
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=101,gid=101
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 32
     deploy:
       resources:
@@ -41,15 +48,11 @@ services:
           cpus: 0.25
           memory: 64M
           pids: 32
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   cloudflared:
     image: "baton-watch-cloudflared:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
     pull_policy: never
+    <<: *hardened-edge-service
     user: "65532:65532"
     command:
       - tunnel
@@ -78,13 +81,8 @@ services:
     restart: unless-stopped
     stop_grace_period: 40s
     init: true
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 128
     deploy:
       resources:
@@ -92,11 +90,6 @@ services:
           cpus: 0.5
           memory: 256M
           pids: 128
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   watch-ingress:

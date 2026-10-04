@@ -3,6 +3,16 @@ services:
     build:
       context: .
       target: postgres
+    # 두 서비스에 같은 재시작·권한 상승 차단·로그 제한을 적용한다.
+    <<: &local-service
+      restart: unless-stopped
+      security_opt:
+        - no-new-privileges:true
+      logging:
+        driver: json-file
+        options:
+          max-size: "10m"
+          max-file: "3"
     environment:
       POSTGRES_DB: "${WATCH_DB_NAME:-baton_watch}"
       POSTGRES_USER: "${WATCH_DB_USER:-baton_watch}"
@@ -15,19 +25,12 @@ services:
       timeout: 3s
       retries: 12
       start_period: 10s
-    restart: unless-stopped
     stop_grace_period: 30s
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   watch:
     build:
       context: .
+    <<: *local-service
     environment:
       JAVA_TOOL_OPTIONS: "${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}"
       SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${WATCH_DB_NAME:-baton_watch}"
@@ -67,19 +70,11 @@ services:
       timeout: 3s
       retries: 6
       start_period: 30s
-    restart: unless-stopped
     stop_grace_period: 110s
     init: true
     read_only: true
     tmpfs:
       - /tmp
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 volumes:
   watch-postgres-data:

@@ -175,10 +175,6 @@ event_delivery_watch = event_delivery["services"]["watch"]
 
 require(watch.get("build") is None, "staging WATCH must use a prebuilt image")
 require(
-    re.fullmatch(r"baton-watch:[0-9a-f]{40}", watch.get("image", "")) is not None,
-    "WATCH image must be a local full-Git-SHA tag",
-)
-require(
     watch.get("image") == "baton-watch:0000000000000000000000000000000000000001",
     "WATCH image revision interpolation changed",
 )
@@ -329,32 +325,18 @@ require(
     "cloudflared secret target changed",
 )
 
-expected_secret_files = {
-    "watch-db-owner-password": Path.home()
-    / ".config/baton-watch/staging/secrets/postgres-owner-password",
-    "watch-db-runtime-password": Path.home()
-    / ".config/baton-watch/staging/secrets/postgres-runtime-password",
-    "watch-api-token": Path.home()
-    / ".config/baton-watch/staging/secrets/watch-api-token",
-    "cloudflare-tunnel-token": Path.home()
-    / ".config/baton-watch/staging/secrets/cloudflare-tunnel-token",
-}
-for secret_name, expected_file in expected_secret_files.items():
-    actual_file = tunnel["secrets"][secret_name].get("file")
+secret_directory = Path.home() / ".config/baton-watch/staging/secrets"
+for configuration, secret_name, file_name, label in (
+    (tunnel, "watch-db-owner-password", "postgres-owner-password", "watch-db-owner-password"),
+    (tunnel, "watch-db-runtime-password", "postgres-runtime-password", "watch-db-runtime-password"),
+    (tunnel, "watch-api-token", "watch-api-token", "watch-api-token"),
+    (tunnel, "cloudflare-tunnel-token", "cloudflare-tunnel-token", "cloudflare-tunnel-token"),
+    (event_delivery, "watch-event-delivery-token", "watch-event-delivery-token", "event delivery token"),
+):
     require(
-        actual_file == str(expected_file),
-        f"{secret_name} example path did not resolve under the operator home",
+        configuration["secrets"][secret_name].get("file") == str(secret_directory / file_name),
+        f"{label} example path did not resolve under the operator home",
     )
-
-event_delivery_token_file = event_delivery["secrets"]["watch-event-delivery-token"].get("file")
-require(
-    event_delivery_token_file
-    == str(
-        Path.home()
-        / ".config/baton-watch/staging/secrets/watch-event-delivery-token"
-    ),
-    "event delivery token example path did not resolve under the operator home",
-)
 
 volume = tunnel["volumes"]["watch-postgres-data"]
 require(volume.get("external") is True, "PostgreSQL data volume must be external")

@@ -3,7 +3,19 @@ name: "${WATCH_COMPOSE_PROJECT_NAME:-baton-watch-staging}"
 services:
   postgres:
     image: "baton-watch-postgres:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
-    pull_policy: never
+    # 모든 서비스에 로컬 이미지 고정·읽기 전용 루트·권한 제거·로그 제한을 같은 값으로 적용한다.
+    <<: &hardened-service
+      pull_policy: never
+      read_only: true
+      cap_drop:
+        - ALL
+      security_opt:
+        - no-new-privileges:true
+      logging:
+        driver: json-file
+        options:
+          max-size: "10m"
+          max-file: "3"
     environment:
       POSTGRES_DB: "${WATCH_DB_NAME:-baton_watch}"
       POSTGRES_USER: "${WATCH_DB_OWNER_USER:-baton_watch_owner}"
@@ -23,20 +35,15 @@ services:
       start_period: 15s
     restart: unless-stopped
     stop_grace_period: 30s
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
       - /var/run/postgresql:rw,nosuid,nodev,size=16m
-    cap_drop:
-      - ALL
     cap_add:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
       - SETGID
       - SETUID
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 128
     deploy:
       resources:
@@ -44,15 +51,10 @@ services:
           cpus: 1.0
           memory: 768M
           pids: 128
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   database-role-init:
     image: "baton-watch-database-operations:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
-    pull_policy: never
+    <<: *hardened-service
     environment:
       PGHOST: postgres
       PGPORT: "5432"
@@ -70,18 +72,13 @@ services:
     networks:
       - watch-db
     restart: "no"
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=70,gid=0,mode=0730
-    cap_drop:
-      - ALL
     cap_add:
       - CHOWN
       - DAC_READ_SEARCH
       - SETGID
       - SETUID
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 64
     deploy:
       resources:
@@ -89,15 +86,10 @@ services:
           cpus: 0.25
           memory: 128M
           pids: 64
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   migrate:
     image: "baton-watch-migrations:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
-    pull_policy: never
+    <<: *hardened-service
     environment:
       HOME: /tmp
       PGHOST: postgres
@@ -114,18 +106,13 @@ services:
     networks:
       - watch-db
     restart: "no"
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=65532,gid=0,mode=0730
-    cap_drop:
-      - ALL
     cap_add:
       - CHOWN
       - DAC_READ_SEARCH
       - SETGID
       - SETUID
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 128
     deploy:
       resources:
@@ -133,15 +120,10 @@ services:
           cpus: 0.5
           memory: 384M
           pids: 128
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   watch:
     image: "baton-watch:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
-    pull_policy: never
+    <<: *hardened-service
     user: "0:0"
     entrypoint: ["/opt/watch/run-as-watch-user.sh"]
     command: ["java", "-jar", "/app/baton-watch.jar"]
@@ -193,19 +175,14 @@ services:
       start_period: 30s
     restart: unless-stopped
     stop_grace_period: 110s
-    read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=64m
       - /run/watch-secrets:rw,noexec,nosuid,nodev,size=1m,uid=0,gid=0,mode=0700
-    cap_drop:
-      - ALL
     cap_add:
       - CHOWN
       - DAC_READ_SEARCH
       - SETGID
       - SETUID
-    security_opt:
-      - no-new-privileges:true
     pids_limit: 256
     deploy:
       resources:
@@ -213,11 +190,6 @@ services:
           cpus: 1.0
           memory: 768M
           pids: 256
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
 
 networks:
   watch-db:
