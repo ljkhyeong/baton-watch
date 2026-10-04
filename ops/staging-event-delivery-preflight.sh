@@ -25,23 +25,6 @@ require_non_empty() {
     fi
 }
 
-require_https_origin() {
-    local name="$1"
-    local value="$2"
-
-    if ! printf '%s' "$value" | python3 "$URL_POLICY" origin; then
-        fail "$name 값은 경로가 없는 기본 포트의 HTTPS DNS 오리진이어야 합니다"
-    fi
-}
-
-require_delivery_endpoint() {
-    local value="$1"
-
-    if ! printf '%s' "$value" | python3 "$URL_POLICY" event-delivery-endpoint; then
-        fail "WATCH_EVENT_DELIVERY_ENDPOINT는 공개 BATON 수신기의 HTTPS URL이어야 합니다"
-    fi
-}
-
 require_non_empty WATCH_PUBLIC_BASE_URL
 require_non_empty WATCH_EVENT_DELIVERY_ENABLED
 require_non_empty WATCH_EVENT_DELIVERY_ENDPOINT
@@ -69,8 +52,12 @@ unset \
     WATCH_API_TOKEN \
     WATCH_EVENT_DELIVERY_TOKEN
 
-require_https_origin WATCH_PUBLIC_BASE_URL "$watch_public_base_url"
-require_delivery_endpoint "$delivery_endpoint"
+if ! printf '%s' "$watch_public_base_url" | python3 "$URL_POLICY" origin; then
+    fail "WATCH_PUBLIC_BASE_URL 값은 경로가 없는 기본 포트의 HTTPS DNS 오리진이어야 합니다"
+fi
+if ! printf '%s' "$delivery_endpoint" | python3 "$URL_POLICY" event-delivery-endpoint; then
+    fail "WATCH_EVENT_DELIVERY_ENDPOINT는 공개 BATON 수신기의 HTTPS URL이어야 합니다"
+fi
 
 if (( ${#monitor_api_token} > 200 )) \
         || [[ ! "$monitor_api_token" =~ ^[A-Za-z0-9._~+/-]{32,}=*$ ]]; then
@@ -147,5 +134,4 @@ if [[ "$receiver_status" != "401" ]]; then
     fail "BATON 수신기는 미인증 사전 요청을 HTTP 401로 거부해야 하지만 ${receiver_status}를 반환했습니다"
 fi
 
-unset watch_public_base_url delivery_endpoint watch_status receiver_status
 printf '%s 공개 WATCH 상태와 BATON 수신기 인증 검사가 통과했습니다\n' "$PREFIX"

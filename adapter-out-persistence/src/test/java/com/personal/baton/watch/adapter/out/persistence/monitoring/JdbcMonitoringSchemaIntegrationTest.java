@@ -19,7 +19,6 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegrationTestSupport {
@@ -85,44 +84,19 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
 
     @Test
     void maintenanceIndexesMatchTheClaimAndRetentionAccessPaths() {
-        String deliveryDueIndex = jdbc.queryForObject(
-                """
-                SELECT indexdef
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND indexname = ?
-                """,
-                String.class,
-                "ix_watch_health_event_delivery_due");
-        String monitorLeaseIndex = jdbc.queryForObject(
-                """
-                SELECT indexdef
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND indexname = ?
-                """,
-                String.class,
-                "ix_watch_monitor_lease_attempt");
-
-        assertThat(deliveryDueIndex)
+        assertThat(indexDefinition("ix_watch_health_event_delivery_due"))
                 .contains("(next_attempt_at, changed_at, event_id)")
                 .contains("INCLUDE (delivery_lease_expires_at)")
                 .contains("delivery_status")
                 .contains("'PENDING'");
-        assertThat(monitorLeaseIndex)
+        assertThat(indexDefinition("ix_watch_monitor_lease_attempt"))
                 .contains("(lease_attempt_id)")
                 .contains("lease_attempt_id IS NOT NULL");
     }
 
     @Test
     void laterMigrationsMakeExistingOutboxEventsPendingDueAndSummarized() {
-        Flyway versionOne = Flyway.configure()
-                .dataSource(testDataSource)
-                .cleanDisabled(false)
-                .target("1")
-                .load();
-        versionOne.clean();
-        versionOne.migrate();
+        migrateCleanTo("1");
 
         jdbc.update("""
                 INSERT INTO watch_monitor (
@@ -196,41 +170,25 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
         String reference = "resource:backlog-unrelated-update";
         insertInactiveMonitor(reference);
         UUID eventId = insertPendingEvent(reference, BASE_TIME);
-        CountDownLatch summaryLocked = new CountDownLatch(1);
-        CountDownLatch releaseSummary = new CountDownLatch(1);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<?> holder = null;
-        try {
-            holder = executor.submit(() -> transactionTemplate().executeWithoutResult(ignored -> {
-                jdbc.queryForObject("""
+
+        withLockHeld(
+                () -> jdbc.queryForObject("""
                         SELECT pending_count
                         FROM watch_health_change_event_backlog
                         WHERE singleton
                         FOR UPDATE
-                        """, Long.class);
-                summaryLocked.countDown();
-                await(releaseSummary);
-            }));
-            assertThat(summaryLocked.await(
-                    CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
-
-            Integer updated = transactionTemplate().execute(ignored -> {
-                jdbc.execute("SET LOCAL lock_timeout = '250ms'");
-                return jdbc.update("""
-                        UPDATE watch_health_change_event
-                        SET delivery_attempt = delivery_attempt + 1
-                        WHERE event_id = ?
-                        """, eventId);
-            });
-
-            assertThat(updated).isEqualTo(1);
-            releaseSummary.countDown();
-            holder.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } finally {
-            releaseSummary.countDown();
-            cancelIfRunning(holder);
-            shutdownAndAwait(executor);
-        }
+                        """, Long.class),
+                () -> {
+                    Integer updated = transactionTemplate().execute(ignored -> {
+                        jdbc.execute("SET LOCAL lock_timeout = '250ms'");
+                        return jdbc.update("""
+                                UPDATE watch_health_change_event
+                                SET delivery_attempt = delivery_attempt + 1
+                                WHERE event_id = ?
+                                """, eventId);
+                    });
+                    assertThat(updated).isEqualTo(1);
+                });
     }
 
     @Test
@@ -258,7 +216,7 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
             insert = executor.submit(() -> insertingTransaction.executeWithoutResult(ignored -> {
                 insertPendingEvent(insertingJdbc, reference, insertedChangedAt);
                 insertHoldsSummaryLock.countDown();
-                await(allowInsertCommit);
+                awaitLatch(allowInsertCommit);
             }));
             assertThat(insertHoldsSummaryLock.await(
                     CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
@@ -315,8 +273,12 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                 """, Integer.class, table, column);
     }
 
-    private TransactionTemplate transactionTemplate() {
-        return new TransactionTemplate(new DataSourceTransactionManager(testDataSource));
+    private String indexDefinition(String indexName) {
+        return jdbc.queryForObject("""
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public' AND indexname = ?
+                """, String.class, indexName);
     }
 
     private void insertInactiveMonitor(String reference) {
@@ -353,16 +315,5 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
                         FROM pg_stat_activity
                         WHERE pid = ?
                         """, Boolean.class, backendPid)).isTrue());
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            if (!latch.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-                throw new AssertionError("timed out while coordinating database transactions");
-            }
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("database concurrency test was interrupted", exception);
-        }
     }
 }

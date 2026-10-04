@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
+import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
@@ -17,9 +18,7 @@ import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.transaction.support.TransactionTemplate;
 
 abstract class MonitoringPersistenceIntegrationTestSupport
         extends PostgresPersistenceIntegrationTestSupport {
@@ -29,6 +28,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     protected JdbcMonitorPersistenceAdapter monitorPersistence;
     protected JdbcCheckWorkPersistenceAdapter checkWorkPersistence;
+    protected JdbcHealthChangeEventDeliveryAdapter deliveryPersistence;
 
     @BeforeEach
     void initializeMonitoringPersistenceAdapters() {
@@ -36,6 +36,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         JdbcClient jdbcClient = JdbcClient.create(jdbc);
         monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbcClient, transactions);
         checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
+        deliveryPersistence = new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
     }
 
     protected JdbcCheckWorkPersistenceAdapter newCheckWorkPersistenceAdapter() {
@@ -44,7 +45,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected TransactionOperations newTransactionOperations() {
-        return new TransactionTemplate(new DataSourceTransactionManager(testDataSource));
+        return transactionTemplate();
     }
 
     protected SynchronizationResult synchronize(
@@ -54,6 +55,13 @@ abstract class MonitoringPersistenceIntegrationTestSupport
                         new ResourceReference(reference),
                         new SourceRevision(revision),
                         new TargetUrl(target)),
+                at);
+    }
+
+    protected SynchronizationResult synchronizeInactive(String reference, long revision, Instant at) {
+        return monitorPersistence.synchronize(
+                SynchronizeMonitorCommand.inactive(
+                        new ResourceReference(reference), new SourceRevision(revision)),
                 at);
     }
 
@@ -72,6 +80,16 @@ abstract class MonitoringPersistenceIntegrationTestSupport
                 observation,
                 completedAt,
                 nextCheckAt);
+    }
+
+    protected void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
+        finalizeAt(claimed, completedAt, CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0));
+    }
+
+    protected void finalizeAt(ClaimedCheck claimed, Instant completedAt, CheckObservation observation) {
+        assertThat(checkWorkPersistence.finalizeCheck(finalization(
+                        claimed, observation, completedAt, completedAt.plus(INTERVAL))))
+                .isEqualTo(CheckFinalizationStatus.APPLIED);
     }
 
     protected MonitorProjection projection(String reference) {

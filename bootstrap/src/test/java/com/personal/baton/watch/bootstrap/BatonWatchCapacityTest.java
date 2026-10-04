@@ -30,7 +30,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 
 /** 운영 기본 일정·배치를 유지하고 느린 점검과 보존 정리의 로컬 참고값을 측정한다. */
 @SpringBootTest(classes = BatonWatchApplication.class,
@@ -47,10 +46,7 @@ class BatonWatchCapacityTest {
 
     @Container
     @ServiceConnection(name = "postgres")
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
-            "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
-            .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("baton_watch").withUsername("baton_watch").withPassword("capacity-test");
+    static final PostgreSQLContainer POSTGRES = BootstrapTestFixtures.postgres("capacity-test");
 
     @MockitoBean(enforceOverride = true)
     private ApacheUrlChecker checker;

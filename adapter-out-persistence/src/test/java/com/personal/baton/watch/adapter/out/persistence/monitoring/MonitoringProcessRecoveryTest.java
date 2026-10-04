@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
-import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -24,7 +23,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import org.springframework.jdbc.core.simple.JdbcClient;
 
 /** 실제 JVM 강제 종료와 DB 리스 자연 만료를 사용한다. 운영 데이터는 받지 않는다. */
 @Tag("process-recovery")
@@ -100,21 +98,15 @@ class MonitoringProcessRecoveryTest extends MonitoringPersistenceIntegrationTest
     private UUID createEvent() {
         synchronize("process-recovery", 1, "https://recovery.example/check", BASE_TIME);
         var claim = claimOne();
-        checkWorkPersistence.finalizeCheck(finalization(claim,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                claim.claimedAt(), claim.claimedAt().plus(INTERVAL)));
+        finalizeAt(claim, claim.claimedAt());
         return jdbc.queryForObject("SELECT event_id FROM watch_health_change_event", UUID.class);
-    }
-
-    private JdbcHealthChangeEventDeliveryAdapter deliveries() {
-        return new JdbcHealthChangeEventDeliveryAdapter(JdbcClient.create(jdbc), newTransactionOperations());
     }
 
     private void assertPendingClaim() {
         assertThat(jdbc.queryForObject(
                 "SELECT delivery_status FROM watch_health_change_event", String.class)).isEqualTo("PENDING");
-        assertThat(deliveries().getBacklogSnapshot().pendingCount()).isOne();
-        assertThat(deliveries().claimPendingEvent(Duration.ofSeconds(60))).isEmpty();
+        assertThat(deliveryPersistence.getBacklogSnapshot().pendingCount()).isOne();
+        assertThat(deliveryPersistence.claimPendingEvent(Duration.ofSeconds(60))).isEmpty();
     }
 
     private void assertDeliveredOnce(UUID eventId) {
@@ -130,7 +122,7 @@ class MonitoringProcessRecoveryTest extends MonitoringPersistenceIntegrationTest
                 .containsEntry("last_http_status_code", 204)
                 .containsEntry("delivery_lease_token", null)
                 .containsEntry("delivery_lease_expires_at", null);
-        assertThat(deliveries().getBacklogSnapshot().pendingCount()).isZero();
+        assertThat(deliveryPersistence.getBacklogSnapshot().pendingCount()).isZero();
     }
 
     private final class WorkerProcess implements AutoCloseable {

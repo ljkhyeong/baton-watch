@@ -26,6 +26,7 @@ import org.springframework.boot.test.context.ConfigDataApplicationContextInitial
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.core.env.MapPropertySource;
@@ -46,10 +47,7 @@ class EventDeliveryConfigurationTest {
                     "watch.api-token=" + API_TOKEN,
                     "watch.event-delivery.endpoint=https://baton.example.com/callback",
                     "watch.event-delivery.bearer-token=a-separate-delivery-token-longer-than-32-characters")
-            .withBean(JdbcClient.class, () -> mock(JdbcClient.class))
-            .withBean(TransactionOperations.class, () -> mock(TransactionOperations.class))
-            .withBean(Clock.class, () -> Clock.fixed(Instant.parse("2026-08-30T00:00:00Z"), ZoneOffset.UTC))
-            .withBean(MonitoringMetrics.class, () -> new MonitoringMetrics(new SimpleMeterRegistry()));
+            .withInitializer(EventDeliveryConfigurationTest::registerCollaborators);
 
     @ParameterizedTest(name = "전달 설정 {0}의 바인딩과 전체 전달 빈 등록 일치")
     @CsvSource({
@@ -122,14 +120,7 @@ class EventDeliveryConfigurationTest {
                 Settings.class, EventDeliveryConfiguration.class, JacksonAutoConfiguration.class);
         application.setWebApplicationType(WebApplicationType.NONE);
         application.setRegisterShutdownHook(false);
-        application.addInitializers(context -> {
-            GenericApplicationContext beans = (GenericApplicationContext) context;
-            beans.registerBean(JdbcClient.class, () -> mock(JdbcClient.class));
-            beans.registerBean(TransactionOperations.class, () -> mock(TransactionOperations.class));
-            beans.registerBean(Clock.class, () -> Clock.fixed(
-                    Instant.parse("2026-08-30T00:00:00Z"), ZoneOffset.UTC));
-            beans.registerBean(MonitoringMetrics.class, () -> new MonitoringMetrics(new SimpleMeterRegistry()));
-        });
+        application.addInitializers(EventDeliveryConfigurationTest::registerCollaborators);
 
         RuntimeException failure = assertThrows(RuntimeException.class, () -> application.run(
                     "--watch.api-token=" + API_TOKEN,
@@ -138,6 +129,14 @@ class EventDeliveryConfigurationTest {
                     "--watch.event-delivery.bearer-token=a-separate-delivery-token-longer-than-32-characters").close());
         assertThat(failure).hasStackTraceContaining("endpoint");
         assertThat(output.getAll()).doesNotContain("endpoint-sensitive-marker");
+    }
+
+    private static void registerCollaborators(ConfigurableApplicationContext context) {
+        GenericApplicationContext beans = (GenericApplicationContext) context;
+        beans.registerBean(JdbcClient.class, () -> mock(JdbcClient.class));
+        beans.registerBean(TransactionOperations.class, () -> mock(TransactionOperations.class));
+        beans.registerBean(Clock.class, () -> Clock.fixed(Instant.parse("2026-08-30T00:00:00Z"), ZoneOffset.UTC));
+        beans.registerBean(MonitoringMetrics.class, () -> new MonitoringMetrics(new SimpleMeterRegistry()));
     }
 
     private ApplicationContextRunner withDeliverySetting(String enabled) {

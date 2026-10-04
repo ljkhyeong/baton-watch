@@ -1,5 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.count;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.timer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -39,18 +41,9 @@ class MeteredUrlCheckerTest {
 
         assertSame(expected, actual);
         assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.attempts")
-                        .tag("outcome", "success")
-                        .counter()
-                        .count());
-        assertEquals(
-                37.0,
-                registry.get("baton.watch.check.duration")
-                        .tag("outcome", "success")
-                        .timer()
-                        .totalTime(TimeUnit.MILLISECONDS));
+        assertEquals(1.0, count(registry, "baton.watch.check.attempts", "outcome", "success"));
+        assertEquals(37.0, timer(registry, "baton.watch.check.duration", "outcome", "success")
+                .totalTime(TimeUnit.MILLISECONDS));
         assertTrue(registry.getMeters().stream()
                 .flatMap(meter -> meter.getId().getTags().stream())
                 .noneMatch(tag -> tag.getValue().contains("sensitive.example")
@@ -73,12 +66,7 @@ class MeteredUrlCheckerTest {
 
         assertSame(expected, actual);
         assertEquals(0.0, registry.get("baton.watch.check.inflight").gauge().value());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.attempts")
-                        .tag("outcome", "internal_failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.check.attempts", "outcome", "internal_failure"));
     }
 
     @Test
@@ -91,12 +79,7 @@ class MeteredUrlCheckerTest {
         CheckObservation observation = checker.check(TARGET);
 
         assertNull(observation);
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.attempts")
-                        .tag("outcome", "internal_failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.check.attempts", "outcome", "internal_failure"));
     }
 
     @Test

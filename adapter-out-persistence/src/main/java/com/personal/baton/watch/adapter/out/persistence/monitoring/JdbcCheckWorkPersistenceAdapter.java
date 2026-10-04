@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MONITOR_COLUMNS;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.instant;
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.lockMonitor;
 
 import com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MonitorRow;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
@@ -223,12 +224,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
             throw new IllegalArgumentException("completion cannot precede claim");
         }
 
-        MonitorRow monitor = jdbc.sql(
-                        "SELECT " + MONITOR_COLUMNS
-                                + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
-                .param(attempt.resourceReference())
-                .query(MonitoringJdbcRows::mapMonitor)
-                .single();
+        MonitorRow monitor = lockMonitor(jdbc, attempt.resourceReference()).single();
 
         if (resultExists(finalization.attemptId())) {
             return CheckFinalizationStatus.ALREADY_FINALIZED;

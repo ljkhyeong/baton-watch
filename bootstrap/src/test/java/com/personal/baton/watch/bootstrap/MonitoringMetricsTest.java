@@ -1,5 +1,9 @@
 package com.personal.baton.watch.bootstrap;
 
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.claimedCheck;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.claimedEvent;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.count;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.timer;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,12 +21,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
-import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
-import com.personal.baton.watch.domain.monitoring.Health;
-import com.personal.baton.watch.domain.monitoring.ResourceReference;
-import com.personal.baton.watch.domain.monitoring.SourceRevision;
-import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -31,7 +30,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -64,12 +62,10 @@ class MonitoringMetricsTest {
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
         assertAll(
-                () -> assertEquals(0.0, registry.get("baton.watch.check.finalizations")
-                        .tag("status", "failure").counter().count()),
-                () -> assertEquals(0.0, registry.get("baton.watch.event.delivery.finalizations")
-                        .tag("status", "failure").counter().count()),
-                () -> assertEquals(0.0, registry.get("baton.watch.check.lease.recoveries").counter().count()),
-                () -> assertEquals(0.0, registry.get("baton.watch.event.delivery.lease.recoveries").counter().count()));
+                () -> assertEquals(0.0, count(registry, "baton.watch.check.finalizations", "status", "failure")),
+                () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
+                () -> assertEquals(0.0, count(registry, "baton.watch.check.lease.recoveries")),
+                () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
 
         metrics.recordCheckFinalizationFailure();
         metrics.recordEventDeliveryFinalizationFailure();
@@ -77,12 +73,10 @@ class MonitoringMetricsTest {
         metrics.recordEventDeliveryClaim(claimedEvent(true));
 
         assertAll(
-                () -> assertEquals(1.0, registry.get("baton.watch.check.finalizations")
-                        .tag("status", "failure").counter().count()),
-                () -> assertEquals(1.0, registry.get("baton.watch.event.delivery.finalizations")
-                        .tag("status", "failure").counter().count()),
-                () -> assertEquals(1.0, registry.get("baton.watch.check.lease.recoveries").counter().count()),
-                () -> assertEquals(1.0, registry.get("baton.watch.event.delivery.lease.recoveries").counter().count()));
+                () -> assertEquals(1.0, count(registry, "baton.watch.check.finalizations", "status", "failure")),
+                () -> assertEquals(1.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
+                () -> assertEquals(1.0, count(registry, "baton.watch.check.lease.recoveries")),
+                () -> assertEquals(1.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
     }
 
     @Test
@@ -122,50 +116,19 @@ class MonitoringMetricsTest {
         assertEquals(1.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
         metrics.eventDeliveryFinished(deliverySample, EventDeliveryOutcome.CONNECT_TIMEOUT);
 
-        assertEquals(3.0, registry.get("baton.watch.check.claimed").counter().count());
-        assertEquals(3.0, registry.get("baton.watch.check.lease.recoveries").counter().count());
-        assertEquals(4.0, registry.get("baton.watch.event.delivery.claimed").counter().count());
-        assertEquals(
-                4.0,
-                registry.get("baton.watch.event.delivery.lease.recoveries").counter().count());
+        assertEquals(3.0, count(registry, "baton.watch.check.claimed"));
+        assertEquals(3.0, count(registry, "baton.watch.check.lease.recoveries"));
+        assertEquals(4.0, count(registry, "baton.watch.event.delivery.claimed"));
+        assertEquals(4.0, count(registry, "baton.watch.event.delivery.lease.recoveries"));
         assertEquals(17.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.attempts")
-                        .tag("outcome", "connect_timeout")
-                        .counter()
-                        .count());
-        assertEquals(
-                125.0,
-                registry.get("baton.watch.check.duration")
-                        .tag("outcome", "connect_timeout")
-                        .timer()
-                        .totalTime(TimeUnit.MILLISECONDS));
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.finalizations")
-                        .tag("status", "stale_claim")
-                        .counter()
-                        .count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.finalizations")
-                        .tag("status", "retry_scheduled")
-                        .counter()
-                        .count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.attempts")
-                        .tag("outcome", "connect_timeout")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.check.attempts", "outcome", "connect_timeout"));
+        assertEquals(125.0, timer(registry, "baton.watch.check.duration", "outcome", "connect_timeout")
+                .totalTime(TimeUnit.MILLISECONDS));
+        assertEquals(1.0, count(registry, "baton.watch.check.finalizations", "status", "stale_claim"));
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "retry_scheduled"));
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.attempts", "outcome", "connect_timeout"));
         assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
-        assertEquals(
-                1L,
-                registry.get("baton.watch.event.delivery.duration")
-                        .tag("outcome", "connect_timeout")
-                        .timer()
-                        .count());
+        assertEquals(1L, timer(registry, "baton.watch.event.delivery.duration", "outcome", "connect_timeout").count());
 
         metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(1))));
         metrics.recordStaleProjections(1);
@@ -200,24 +163,9 @@ class MonitoringMetricsTest {
         metrics.recordPurgedAttempts(3);
         metrics.recordPurgedDeliveredEvents(4);
 
-        assertEquals(
-                2.0,
-                registry.get("baton.watch.maintenance.items")
-                        .tag("operation", "stale_projection")
-                        .counter()
-                        .count());
-        assertEquals(
-                3.0,
-                registry.get("baton.watch.maintenance.items")
-                        .tag("operation", "attempt_purged")
-                        .counter()
-                        .count());
-        assertEquals(
-                4.0,
-                registry.get("baton.watch.maintenance.items")
-                        .tag("operation", "delivered_event_purged")
-                        .counter()
-                        .count());
+        assertEquals(2.0, count(registry, "baton.watch.maintenance.items", "operation", "stale_projection"));
+        assertEquals(3.0, count(registry, "baton.watch.maintenance.items", "operation", "attempt_purged"));
+        assertEquals(4.0, count(registry, "baton.watch.maintenance.items", "operation", "delivered_event_purged"));
     }
 
     @Test
@@ -239,31 +187,6 @@ class MonitoringMetricsTest {
 
         assertDoesNotThrow(() -> metrics.recordCheckClaim(claimedCheck(false)));
         assertDoesNotThrow(() -> metrics.recordStaleProjections(1));
-    }
-
-    private static ClaimedCheck claimedCheck(boolean recoveredLease) {
-        return new ClaimedCheck(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                UUID.fromString("00000000-0000-0000-0000-000000000002"),
-                new TargetUrl("https://example.com/health"),
-                NOW,
-                recoveredLease);
-    }
-
-    private static ClaimedHealthChangeEvent claimedEvent(boolean recoveredLease) {
-        return new ClaimedHealthChangeEvent(
-                new HealthChangeEventPayload(
-                        UUID.fromString("00000000-0000-0000-0000-000000000003"),
-                        new ResourceReference("resource-1"),
-                        new SourceRevision(1),
-                        Optional.empty(),
-                        Health.UNKNOWN,
-                        Health.HEALTHY,
-                        NOW),
-                UUID.fromString("00000000-0000-0000-0000-000000000004"),
-                1,
-                NOW,
-                recoveredLease);
     }
 
     private static void assertOnlyAllowedTags(SimpleMeterRegistry registry) {

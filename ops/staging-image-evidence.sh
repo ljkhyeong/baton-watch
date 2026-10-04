@@ -15,12 +15,6 @@ fail() {
     exit 1
 }
 
-require_revision() {
-    if ! printf '%s' "$REVISION" | grep -Eq '^[0-9a-f]{40}$'; then
-        fail "이미지 리비전은 전체 Git SHA여야 합니다"
-    fi
-}
-
 image_tag() {
     case "$1" in
         database-operations|migrations|postgres|cloudflared)
@@ -33,10 +27,6 @@ image_tag() {
             fail "지원하지 않는 이미지 종류입니다"
             ;;
     esac
-}
-
-archive_name() {
-    printf '%s.tar' "$1"
 }
 
 sha256_file() {
@@ -115,8 +105,7 @@ verify_archive_dir() {
 $entry
 EOF
         expected_tag="$(image_tag "$kind")"
-        expected_archive="$(archive_name "$kind")"
-        if [ "$record" != "image" ] || [ "$actual_kind" != "$kind" ] || [ "$tag" != "$expected_tag" ] || [ "$archive" != "$expected_archive" ] || [ -n "${extra:-}" ]; then
+        if [ "$record" != "image" ] || [ "$actual_kind" != "$kind" ] || [ "$tag" != "$expected_tag" ] || [ "$archive" != "$kind.tar" ] || [ -n "${extra:-}" ]; then
             fail "이미지 보관 명세 항목이 올바르지 않습니다: $kind"
         fi
         if ! printf '%s' "$image_id" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
@@ -160,7 +149,7 @@ archive_images() {
         if ! printf '%s' "$image_id" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
             fail "배포 이미지 ID 형식이 올바르지 않습니다: $tag"
         fi
-        archive="$(archive_name "$kind")"
+        archive="$kind.tar"
         docker image save --output "$temp_dir/$archive" "$tag"
         checksum="$(sha256_file "$temp_dir/$archive")"
         printf 'image\t%s\t%s\t%s\t%s\t%s\n' "$kind" "$tag" "$image_id" "$archive" "$checksum" >> "$manifest"
@@ -181,13 +170,15 @@ verify_images() {
 restore_images() {
     verify_archive_dir "$ARCHIVE_DIR" false
     for kind in database-operations migrations runtime postgres cloudflared; do
-        docker image load --input "$ARCHIVE_DIR/$(archive_name "$kind")" >/dev/null
+        docker image load --input "$ARCHIVE_DIR/$kind.tar" >/dev/null
     done
     verify_archive_dir "$ARCHIVE_DIR" true
     printf '[staging-image-evidence] 보관된 이미지를 복원하고 검증했습니다\n'
 }
 
-require_revision
+if ! printf '%s' "$REVISION" | grep -Eq '^[0-9a-f]{40}$'; then
+    fail "이미지 리비전은 전체 Git SHA여야 합니다"
+fi
 case "${1:-}" in
     archive)
         archive_images

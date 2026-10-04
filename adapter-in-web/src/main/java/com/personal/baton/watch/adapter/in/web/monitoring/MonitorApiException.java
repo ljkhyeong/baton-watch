@@ -10,18 +10,18 @@ final class MonitorApiException extends RuntimeException {
     private final long retryAfterSeconds;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
-        this(status, slug, title, code, 0);
+        this(status, MonitorApiProblem.of(slug, title, code), 0);
     }
 
-    private MonitorApiException(HttpStatus status, String slug, String title, String code, long retryAfterSeconds) {
-        super(title);
+    private MonitorApiException(HttpStatus status, MonitorApiProblem problem, long retryAfterSeconds) {
+        super(problem.title());
         this.status = status;
-        this.problem = MonitorApiProblem.of(slug, title, code);
+        this.problem = problem;
         this.retryAfterSeconds = retryAfterSeconds;
     }
 
     static MonitorApiException invalidRequest() {
-        return new MonitorApiException(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+        return new MonitorApiException(HttpStatus.BAD_REQUEST, MonitorApiProblem.INVALID_REQUEST, 0);
     }
 
     static MonitorApiException invalidTarget() {
@@ -58,8 +58,8 @@ final class MonitorApiException extends RuntimeException {
     }
 
     static MonitorApiException checkRequestRateLimited(long retryAfterSeconds) {
-        return new MonitorApiException(HttpStatus.TOO_MANY_REQUESTS, "check-request-rate-limited",
-                "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED", retryAfterSeconds);
+        return new MonitorApiException(HttpStatus.TOO_MANY_REQUESTS, MonitorApiProblem.of("check-request-rate-limited",
+                "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED"), retryAfterSeconds);
     }
 
     long retryAfterSeconds() {

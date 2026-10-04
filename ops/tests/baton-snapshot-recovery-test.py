@@ -5,7 +5,6 @@ import contextlib
 import importlib.util
 import io
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -32,6 +31,22 @@ def batch_response(*projections, missing=()):
 def snapshots(count):
     return [dict(SNAPSHOT, resourceReference=f"baton-manager:pilot:role-resource:{uuid.UUID(int=index + 1)}")
             for index in range(count)]
+
+
+def client(token="x" * 32):
+    return recovery.WatchClient("https://watch.example.com", token, interval=0)
+
+
+def response(body, code=200):
+    return subprocess.CompletedProcess([], 0, body + f"\n{code}".encode())
+
+
+@contextlib.contextmanager
+def transport(**run_options):
+    """DNS 결과를 공개 주소로 고정하고 curl 실행을 대체한다."""
+    with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
+         patch.object(recovery.subprocess, "run", **run_options) as run:
+        yield dns, run
 
 
 def curl_result(returncode, stdout):
@@ -219,8 +234,7 @@ class SnapshotRecoveryTest(unittest.TestCase):
         token = "x" * 30 + "+/=="
         client = recovery.WatchClient("https://watch.example.com", token)
         payload = {key: value for key, value in SNAPSHOT.items() if key != "resourceReference"}
-        with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-             patch.object(recovery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"{}\n200")) as run:
+        with transport(return_value=response(b"{}")) as (_, run):
             client.request("PUT", REFERENCE, payload)
         command = run.call_args.args[0]
         self.assertNotIn(token, " ".join(command))
@@ -235,12 +249,10 @@ class SnapshotRecoveryTest(unittest.TestCase):
     def test_batch_transport_uses_repeated_query_parameters_and_a_bounded_response(self):
         """묶음 조회는 반복 쿼리와 32KiB 상한을 사용하고 기존 통신 제한을 유지한다."""
         token = "watch-test-token-with-at-least-32-characters"
-        client = recovery.WatchClient("https://watch.example.com", token, interval=0)
         references = [item["resourceReference"] for item in snapshots(20)]
         body = json.dumps(batch_response(missing=references)[1]).encode()
-        with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-             patch.object(recovery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, body + b"\n200")) as run:
-            self.assertEqual(client.get_batch(references)[0], 200)
+        with transport(return_value=response(body)) as (_, run):
+            self.assertEqual(client(token).get_batch(references)[0], 200)
         command = run.call_args.args[0]
         config = run.call_args.kwargs["input"].decode()
         url = json.loads(config.splitlines()[0].removeprefix("url = "))
@@ -254,12 +266,10 @@ class SnapshotRecoveryTest(unittest.TestCase):
 
     def test_batch_response_limit_is_checked_after_curl_returns(self):
         """크기 제한을 넘거나 JSON이 잘못된 응답은 조회 결과로 사용하지 않는다."""
-        client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
+        watch = client()
         for body in [b" " * (recovery.MAX_BATCH_RESPONSE_BYTES + 1), b"not-json"]:
-            with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                 patch.object(recovery.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, body + b"\n200")):
-                with self.assertRaises(recovery.RecoveryError):
-                    client.get_batch([REFERENCE])
+            with transport(return_value=response(body)), self.assertRaises(recovery.RecoveryError):
+                watch.get_batch([REFERENCE])
 
     def test_access_denied_stops_audit_and_reports_every_item(self):
         """인증 거부 시 다음 묶음을 요청하지 않고 완료·거부·미요청 결과를 구분한다."""
@@ -269,12 +279,9 @@ class SnapshotRecoveryTest(unittest.TestCase):
         for code in (401, 403):
             for body in (b'{"code":"UNAUTHORIZED"}', b"<html>private-error</html>", b""):
                 with self.subTest(code=code, body=body):
-                    client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                    denied = subprocess.CompletedProcess([], 0, body + f"\n{code}".encode())
-                    with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
-                         patch.object(recovery.subprocess, "run", side_effect=[
-                             subprocess.CompletedProcess([], 0, accepted + b"\n200"), denied, denied]) as run:
-                        results = list(recovery.reconcile(client, items))
+                    denied = response(body, code)
+                    with transport(side_effect=[response(accepted), denied, denied]) as (dns, run):
+                        results = list(recovery.reconcile(client(), items))
                     self.assertEqual(run.call_count, 2)
                     self.assertEqual(dns.call_count, 2)
                     self.assertEqual([item["status"] for item in results],
@@ -295,12 +302,8 @@ class SnapshotRecoveryTest(unittest.TestCase):
                     json.dumps(remote(reference=item["resourceReference"])[1]) for item in items[1:20])
                     + '],"missingResourceReferences":[]}')
                 accepted = json.dumps(batch_response(remote(reference=items[20]["resourceReference"])[1])[1])
-                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                     patch.object(recovery.subprocess, "run", side_effect=[
-                         subprocess.CompletedProcess([], 0, batch.encode() + b"\n200"),
-                         subprocess.CompletedProcess([], 0, accepted.encode() + b"\n200")]) as run:
-                    results = list(recovery.reconcile(client, items))
+                with transport(side_effect=[response(batch.encode()), response(accepted.encode())]) as (_, run):
+                    results = list(recovery.reconcile(client(), items))
                 self.assertEqual(run.call_count, 2)
                 self.assertEqual([result["resourceReference"] for result in results],
                                  [item["resourceReference"] for item in items])
@@ -318,12 +321,8 @@ class SnapshotRecoveryTest(unittest.TestCase):
             with self.subTest(method=method):
                 bodies = ([json.dumps(first)] if method == "PUT" else []) + [
                     ambiguous, json.dumps(second), json.dumps(second)]
-                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                     patch.object(recovery.subprocess, "run", side_effect=[
-                         subprocess.CompletedProcess([], 0, body.encode() + b"\n200")
-                         for body in bodies + [json.dumps(second)]]) as run:
-                    results = list(recovery.reconcile(client, items, True))
+                with transport(side_effect=[response(body.encode()) for body in bodies + [json.dumps(second)]]) as (_, run):
+                    results = list(recovery.reconcile(client(), items, True))
                 methods = [call.args[0][call.args[0].index("--request") + 1] for call in run.call_args_list]
                 self.assertEqual(methods, (["GET"] if method == "PUT" else []) + [method, "GET", "PUT"])
                 self.assertEqual([result["status"] for result in results], ["LOOKUP_OR_REPLAY_FAILED", "REPLAYED"])
@@ -336,11 +335,8 @@ class SnapshotRecoveryTest(unittest.TestCase):
             for returncode in (18, 28, 63):
                 for apply in (False, True):
                     with self.subTest(code=code, returncode=returncode, apply=apply):
-                        client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                        with patch.object(recovery, "public_address", return_value="93.184.216.34") as dns, \
-                             patch.object(recovery.subprocess, "run", side_effect=curl_result(
-                                 returncode, f"private-error\n{code}".encode())) as run:
-                            results = list(recovery.reconcile(client, items, apply))
+                        with transport(side_effect=curl_result(returncode, f"private-error\n{code}".encode())) as (dns, run):
+                            results = list(recovery.reconcile(client(), items, apply))
                         self.assertEqual(run.call_count, 1)
                         self.assertEqual(dns.call_count, 1)
                         denied_count = 1 if apply else 20
@@ -357,11 +353,9 @@ class SnapshotRecoveryTest(unittest.TestCase):
         for returncode, stdout in [(code, body + b"\n200") for code in (18, 28, 63)] + [
                 (7, b"\n000"), (60, b"\n000")]:
             with self.subTest(returncode=returncode):
-                client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                     patch.object(recovery.subprocess, "run", side_effect=curl_result(returncode, stdout)):
-                    with self.assertRaises(recovery.RecoveryError) as failure:
-                        client.request("GET", REFERENCE)
+                with transport(side_effect=curl_result(returncode, stdout)), \
+                     self.assertRaises(recovery.RecoveryError) as failure:
+                    client().request("GET", REFERENCE)
                 self.assertEqual(type(failure.exception), recovery.RecoveryError)
                 self.assertNotIn("private-error", str(failure.exception))
 
@@ -371,16 +365,12 @@ class SnapshotRecoveryTest(unittest.TestCase):
         for code in (401, 403):
             for denied_method in ("GET", "PUT"):
                 with self.subTest(code=code, method=denied_method):
-                    client = recovery.WatchClient("https://watch.example.com", "x" * 32, interval=0)
-                    completed = subprocess.CompletedProcess([], 0,
-                        json.dumps(remote(reference=items[0]["resourceReference"])[1]).encode() + b"\n200")
-                    pending = subprocess.CompletedProcess([], 0,
-                        json.dumps(remote(reference=items[1]["resourceReference"])[1]).encode() + b"\n200")
-                    denied = subprocess.CompletedProcess([], 0, f"private-error\n{code}".encode())
+                    completed = response(json.dumps(remote(reference=items[0]["resourceReference"])[1]).encode())
+                    pending = response(json.dumps(remote(reference=items[1]["resourceReference"])[1]).encode())
+                    denied = response(b"private-error", code)
                     responses = [completed, completed] + ([pending] if denied_method == "PUT" else []) + [denied]
-                    with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                         patch.object(recovery.subprocess, "run", side_effect=responses + [denied]) as run:
-                        results = list(recovery.reconcile(client, items, True))
+                    with transport(side_effect=responses + [denied]) as (_, run):
+                        results = list(recovery.reconcile(client(), items, True))
                     self.assertEqual(run.call_count, len(responses))
                     self.assertEqual([item["status"] for item in results],
                                      ["REPLAYED", "ACCESS_DENIED", "NOT_ATTEMPTED"])
@@ -398,9 +388,7 @@ class SnapshotRecoveryTest(unittest.TestCase):
             token_file.write_text(token)
             token_file.chmod(0o600)
             output, errors = io.StringIO(), io.StringIO()
-            with patch.object(recovery, "public_address", return_value="93.184.216.34"), \
-                 patch.object(recovery.subprocess, "run", return_value=subprocess.CompletedProcess(
-                     [], 0, b"private-error\n401")) as run, \
+            with transport(return_value=response(b"private-error", 401)) as (_, run), \
                  contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                 code = recovery.main(["--snapshots", str(manifest), "--source-namespace", "pilot",
                                       "--origin", "https://watch.example.com", "--token-file", str(token_file)])

@@ -26,6 +26,7 @@ import org.apache.hc.core5.http.MessageConstraintException;
 import org.apache.hc.core5.io.IOFunction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class ApacheHttpRequestExecutorTest {
@@ -55,14 +56,47 @@ class ApacheHttpRequestExecutorTest {
         }
     }
 
-    @Test
-    void reportsConnectTimeoutAndCancelsWorkBeforeAResponseStarts() throws Exception {
-        assertTimedOut(false, OutboundHttpFailure.Kind.CONNECT_TIMEOUT);
-    }
+    @ParameterizedTest
+    @CsvSource({"false, CONNECT_TIMEOUT", "true, READ_TIMEOUT"})
+    void reportsTimeoutByResponseStartAndCancelsWork(
+            boolean responseStarted, OutboundHttpFailure.Kind expectedKind) throws Exception {
+        CountDownLatch operationStarted = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch block = new CountDownLatch(1);
+        AtomicReference<OutboundHttpFailure> observedFailure = new AtomicReference<>();
+        HttpGet request = new HttpGet("https://check.test/");
 
-    @Test
-    void reportsReadTimeoutAndCancelsWorkAfterAResponseStarts() throws Exception {
-        assertTimedOut(true, OutboundHttpFailure.Kind.READ_TIMEOUT);
+        try (ApacheHttpRequestExecutor executor =
+                new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
+            Thread caller = new Thread(() -> {
+                try {
+                    executor.execute(request, Duration.ofMillis(500), onResponseStarted -> {
+                        if (responseStarted) {
+                            onResponseStarted.run();
+                        }
+                        operationStarted.countDown();
+                        try {
+                            block.await();
+                        } catch (InterruptedException exception) {
+                            interrupted.countDown();
+                            throw new InterruptedIOException("cancelled");
+                        }
+                        return null;
+                    });
+                } catch (OutboundHttpFailure failure) {
+                    observedFailure.set(failure);
+                }
+            }, "test-timeout-caller");
+            caller.start();
+
+            assertTrue(operationStarted.await(1, TimeUnit.SECONDS));
+            caller.join(1_500);
+
+            assertFalse(caller.isAlive());
+            assertEquals(expectedKind, observedFailure.get().kind());
+            assertTrue(interrupted.await(1, TimeUnit.SECONDS));
+            assertTrue(request.isCancelled());
+        }
     }
 
     @Test
@@ -287,47 +321,6 @@ class ApacheHttpRequestExecutorTest {
             release.countDown();
             worker.shutdownNow();
             assertTrue(worker.awaitTermination(1, TimeUnit.SECONDS));
-        }
-    }
-
-    private static void assertTimedOut(
-            boolean responseStarted, OutboundHttpFailure.Kind expectedKind) throws Exception {
-        CountDownLatch operationStarted = new CountDownLatch(1);
-        CountDownLatch interrupted = new CountDownLatch(1);
-        CountDownLatch block = new CountDownLatch(1);
-        AtomicReference<OutboundHttpFailure> observedFailure = new AtomicReference<>();
-        HttpGet request = new HttpGet("https://check.test/");
-
-        try (ApacheHttpRequestExecutor executor =
-                new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
-            Thread caller = new Thread(() -> {
-                try {
-                    executor.execute(request, Duration.ofMillis(500), onResponseStarted -> {
-                        if (responseStarted) {
-                            onResponseStarted.run();
-                        }
-                        operationStarted.countDown();
-                        try {
-                            block.await();
-                        } catch (InterruptedException exception) {
-                            interrupted.countDown();
-                            throw new InterruptedIOException("cancelled");
-                        }
-                        return null;
-                    });
-                } catch (OutboundHttpFailure failure) {
-                    observedFailure.set(failure);
-                }
-            }, "test-timeout-caller");
-            caller.start();
-
-            assertTrue(operationStarted.await(1, TimeUnit.SECONDS));
-            caller.join(1_500);
-
-            assertFalse(caller.isAlive());
-            assertEquals(expectedKind, observedFailure.get().kind());
-            assertTrue(interrupted.await(1, TimeUnit.SECONDS));
-            assertTrue(request.isCancelled());
         }
     }
 
