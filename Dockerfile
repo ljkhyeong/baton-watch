@@ -17,8 +17,8 @@ LABEL org.opencontainers.image.title="BATON WATCH PostgreSQL" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apk add --no-cache \
-        "libcrypto3=3.5.8-r0" \
-        "libssl3=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libssl3=3.5.9-r0" \
         "libuuid=2.42.3-r1" \
         "su-exec=0.3-r0" \
     && rm /usr/local/bin/gosu \
@@ -66,10 +66,10 @@ LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apk add --no-cache \
         "bash=5.3.9-r1" \
-        "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.4-r0" \
-        "libssl3=3.5.8-r0" \
-        "openssl=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libexpat=2.8.5-r0" \
+        "libssl3=3.5.9-r0" \
+        "openssl=3.5.9-r0" \
         "p11-kit=0.26.2-r0" \
         "p11-kit-trust=0.26.2-r0" \
         "sqlite-libs=3.53.4-r0" \
@@ -130,9 +130,9 @@ LABEL org.opencontainers.image.title="BATON WATCH" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN command -v wget >/dev/null \
     && apk add --no-cache \
-        "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.4-r0" \
-        "libssl3=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libexpat=2.8.5-r0" \
+        "libssl3=3.5.9-r0" \
         "su-exec=0.3-r0"
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch \
