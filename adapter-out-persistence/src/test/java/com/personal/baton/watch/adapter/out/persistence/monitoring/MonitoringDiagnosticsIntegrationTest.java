@@ -6,10 +6,7 @@ import static org.awaitility.Awaitility.await;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
-import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.domain.monitoring.CheckStatus;
-import com.personal.baton.watch.domain.monitoring.ResourceReference;
-import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -24,7 +21,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import tools.jackson.databind.json.JsonMapper;
 
 class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
@@ -50,8 +46,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
             int nextCheckOffsetSeconds, Integer leaseOffsetSeconds, CheckStatus expected) throws Exception {
         synchronize(REFERENCE, 1, TARGET, BASE_TIME);
         if (expected == CheckStatus.INACTIVE) {
-            monitorPersistence.synchronize(SynchronizeMonitorCommand.inactive(
-                    new ResourceReference(REFERENCE), new SourceRevision(2)), BASE_TIME.plusSeconds(1));
+            synchronizeInactive(REFERENCE, 2, BASE_TIME.plusSeconds(1));
         } else {
             if (leaseOffsetSeconds != null) {
                 claimOne();
@@ -112,9 +107,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
             assertThat(result.output()).doesNotContain(leaseToken.toString());
         }
 
-        var deliveries = new JdbcHealthChangeEventDeliveryAdapter(
-                JdbcClient.create(jdbc), newTransactionOperations());
-        var claim = deliveries.claimPendingEvent(LEASE);
+        var claim = deliveryPersistence.claimPendingEvent(LEASE);
         assertThat(claim.isPresent()).isEqualTo(expected.equals("QUEUED"));
         claim.ifPresent(event -> assertThat(event.payload().eventId()).isEqualTo(eventId));
     }
@@ -124,13 +117,10 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
     void readsBoundedHistoriesWithoutChangingDataOrExposingTargets(String limit, int expected) throws Exception {
         synchronize(REFERENCE, 1, TARGET, BASE_TIME);
         var check = claimOne();
-        checkWorkPersistence.finalizeCheck(finalization(check,
-                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 16, 0),
-                check.claimedAt(), check.claimedAt().plus(INTERVAL)));
-        var deliveries = new JdbcHealthChangeEventDeliveryAdapter(
-                JdbcClient.create(jdbc), newTransactionOperations());
-        var event = deliveries.claimPendingEvent(LEASE).orElseThrow();
-        deliveries.finalizeDelivery(new EventDeliveryFinalization(
+        finalizeAt(check, check.claimedAt(),
+                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 16, 0));
+        var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+        deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
                 EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));

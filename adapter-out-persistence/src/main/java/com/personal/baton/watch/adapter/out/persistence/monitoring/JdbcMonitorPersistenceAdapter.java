@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MONITOR_COLUMNS;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
+import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.lockMonitor;
 
 import com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.MonitorRow;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
@@ -140,11 +141,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     private SynchronizationResult synchronizeInTransaction(
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
-        MonitorRow existing = jdbc.sql(
-                        "SELECT " + MONITOR_COLUMNS
-                                + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
-                .param(command.resourceReference().value())
-                .query(MonitoringJdbcRows::mapMonitor)
+        MonitorRow existing = lockMonitor(jdbc, command.resourceReference().value())
                 .optional()
                 .orElse(null);
 
@@ -154,12 +151,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 return new SynchronizationResult(
                         SynchronizationStatus.APPLIED, toProjection(inserted));
             }
-            existing = jdbc.sql(
-                            "SELECT " + MONITOR_COLUMNS
-                                    + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
-                    .param(command.resourceReference().value())
-                    .query(MonitoringJdbcRows::mapMonitor)
-                    .single();
+            existing = lockMonitor(jdbc, command.resourceReference().value()).single();
         }
 
         int revisionComparison = command.sourceRevision().compareTo(existing.sourceRevision());

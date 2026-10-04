@@ -157,8 +157,7 @@ class MonitorApiSecurityIntegrationTest {
 
         String tooMany = path + "&resourceReference=resource-1";
         assertUnauthorized(get(tooMany, null));
-        assertProblem(get(tooMany, API_TOKEN), 400, "urn:baton-watch:problem:invalid-request",
-                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+        assertInvalidRequest(get(tooMany, API_TOKEN));
     }
 
     @Test
@@ -227,55 +226,38 @@ class MonitorApiSecurityIntegrationTest {
                 "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}");
 
         assertUnauthorized(missing);
-        assertProblem(
-                malformed,
-                400,
-                "urn:baton-watch:problem:invalid-request",
-                "요청 형식이 올바르지 않습니다",
-                "INVALID_REQUEST");
+        assertInvalidRequest(malformed);
         assertThat(valid.statusCode()).isEqualTo(200);
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"-0.5", "42.9", "42.0", "4.2e1", "\"42\"", "\"0\"", "\"9223372036854775807\""})
-    void rejectsNonIntegerRevisionTokensBeforeSynchronization(String revision) throws Exception {
-        String path = "/api/v1/resource-monitors/storage-unavailable";
-        String body = "{\"sourceRevision\":" + revision + ",\"monitoringState\":\"INACTIVE\"}";
-
-        assertUnauthorized(put(path, null, body));
-        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
-                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
-    }
-
-    @ParameterizedTest
     @ValueSource(strings = {
+        // 정수가 아닌 리비전 토큰
+        "{\"sourceRevision\":-0.5,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42.9,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":42.0,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":4.2e1,\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":\"42\",\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":\"0\",\"monitoringState\":\"INACTIVE\"}",
+        "{\"sourceRevision\":\"9223372036854775807\",\"monitoringState\":\"INACTIVE\"}",
+        // 숫자 모니터 상태
         "{\"sourceRevision\":42,\"monitoringState\":0,\"targetUrl\":\"https://example.com/health\"}",
         "{\"sourceRevision\":42,\"monitoringState\":1}",
         "{\"sourceRevision\":42,\"monitoringState\":\"0\",\"targetUrl\":\"https://example.com/health\"}",
-        "{\"sourceRevision\":42,\"monitoringState\":\"1\"}"
-    })
-    void rejectsNumericMonitoringStatesBeforeSynchronization(String body) throws Exception {
-        String path = "/api/v1/resource-monitors/storage-unavailable";
-
-        assertUnauthorized(put(path, null, body));
-        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
-                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {
+        "{\"sourceRevision\":42,\"monitoringState\":\"1\"}",
+        // 중복 JSON 필드
         "{\"sourceRevision\":41,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\",\"targetUrl\":\"https://example.com/first\",\"targetUrl\":\"https://example.com/second\"}",
         "{\"sourceRevision\":42,\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":41,\"source\\u0052evision\":42,\"monitoringState\":\"INACTIVE\"}"
     })
-    void rejectsDuplicateJsonFieldsBeforeSynchronization(String body) throws Exception {
+    void rejectsNonIntegerRevisionsNumericStatesAndDuplicateFieldsBeforeSynchronization(String body)
+            throws Exception {
         String path = "/api/v1/resource-monitors/storage-unavailable";
 
         assertUnauthorized(put(path, null, body));
-        assertProblem(put(path, API_TOKEN, body), 400, "urn:baton-watch:problem:invalid-request",
-                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
+        assertInvalidRequest(put(path, API_TOKEN, body));
     }
 
     @ParameterizedTest
@@ -310,32 +292,15 @@ class MonitorApiSecurityIntegrationTest {
     @Test
     void authenticatedContentLengthAndChunkedBodiesAboveTheLimitReturnStableProblems() throws Exception {
         String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
-        HttpRequest.BodyPublisher declaredBody = HttpRequest.BodyPublishers.ofString(oversizedBody);
-        HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
+        String path = "/api/v1/resource-monitors/resource-1";
 
-        HttpResponse<String> contentLength = put(
-                "/api/v1/resource-monitors/resource-1",
-                API_TOKEN,
-                MediaType.APPLICATION_JSON_VALUE,
-                declaredBody);
-        HttpResponse<String> chunked = put(
-                "/api/v1/resource-monitors/resource-1",
-                API_TOKEN,
-                MediaType.APPLICATION_JSON_VALUE,
-                chunkedBody);
+        HttpResponse<String> contentLength = put(path, API_TOKEN, MediaType.APPLICATION_JSON_VALUE, oversizedBody);
+        HttpResponse<String> chunked = put(path, API_TOKEN, MediaType.APPLICATION_JSON_VALUE, chunked(oversizedBody));
 
-        assertProblem(
-                contentLength,
-                413,
-                "urn:baton-watch:problem:payload-too-large",
-                "요청 본문이 허용 크기를 초과했습니다",
-                "PAYLOAD_TOO_LARGE");
-        assertProblem(
-                chunked,
-                413,
-                "urn:baton-watch:problem:payload-too-large",
-                "요청 본문이 허용 크기를 초과했습니다",
-                "PAYLOAD_TOO_LARGE");
+        for (HttpResponse<String> response : List.of(contentLength, chunked)) {
+            assertProblem(response, 413, "urn:baton-watch:problem:payload-too-large",
+                    "요청 본문이 허용 크기를 초과했습니다", "PAYLOAD_TOO_LARGE");
+        }
     }
 
     @Test
@@ -556,22 +521,17 @@ class MonitorApiSecurityIntegrationTest {
     }
 
     private void assertUnauthorized(HttpResponse<String> response) throws Exception {
-        assertThat(response.statusCode()).isEqualTo(401);
-        MediaType contentType = MediaType.parseMediaType(
-                response.headers().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow());
-        assertThat(contentType.isCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)).isTrue();
-        assertThat(response.headers().firstValue(HttpHeaders.LOCATION)).isEmpty();
-        assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
-        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE))
-                .contains("Bearer");
+        assertProblemResponse(response, 401, objectMapper.createObjectNode()
+                .put("type", "urn:baton-watch:problem:unauthorized")
+                .put("title", "유효한 인증 토큰이 필요합니다")
+                .put("status", 401)
+                .put("code", "UNAUTHORIZED"));
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).contains("Bearer");
+    }
 
-        JsonNode problem = objectMapper.readTree(response.body());
-        assertThat(problem.size()).isEqualTo(4);
-        assertThat(problem.required("type").stringValue())
-                .isEqualTo("urn:baton-watch:problem:unauthorized");
-        assertThat(problem.required("title").stringValue()).isEqualTo("유효한 인증 토큰이 필요합니다");
-        assertThat(problem.required("status").intValue()).isEqualTo(401);
-        assertThat(problem.required("code").stringValue()).isEqualTo("UNAUTHORIZED");
+    private void assertInvalidRequest(HttpResponse<String> response) throws Exception {
+        assertProblem(response, 400, "urn:baton-watch:problem:invalid-request",
+                "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     }
 
     private void assertProblem(
@@ -580,21 +540,24 @@ class MonitorApiSecurityIntegrationTest {
             String type,
             String title,
             String code) throws Exception {
+        assertProblemResponse(response, status, objectMapper.createObjectNode()
+                .put("type", type)
+                .put("title", title)
+                .put("status", status)
+                .put("instance", "urn:baton-watch:request")
+                .put("code", code));
+        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).isEmpty();
+    }
+
+    private void assertProblemResponse(HttpResponse<String> response, int status, JsonNode expectedBody)
+            throws Exception {
         assertThat(response.statusCode()).isEqualTo(status);
         MediaType contentType = MediaType.parseMediaType(
                 response.headers().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow());
         assertThat(contentType.isCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON)).isTrue();
         assertThat(response.headers().firstValue(HttpHeaders.LOCATION)).isEmpty();
         assertThat(response.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
-        assertThat(response.headers().firstValue(HttpHeaders.WWW_AUTHENTICATE)).isEmpty();
-
-        JsonNode problem = objectMapper.readTree(response.body());
-        assertThat(problem.size()).isEqualTo(5);
-        assertThat(problem.required("type").stringValue()).isEqualTo(type);
-        assertThat(problem.required("title").stringValue()).isEqualTo(title);
-        assertThat(problem.required("status").intValue()).isEqualTo(status);
-        assertThat(problem.required("instance").stringValue()).isEqualTo("urn:baton-watch:request");
-        assertThat(problem.required("code").stringValue()).isEqualTo(code);
+        assertThat(objectMapper.readTree(response.body())).isEqualTo(expectedBody);
     }
 
     private void assertHeaderContains(HttpResponse<String> response, String name, String expected) {

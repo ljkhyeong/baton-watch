@@ -36,7 +36,6 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -69,12 +68,7 @@ class BatonWatchApplicationSmokeTest {
 
     @Container
     @ServiceConnection(name = "postgres")
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse(
-                    "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
-            .asCompatibleSubstituteFor("postgres"))
-            .withDatabaseName("baton_watch")
-            .withUsername("baton_watch")
-            .withPassword("integration-test");
+    static final PostgreSQLContainer POSTGRES = BootstrapTestFixtures.postgres("integration-test");
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))

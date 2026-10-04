@@ -51,6 +51,9 @@ subprojects {
     }
 
     tasks.withType(Test).configureEach {
+        group = 'verification'
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
         useJUnitPlatform()
     }
 }

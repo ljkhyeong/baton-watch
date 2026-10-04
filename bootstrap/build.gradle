@@ -33,9 +33,6 @@ tasks.named('test', Test) {
 
 tasks.register('architectureTest', Test) {
     description = 'DB 기동 없이 전체 운영 코드의 계층 의존성을 검사한다.'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
     filter {
         includeTestsMatching '*ArchitectureTest'
         failOnNoMatchingTests = true
@@ -44,9 +41,6 @@ tasks.register('architectureTest', Test) {
 
 tasks.register('runtimeLoadTest', Test) {
     description = '실제 Spring Boot HTTP·Hikari·PostgreSQL·예약 작업의 부하와 복구를 확인한다.'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform {
         includeTags 'runtime-load'
     }
@@ -62,9 +56,6 @@ tasks.register('runtimeLoadTest', Test) {
 
 tasks.register('capacityTest', Test) {
     description = '운영 기본 일정과 느린 점검 혼합 조건의 처리 간격 및 보존 정리 참고값을 측정한다.'
-    group = 'verification'
-    testClassesDirs = sourceSets.test.output.classesDirs
-    classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'capacity' }
     filter {
         includeTestsMatching '*BatonWatchCapacityTest'

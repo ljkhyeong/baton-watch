@@ -1,5 +1,8 @@
 package com.personal.baton.watch.bootstrap;
 
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.claimedCheck;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.claimedEvent;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.count;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -12,18 +15,12 @@ import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChange
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
-import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
-import com.personal.baton.watch.domain.monitoring.Health;
-import com.personal.baton.watch.domain.monitoring.ResourceReference;
-import com.personal.baton.watch.domain.monitoring.SourceRevision;
-import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class MeteredPersistenceTest {
@@ -35,12 +32,7 @@ class MeteredPersistenceTest {
     void preservesCheckClaimEvidenceWhenFinalizationFails() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         CheckWorkPersistencePort delegate = mock(CheckWorkPersistencePort.class);
-        ClaimedCheck claim = new ClaimedCheck(
-                UUID.fromString("00000000-0000-0000-0000-000000000001"),
-                UUID.fromString("00000000-0000-0000-0000-000000000002"),
-                new TargetUrl("https://example.com/health"),
-                NOW,
-                true);
+        ClaimedCheck claim = claimedCheck(true);
         CheckFinalization finalization = new CheckFinalization(
                 claim.attemptId(),
                 claim.leaseToken(),
@@ -55,14 +47,9 @@ class MeteredPersistenceTest {
         persistence.claimDueCheck(LEASE);
         assertThrows(IllegalStateException.class, () -> persistence.finalizeCheck(finalization));
 
-        assertEquals(1.0, registry.get("baton.watch.check.claimed").counter().count());
-        assertEquals(1.0, registry.get("baton.watch.check.lease.recoveries").counter().count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.check.finalizations")
-                        .tag("status", "failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.check.claimed"));
+        assertEquals(1.0, count(registry, "baton.watch.check.lease.recoveries"));
+        assertEquals(1.0, count(registry, "baton.watch.check.finalizations", "status", "failure"));
     }
 
     @Test
@@ -70,7 +57,7 @@ class MeteredPersistenceTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         HealthChangeEventDeliveryPersistencePort delegate =
                 mock(HealthChangeEventDeliveryPersistencePort.class);
-        ClaimedHealthChangeEvent claim = claimedEvent();
+        ClaimedHealthChangeEvent claim = claimedEvent(true);
         EventDeliveryFinalization finalization = new EventDeliveryFinalization(
                 claim.payload().eventId(),
                 claim.leaseToken(),
@@ -86,31 +73,8 @@ class MeteredPersistenceTest {
         persistence.claimPendingEvent(LEASE);
         assertThrows(IllegalStateException.class, () -> persistence.finalizeDelivery(finalization));
 
-        assertEquals(1.0, registry.get("baton.watch.event.delivery.claimed").counter().count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.lease.recoveries").counter().count());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.finalizations")
-                        .tag("status", "failure")
-                        .counter()
-                        .count());
-    }
-
-    private static ClaimedHealthChangeEvent claimedEvent() {
-        return new ClaimedHealthChangeEvent(
-                new HealthChangeEventPayload(
-                        UUID.fromString("00000000-0000-0000-0000-000000000003"),
-                        new ResourceReference("resource-1"),
-                        new SourceRevision(1),
-                        Optional.empty(),
-                        Health.UNKNOWN,
-                        Health.HEALTHY,
-                        NOW),
-                UUID.fromString("00000000-0000-0000-0000-000000000004"),
-                2,
-                NOW,
-                true);
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.claimed"));
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.lease.recoveries"));
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure"));
     }
 }

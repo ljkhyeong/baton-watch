@@ -6,7 +6,6 @@ import java.net.UnknownHostException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -93,15 +92,6 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
     private static ExecutorService createExecutor(int threadCount, int queueCapacity) {
         OutboundResourceBounds.requireDnsExecutorBounds(threadCount, queueCapacity);
-        return new ThreadPoolExecutor(
-                threadCount,
-                threadCount,
-                0L,
-                TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(queueCapacity),
-                Thread.ofPlatform()
-                        .daemon()
-                        .name("watch-dns-", 1)
-                        .factory());
+        return OutboundResourceBounds.boundedDaemonExecutor(threadCount, queueCapacity, "watch-dns-");
     }
 }

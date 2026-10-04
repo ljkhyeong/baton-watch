@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import java.nio.file.Files;
@@ -17,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.jdbc.core.simple.JdbcClient;
 
 class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
@@ -28,13 +26,9 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
     void restoresMonitorResultAndPendingRetryWithoutOverwritingArchive() throws Exception {
         synchronize("backup-fixture", 1, "https://backup.example/private-query?token=fixture", BASE_TIME);
         var check = claimOne();
-        checkWorkPersistence.finalizeCheck(finalization(check,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                check.claimedAt(), check.claimedAt().plus(INTERVAL)));
-        var deliveries = new JdbcHealthChangeEventDeliveryAdapter(
-                JdbcClient.create(jdbc), newTransactionOperations());
-        var event = deliveries.claimPendingEvent(LEASE).orElseThrow();
-        deliveries.finalizeDelivery(new EventDeliveryFinalization(
+        finalizeAt(check, check.claimedAt());
+        var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+        deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
                 EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));
@@ -52,7 +46,7 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
         assertThat(restored.output())
                 .contains("복원 확인: 모니터=1 시도=1 결과=1 대기이벤트=1 완료이벤트=0 전달시도합계=1")
                 .doesNotContain("backup-fixture", "backup.example", "token=fixture");
-        assertThat(deliveries.getBacklogSnapshot().pendingCount()).isOne();
+        assertThat(deliveryPersistence.getBacklogSnapshot().pendingCount()).isOne();
     }
 
     @Test

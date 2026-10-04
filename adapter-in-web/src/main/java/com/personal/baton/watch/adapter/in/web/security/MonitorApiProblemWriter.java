@@ -18,16 +18,12 @@ final class MonitorApiProblemWriter {
             ObjectMapper objectMapper,
             HttpServletResponse response,
             HttpStatus status,
-            String typeSlug,
-            String title,
-            String code,
+            MonitorApiProblem problem,
             boolean includeInstance) throws IOException {
         response.setStatus(status.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8);
 
-        objectMapper.writeValue(
-                response.getOutputStream(),
-                MonitorApiProblem.of(typeSlug, title, code).toProblemDetail(status, includeInstance));
+        objectMapper.writeValue(response.getOutputStream(), problem.toProblemDetail(status, includeInstance));
     }
 }
