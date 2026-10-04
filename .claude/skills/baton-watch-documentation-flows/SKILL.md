@@ -28,7 +28,7 @@ description: BATON WATCH의 README, HANDOFF, PRD, ADR, 런북과 에이전트 �
 - Codex는 `.agents/skills/<이름>/`(`SKILL.md`와 `agents/openai.yaml`), Claude Code는 `.claude/skills/<이름>/SKILL.md`를 사용한다. 같은 이름의 스킬은 공통 규칙을 함께 맞춘다.
 - Claude 스킬은 frontmatter `description`으로 자동 호출이 결정된다. 대상 클래스·경로·작업 종류를 구체적으로 적는다.
 - `baton-watch-outbound-http`, `baton-watch-defect-fix`, `baton-watch-validation`, `baton-watch-review`는 Claude 전용이다. Codex에서는 `baton-watch-ops`와 AGENTS의 검증 절차가 해당 범위를 담당한다.
-- 저장소 경로는 `docs/PRD`·`docs/ADR`처럼 대문자다. macOS는 대소문자를 구분하지 않아 소문자 링크도 로컬 검사를 통과하므로 `git ls-files`로 실제 경로를 확인한다.
+- 저장소 경로는 `docs/PRD`·`docs/ADR`처럼 대문자다. 파일 검사는 macOS에서도 경로 대소문자를 구분하므로 소문자 링크를 거부한다.
 
 ## 검증
 
