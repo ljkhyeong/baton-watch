@@ -23,6 +23,21 @@ def changed_paths(root, base):
     return sorted({os.fsdecode(name) for name in (tracked + untracked).split(b"\0") if name})
 
 
+def exists_with_exact_case(base, relative):
+    """대소문자를 구분하지 않는 파일 시스템에서도 Git·Linux처럼 경로 요소의 실제 이름을 비교한다."""
+    current = base
+    for part in relative.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            current = current.parent
+        elif current.is_dir() and part in os.listdir(current):
+            current = current / part
+        else:
+            return False
+    return current.exists()
+
+
 def check_file(root, name):
     path = root / name
     if not path.exists() or path.is_symlink():
@@ -60,7 +75,7 @@ def check_file(root, name):
                 link = urlsplit(target)
                 if link.scheme or link.netloc or not link.path:
                     continue
-                if not (path.parent / unquote(link.path)).exists():
+                if not exists_with_exact_case(path.parent, unquote(link.path)):
                     raise ValueError(f"{name}: 로컬 링크 대상을 찾을 수 없습니다: {target}")
     except (SyntaxError, ValueError, ElementTree.ParseError) as error:
         line = getattr(error, "lineno", None)

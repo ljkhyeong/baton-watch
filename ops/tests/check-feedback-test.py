@@ -67,6 +67,20 @@ class FeedbackTest(unittest.TestCase):
         self.write("target.md", "대상\n")
         self.assertEqual(self.check("file", "note.md").returncode, 0)
 
+    def test_markdown_links_match_exact_case_like_git_and_linux(self):
+        self.write("docs/PRD/spec.md", "명세\n")
+        for link in ("../docs/prd/spec.md", "../Docs/PRD/spec.md", "../docs/PRD/Spec.md"):
+            with self.subTest(link=link):
+                self.write("guide/note.md", f"[명세]({link})\n")
+                result = self.check("file", "guide/note.md")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(link, result.stderr)
+        for link in ("../docs/PRD/spec.md#title", "../docs/PRD/", "./../docs/PRD/spec.md"):
+            with self.subTest(link=link):
+                self.write("guide/note.md", f"[명세]({link})\n")
+                result = self.check("file", "guide/note.md")
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_java_file_checks_compile_only_the_relevant_modules(self):
         names = ["domain/src/main/java/New.java", "application/src/test/java/NewTest.java"]
         for name in names:
