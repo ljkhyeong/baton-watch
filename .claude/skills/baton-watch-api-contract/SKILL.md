@@ -19,7 +19,7 @@ description: BATON WATCH의 인바운드 HTTP 경로·DTO·Bearer 인증·Proble
 
 ## 규칙
 
-- `/api/v1` 경로와 명시적인 전송 DTO를 사용한다. 컨트롤러는 입력 포트(`application/.../port/in`)에 위임하고 요청 형식 검증은 웹 어댑터에 둔다. 서비스 구현체·출력 포트를 직접 쓰면 ArchUnit이 실패한다.
+- `/api/v1` 경로와 명시적인 전송 DTO를 사용한다. 컨트롤러는 입력 포트(`application/.../port/in`)에 위임하고 요청 형식 검증은 웹 어댑터에 둔다. 업무 로직 없이 상수와 시각만 돌려주는 공개 상태 API는 `Clock`을 직접 쓴다. 서비스 구현체·출력 포트를 직접 쓰면 ArchUnit이 실패한다.
 - 공개 상태 조회와 인증이 필요한 모니터 API를 구분한다. 공개는 정확한 상태 경로의 `GET`·`HEAD`만 허용하고 하위 경로는 인증을 유지한다.
 - Spring MVC 이전의 인증·방화벽·본문 제한 오류도 공통 Problem Details 형식을 유지한다. 응답에 대상 본문·자격 증명·해석된 IP·원본 예외·BATON 인가 판단을 노출하지 않는다.
 - 요청 바인딩·Bearer 해석·예외 처리는 기존 Spring MVC·Security 확장점을 사용한다. 같은 필드를 중복 검증하지 않는다. 다만 웹 형식 검증과 도메인 값 타입(`TargetUrl` 등) 검증은 서로 다른 경계이므로 둘 다 유지한다.

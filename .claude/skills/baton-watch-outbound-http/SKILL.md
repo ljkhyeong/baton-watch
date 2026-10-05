@@ -17,8 +17,8 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 | 정적 URL 구문 | `domain/.../monitoring/TargetUrl`(등록), `adapter-out-external/.../check/TargetUriPolicy`(리다이렉트 연결) |
 | 대상 점검 흐름 | `check/SafeUrlCheckEngine`(홉·순환), `ApacheHttpHopTransport`, `ApacheUrlChecker` |
 | 주소 정책·DNS | `check/GlobalAddressPolicy`, `BoundedDnsLookup`. IANA 기준은 `ops/check-iana-registry.sh`·`ops/iana-registry-sha256.txt` |
-| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`, `ApacheHttpClientLimits` |
-| 실행·취소·응답 수명 | `http/ApacheHttpRequestExecutor`, `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
+| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`(실행기 내부), `ApacheHttpClientLimits` |
+| 실행·취소·응답 수명 | `http/ApacheHttpRequestExecutor.executePinned`(두 전송의 공통 진입점), `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
 | 콜백 | `delivery/DeliveryEndpointPolicy`, `SafeEventDeliveryEngine`, `ApacheEventDeliveryTransport`. 설정은 `bootstrap/.../EventDeliveryProperties`·`EventDeliveryConfiguration` |
 | 결과 분류 | `domain/.../monitoring/CheckOutcome` |
 
@@ -38,7 +38,7 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 
 ## 검증
 
-- 실제 공개 대상에 요청하지 않는다. 로컬 HTTP·TLS 서버(`StreamingHttpTestServer`, `PinnedApacheClientFactoryTlsIntegrationTest`)와 DNS 대역으로 재현한다.
+- 실제 공개 대상에 요청하지 않는다. 로컬 HTTP·TLS 서버(`LoopbackHttpTestServer`, `PinnedApacheClientFactoryTlsIntegrationTest`)와 DNS 대역으로 재현한다.
 - 시간 경계는 1ns·999999ns처럼 밀리초 변환 경계를 포함하고, 취소는 헤더 대기 중·본문 수신 중을 구분한다.
 
 ```bash

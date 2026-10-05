@@ -495,10 +495,9 @@ PostgreSQL 검증과 CodeQL은 공급망 검사보다 먼저 실행해 취약점
 로컬 실제 PostgreSQL 스모크는 Flyway V1, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
-Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검 대상입니다.
-다단계 Dockerfile·Compose 이미지·Alpine 고정 패키지·Trivy 이미지의 추가 범위는
-`renovate.json`에 주간 갱신을 준비했지만, 외부 Renovate 서비스는 자동으로
-활성화되지 않고 자동 병합도 하지 않습니다. 어떤 업데이트 PR도 자동 배포하지
+Gradle·GitHub Actions·Dockerfile·Compose 이미지는 주간 Dependabot 점검 대상입니다.
+Alpine 고정 패키지와 Trivy·Prometheus 검사용 이미지는 자동 갱신 대상이 아니므로 직접 확인합니다.
+어떤 업데이트 PR도 자동 배포하지
 말고 같은 검증을 통과시켜야 합니다. Alpine 저장소는 패키지의 최신 버전만 제공하므로
 고정 버전이 내려가면 이미지 빌드의 `apk add`가 종료 코드 8로 실패합니다. 같은 기반 이미지에서
 `apk update && apk search -x <패키지>`로 현재 버전을 확인해 고정값을 올리고 같은 검증을 다시 통과시킵니다. 변경 사항이 남아 있는 작업 트리,

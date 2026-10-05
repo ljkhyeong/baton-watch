@@ -218,11 +218,9 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 보고서의 이미지·플랫폼·검사 시점을 확인하며, 과거 검사 결과만으로 현재 배포 준비가
 완료됐다고 판단하지 않습니다. 날짜별 결과는 [이전 인계 기록](docs/history/handoff-2026-09-05.md)에 보관합니다.
 
-Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검을 사용합니다.
-다단계 Dockerfile의 모든 기반 이미지, Compose 이미지, Alpine 고정 패키지와
-Trivy·Prometheus 검사용 이미지의 추가 갱신 범위는 [renovate.json](renovate.json)에 준비해
-두었습니다. Renovate 외부 서비스는 저장소 설정만으로 활성화되지 않으며 자동
-병합도 허용하지 않습니다.
+Gradle·GitHub Actions·Dockerfile·Compose 이미지는 주간 Dependabot 점검을 사용하며 자동 병합하지 않습니다.
+Alpine 고정 패키지와 Trivy·Prometheus 검사용 이미지는 자동 갱신 대상이 아니므로
+[배포 절차](docs/runbooks/staging-deployment.md)에 따라 직접 확인합니다.
 
 주소 정책 스냅샷을 수동으로 확인하려면 다음 명령을 실행합니다. 원본 체크섬이
 달라지면 체크섬만 갱신하지 말고 주소 허용 정책과 경계 테스트를 먼저 검토해야 합니다.

@@ -4,6 +4,13 @@
 
 ## 현재 작업
 
+- `2485c4f`·`67b8dd4`에서 58개 파일, 순 644줄을 줄였다(운영 Java 110줄, 테스트 349줄, 빌드·설정 185줄).
+  대상 점검과 콜백 전송의 공통 실행 골격을 `ApacheHttpRequestExecutor.executePinned` 하나로 합쳤다. 헤더 수신 시점 기록,
+  닫기 방식, 요청별 IP 고정 클라이언트는 그대로다. 상수 상태만 돌려주던 시스템 상태 유스케이스 체인, 진입 클래스의 중복 사전 검사,
+  내부 호출 null 검사, 중복 불변식, 테스트 전용 오버로드를 지웠다. 한 번도 동작하지 않은 `renovate.json`을 삭제하고
+  Dependabot에 Compose 이미지 점검을 추가했다. Dockerfile은 공통 JRE 단계로 묶었고 해석되지 않는 의존성 검증 항목을 지웠다.
+  Spring `@ConditionalOnBooleanProperty`는 `"true"` 문자열만 비교해 설정 바인딩의 `on`·`yes`·`1`과 어긋나므로 직접 구현한 조건을 유지했다.
+  Compose의 `pids_limit`과 `deploy.resources.limits.pids`는 Compose가 함께 요구해 중복이 아니다. 추가 비용은 없으며 운영 배포는 미실행이다.
 - `7c6eeff`에서 운영 데이터가 생기기 전에 Flyway V1~V6을 최종 스키마를 바로 만드는 단일 V1로 통합했다.
   기존 데이터 이행 구문과 이행 경로 시험 3개를 지웠고, 대상 점검에서 항상 0이던 `responseBytes`와
   `watch_result.response_bytes` 열을 모델·저장소·진단·권한 SQL에서 제거했다. 이미 V1~V6을 적용한 로컬 DB는
@@ -28,7 +35,7 @@
 - `0473d8e`에서 Alpine 3.24 저장소가 OpenSSL을 3.5.9-r0, libexpat을 2.8.5-r0으로 올려 이미지 빌드가 실패하는 문제를 수정했다.
   저장소는 최신 버전만 제공해 기존 고정값 3.5.8-r0·2.8.4-r0의 `apk add`가 종료 코드 8로 실패했고, 코드 변경 없이 PR #57의 `verify`가 막혔다.
   postgres·migrations·runtime 단계의 고정값 9곳만 올리고 나머지 패키지와 기반 이미지 다이제스트는 유지했다.
-  Renovate 서비스가 꺼져 있어 같은 문제가 반복될 수 있으므로 [배포 절차](docs/runbooks/staging-deployment.md)에 확인·갱신 방법을 적었다.
+  Alpine 고정 패키지는 자동 갱신 대상이 아니어서 같은 문제가 반복될 수 있으므로 [배포 절차](docs/runbooks/staging-deployment.md)에 확인·갱신 방법을 적었다.
   추가 비용은 없으며 운영 배포는 미실행이다.
 - `285bc26`에서 macOS 파일 검사가 `docs/prd`처럼 대소문자만 다른 Markdown 링크를 통과시키는 문제를 수정했다.
   경로 요소마다 `os.listdir`의 실제 이름과 비교해 Git·GitHub·Linux와 같은 기준으로 판정하며 표준 라이브러리만 사용한다.
@@ -283,6 +290,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 골격·설정 정리 `2485c4f`·`67b8dd4` | 전체 629개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음. domain 22→26·bootstrap 131→136개(매개변수 병합·설정 사례 확대), web 52→48·외부 통신 282→281개(같은 계층 중복 삭제), 나머지 동일. 리다이렉트 미추종은 설정을 임시로 빼면 302 사례가 실패함을 확인. `processRecoveryTest` 3개, `loadTest` 2개, `runtimeLoadTest` 1개 통과. `67b8dd4`로 이미지 5개를 로컬 빌드해 `verify-runtime-images.py`와 `staging-database-operation-postgres-test.sh` 통과. 변경 전후 이미지의 레이블·사용자·진입점·환경·패키지 목록이 같고 Compose 렌더 차이는 네트워크 `driver: bridge`뿐. 의존성 검증은 전체 구성 오프라인 해석으로 통과. Dependabot의 Compose 첫 실행과 CI 이미지 추출 변경은 원격에서 확인 필요 |
 | 마이그레이션 통합 `7c6eeff` | 고정 PostgreSQL 이미지에서 기존 V1~V6 체인과 새 V1의 `pg_dump --schema-only`를 비교해 `response_bytes` 열·CHECK만 다르고 제약 이름·인덱스·리스 CHECK·트리거·함수와 백로그 초기 행이 같음을 확인. 전체 625개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음. 영속성 84→81개(이행 경로 시험 3개 삭제), 나머지 모듈 개수 동일. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. `7c6eeff`로 PostgreSQL·DB 작업·마이그레이션·런타임 이미지를 로컬 빌드(`--pull` 없음)해 `staging-database-operation-postgres-test.sh` 통과, Flyway V1 적용 증거·역할 권한·런타임 DML·WATCH 기동 확인. ShellCheck 통과. 공급망·cloudflared·gateway 검사는 변경 범위 밖이라 미실행 |
 | 중복 검증 정리 `ad46bbc` | 전체 628개(ArchUnit 3개·실제 PostgreSQL 포함) 통과, 실패·건너뜀 없음. web 50→52개(상태·URL 짝 위반 2건 추가), bootstrap 130→131개(Prometheus 수집 이름·값 고정 추가), 나머지 모듈 개수 동일. 11개 요청의 상태·헤더·본문과 401 응답(HEAD·XML·HTML Accept 포함)이 변경 전후 같음을 확인. 콜백 응답 소비의 정확한 상한 읽기·탐색 바이트 미소비·선언 길이 사전 거부 유지. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. 전체 `./gradlew test`는 모듈별 실행 뒤 입력이 같아 `UP-TO-DATE`로 재사용. 이미지·Compose 변경이 없어 해당 검사는 반복하지 않음 |
 | 쿼리 전용 리다이렉트 `7055aaa` | 변경 전 `https://example.com/문서?page=2`에서 `?page=2`로 돌아오는 순환 미감지와 한글 경로·쿼리 인코딩 변경 3개 사례 재현. 변경 후 점검 엔진 66개·외부 통신 모듈 전체 282개 통과, 실패·건너뜀 없음. 기존 ASCII 경로·인코딩·빈 쿼리·점 구간 사례 유지 확인. 단일 클래스 변경이라 전체 Java·DB·이미지 검사는 반복하지 않음 |
