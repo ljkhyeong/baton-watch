@@ -4,6 +4,12 @@
 
 ## 현재 작업
 
+- `ad46bbc`에서 같은 호출 경로의 중복 검증과 직접 구현을 정리했다. 운영 코드 25개 파일에서 순 148줄이 줄었다.
+  서비스가 검증한 인자를 영속성 어댑터가 다시 검사하던 코드, 승인 주소·응답 헤더의 도달하지 않는 방어 코드,
+  보안 인증 진입점의 중복 지정을 지웠다. 퍼센트 인코딩 검사·콜백 응답 소비·시간 게이지는 정규식·`readNBytes`·
+  Micrometer `TimeGauge`로, 요청의 상태·URL 짝 검사는 Bean Validation으로 바꿨다. 문서 근거가 없던
+  `retention > staleAfter` 비교와 쓰지 않던 `watch.http.max-response-bytes` 설정도 제거했다.
+  API 응답·메트릭 이름·안전 상한은 그대로다. PRD-0003·ADR-0002·README에 반영했고 추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - `7055aaa`에서 쿼리만 바꾸는 리다이렉트가 한글 경로를 퍼센트 인코딩해 같은 주소로 돌아오는 순환을
   첫 홉에서 놓치던 문제를 수정했다. Apache `URIUtils.resolve` 대신 현재 경로 원문에 새 쿼리를 붙인다.
   추가 연결도 DNS 재검증과 리다이렉트 상한 안에서 일어나던 결함이다. [ADR-0002](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)에
@@ -272,6 +278,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 중복 검증 정리 `ad46bbc` | 전체 628개(ArchUnit 3개·실제 PostgreSQL 포함) 통과, 실패·건너뜀 없음. web 50→52개(상태·URL 짝 위반 2건 추가), bootstrap 130→131개(Prometheus 수집 이름·값 고정 추가), 나머지 모듈 개수 동일. 11개 요청의 상태·헤더·본문과 401 응답(HEAD·XML·HTML Accept 포함)이 변경 전후 같음을 확인. 콜백 응답 소비의 정확한 상한 읽기·탐색 바이트 미소비·선언 길이 사전 거부 유지. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. 전체 `./gradlew test`는 모듈별 실행 뒤 입력이 같아 `UP-TO-DATE`로 재사용. 이미지·Compose 변경이 없어 해당 검사는 반복하지 않음 |
 | 쿼리 전용 리다이렉트 `7055aaa` | 변경 전 `https://example.com/문서?page=2`에서 `?page=2`로 돌아오는 순환 미감지와 한글 경로·쿼리 인코딩 변경 3개 사례 재현. 변경 후 점검 엔진 66개·외부 통신 모듈 전체 282개 통과, 실패·건너뜀 없음. 기존 ASCII 경로·인코딩·빈 쿼리·점 구간 사례 유지 확인. 단일 클래스 변경이라 전체 Java·DB·이미지 검사는 반복하지 않음 |
 | Jackson·Flyway 취약점 `fe04a66` | 변경 전 CI 보고서에서 부트 JAR·WATCH·마이그레이션 이미지의 Jackson CVE 5건과 NGINX `pcre2` 1건 확인. 변경 후 체크섬 갱신과 함께 전체 622개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음, `verifyBootJarLicense` 통과. 로컬 arm64 5개 이미지 빌드, OCI·라이선스 검사, 실제 PostgreSQL DB 작업 검증(Flyway 13.8.1의 V1~V6) 통과. 같은 Trivy 0.74.0·기준으로 부트 JAR와 자체 이미지 4개 0건, NGINX만 1건 남음 확인. cloudflared는 변경이 없어 CI 결과(0건)를 사용 |
 | Alpine 고정 버전 `0473d8e` | 변경 전 amd64 PostgreSQL 기반 이미지에서 3.5.8-r0 설치가 CI와 같은 종료 코드 8로 실패하는 것 재현. 변경 후 amd64에서 세 단계의 고정 패키지 설치 성공. 로컬 arm64에서 CI와 같은 5개 대상 빌드, 이미지 내 3.5.9-r0·2.8.5-r0 설치, `verify-runtime-images.py` 라이선스·OCI 검사와 실제 PostgreSQL DB 작업 검증 통과. Java·SQL 변경이 없어 Gradle 테스트는 반복하지 않았고, Trivy 공급망 검사는 CI 결과로 확인 |
@@ -570,6 +577,8 @@ DB 결과 정합성 검증 로그는 `.gradle/agent-validation/20260908T01191084
 
 ## 구현과 후속 작업
 
+- 운영 데이터가 없는 동안 V1~V6 마이그레이션 통합과 항상 0인 `responseBytes` 열 제거를 검토한다.
+  10월 5일 작업에서는 실행 권한 확인이 필요해 보류했다.
 - 대상 GET은 헤더만 확인하고 본문을 읽지 않는다. 인증된 수동 재점검 API는 기존 일정·리스를 유지하며
   새 예약에 30초 간격을 적용한다. V5 마이그레이션이 필요하다.
 - BATON 자료 상태 표시·재점검과 WATCH 독립 복원은 [연동 확인](docs/runbooks/baton-integration-review.md),
