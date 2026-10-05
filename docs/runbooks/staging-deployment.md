@@ -492,7 +492,7 @@ PostgreSQL 검증과 CodeQL은 공급망 검사보다 먼저 실행해 취약점
 결과를 가리지 않게 합니다. 보고서 디렉터리가 이미 있으면 덮어쓰지 않으며, 입력
 아카이브를 확인하지 못하면 최종 보고서 경로를 만들지 않습니다. `SHA256SUMS`가 생성된
 경우에만 모든 검사를 마친 결과로 인정합니다. 보고서 누락·빈 파일도 실패 결과로 보존하며 완료 체크섬과 배포용 JAR은 생성하지 않습니다.
-로컬 실제 PostgreSQL 스모크는 Flyway V1~V6, 런타임 역할 속성·검색 경로·소속·
+로컬 실제 PostgreSQL 스모크는 Flyway V1, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
 Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검 대상입니다.
@@ -609,10 +609,6 @@ PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미
 완료되어야 하고, 그 뒤에 PostgreSQL·WATCH·Cloudflare Tunnel 상태 점검이
 모두 통과해야 합니다.
 
-V6은 HTTP 결과와 전달 완료 행의 필수 값을 검사합니다. 기존 데이터가 조건에 맞지 않으면
-적용이 실패하므로 원본 점검·전달 기록과 대조해 원인을 확인하세요. 이 마이그레이션은
-기존 데이터를 수정하거나 삭제하지 않습니다.
-
 ~~~bash
 ./ops/staging-image-evidence.sh verify
 staging_compose stop cloudflared watch-gateway watch
@@ -636,7 +632,7 @@ staging_compose exec --user 10001:10001 -T watch sh -c \
   'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
 MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
   'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT string_agg(version, chr(44) ORDER BY installed_rank) FROM flyway_schema_history WHERE success"')"
-test "$MIGRATION_EVIDENCE" = 1,2,3,4
+test "$MIGRATION_EVIDENCE" = 1
 RUNTIME_PRIVILEGE_EVIDENCE="$(
   printf '%s\n' \
     "SELECT concat_ws('|'," \
@@ -661,7 +657,7 @@ test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
 ~~~
 
 데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
-비활성화 검증과 V1~V4 마이그레이션 적용 결과 검사는 종료 코드 0으로
+비활성화 검증과 V1 마이그레이션 적용 결과 검사는 종료 코드 0으로
 끝나야 합니다. WATCH 상태는 런타임 역할의 데이터베이스 연결 성공을
 확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
 `TEMPORARY`, 모니터 조회와 삭제 거부, 시도 보존 삭제와 불변 열 갱신 거부,
