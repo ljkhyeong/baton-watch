@@ -2,18 +2,14 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
-import com.personal.baton.watch.adapter.out.external.http.ApacheResponseLifecycle;
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
-import com.personal.baton.watch.adapter.out.external.http.PinnedApacheClientFactory;
 import com.personal.baton.watch.adapter.out.external.http.ResponseBodyDiscarder;
-import java.io.IOException;
 import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.utils.DateUtils;
 import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ContentType;
@@ -28,66 +24,53 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
 
     private static final String IDEMPOTENCY_KEY = "Idempotency-Key";
 
-    private final EventDeliveryLimits limits;
+    private final ApacheHttpClientLimits clientLimits;
+    private final long maxResponseBytes;
     private final Clock clock;
     private final ApacheHttpRequestExecutor requestExecutor;
-    private final PinnedApacheClientFactory clientFactory;
     private final ResponseBodyDiscarder bodyDiscarder = new ResponseBodyDiscarder();
 
     ApacheEventDeliveryTransport(EventDeliveryLimits limits, int threadCount, int queueCapacity, Clock clock) {
-        this.limits = Objects.requireNonNull(limits, "limits");
+        this.clientLimits = new ApacheHttpClientLimits(
+                limits.connectTimeout(),
+                limits.responseTimeout(),
+                limits.maxHeaderCount(),
+                limits.maxHeaderLineLength());
+        this.maxResponseBytes = limits.maxResponseBytes();
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.clientFactory = new PinnedApacheClientFactory();
         this.requestExecutor = new ApacheHttpRequestExecutor(
                 threadCount, queueCapacity, "watch-event-http-");
     }
 
     @Override
-    public DeliveryResponse execute(ApprovedDeliveryRequest request, Duration remainingTime)
+    public DeliveryResponse execute(ApprovedDeliveryRequest delivery, Duration remainingTime)
             throws OutboundHttpFailure {
-        HttpPost httpRequest = new HttpPost(request.endpoint().uri());
-        return requestExecutor.execute(
-                httpRequest,
+        HttpPost request = new HttpPost(delivery.endpoint().uri());
+        request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + delivery.bearerToken());
+        request.setHeader(IDEMPOTENCY_KEY, delivery.idempotencyKey());
+        request.setHeader(HttpHeaders.ACCEPT_ENCODING, "identity");
+        request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
+
+        return requestExecutor.executePinned(
+                request,
+                delivery.endpoint().hostname(),
+                delivery.addresses(),
+                clientLimits,
                 remainingTime,
-                onResponseStarted -> executeBlocking(request, httpRequest, remainingTime, onResponseStarted));
+                CloseMode.GRACEFUL,
+                response -> {
+                    Instant retryNotBefore = retryNotBefore(response);
+                    HttpEntity entity = response.getEntity();
+                    if (entity != null) {
+                        bodyDiscarder.discard(entity, maxResponseBytes);
+                    }
+                    return new DeliveryResponse(response.getCode(), retryNotBefore);
+                });
     }
 
     @Override
     public void close() {
         requestExecutor.close();
-    }
-
-    private DeliveryResponse executeBlocking(
-            ApprovedDeliveryRequest delivery,
-            HttpPost request,
-            Duration remainingTime,
-            Runnable onResponseStarted)
-            throws IOException {
-        ApacheHttpClientLimits clientLimits = ApacheHttpClientLimits.cappedBy(
-                limits.connectTimeout(),
-                limits.responseTimeout(),
-                remainingTime,
-                limits.maxHeaderCount(),
-                limits.maxHeaderLineLength());
-
-        try (CloseableHttpClient client = clientFactory.open(
-                delivery.endpoint().hostname(), delivery.addresses(), clientLimits)) {
-            request.setHeader(HttpHeaders.AUTHORIZATION, "Bearer " + delivery.bearerToken());
-            request.setHeader(IDEMPOTENCY_KEY, delivery.idempotencyKey());
-            request.setHeader(HttpHeaders.ACCEPT_ENCODING, "identity");
-            request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
-
-            return ApacheResponseLifecycle.execute(
-                    client, request, CloseMode.GRACEFUL, response -> {
-                        onResponseStarted.run();
-                        Instant retryNotBefore = retryNotBefore(response);
-                        HttpEntity entity = response.getEntity();
-                        if (entity != null) {
-                            bodyDiscarder.discard(entity, limits.maxResponseBytes());
-                        }
-                        return new DeliveryResponse(response.getCode(), retryNotBefore);
-                    });
-        }
     }
 
     private Instant retryNotBefore(ClassicHttpResponse response) {

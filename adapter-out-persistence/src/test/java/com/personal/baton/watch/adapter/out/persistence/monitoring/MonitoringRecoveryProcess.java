@@ -79,7 +79,7 @@ public final class MonitoringRecoveryProcess {
                                 .build();
                         try {
                             return EventDeliveryObservation.forHttpStatus(
-                                    client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode());
+                                    client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode(), null);
                         } catch (InterruptedException exception) {
                             Thread.currentThread().interrupt();
                             throw new IllegalStateException("복구 시험 전달이 중단됐습니다", exception);

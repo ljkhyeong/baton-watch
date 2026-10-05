@@ -16,12 +16,7 @@ public record ApacheHttpClientLimits(
         OutboundResourceBounds.requireHeaderBounds(maxHeaderCount, maxHeaderLineLength);
     }
 
-    public static ApacheHttpClientLimits cappedBy(
-            Duration connectTimeout,
-            Duration responseTimeout,
-            Duration remainingTime,
-            int maxHeaderCount,
-            int maxHeaderLineLength) {
+    public ApacheHttpClientLimits cappedBy(Duration remainingTime) {
         return new ApacheHttpClientLimits(
                 min(connectTimeout, remainingTime),
                 min(responseTimeout, remainingTime),

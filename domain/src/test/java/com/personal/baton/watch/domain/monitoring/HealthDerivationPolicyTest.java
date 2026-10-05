@@ -1,8 +1,11 @@
 package com.personal.baton.watch.domain.monitoring;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class HealthDerivationPolicyTest {
 
@@ -33,5 +36,11 @@ class HealthDerivationPolicyTest {
 
         assertEquals(current, policy.derive(current, CheckOutcome.INTERNAL_FAILURE));
         assertEquals(new HealthDerivation(Health.UNKNOWN, 2), policy.markStale(current));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"UNKNOWN, -1", "HEALTHY, 1", "DEGRADED, 0", "DEGRADED, 3", "BROKEN, 2"})
+    void rejectsHealthAndFailureCountMismatches(Health health, int consecutiveFailures) {
+        assertThrows(IllegalArgumentException.class, () -> new HealthDerivation(health, consecutiveFailures));
     }
 }

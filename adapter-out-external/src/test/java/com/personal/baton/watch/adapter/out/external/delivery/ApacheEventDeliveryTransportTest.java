@@ -2,27 +2,22 @@ package com.personal.baton.watch.adapter.out.external.delivery;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.http.LoopbackHttpTestServer;
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
-import com.personal.baton.watch.adapter.out.external.http.StreamingHttpTestServer;
-import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -33,14 +28,8 @@ class ApacheEventDeliveryTransportTest {
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
 
-    private HttpServer server;
-
-    @AfterEach
-    void stopServer() {
-        if (server != null) {
-            server.stop(0);
-        }
-    }
+    @AutoClose
+    private final LoopbackHttpTestServer server = new LoopbackHttpTestServer();
 
     @Test
     void postsJsonWithBearerAndIdempotencyHeadersToThePinnedAddress() throws Exception {
@@ -50,8 +39,7 @@ class ApacheEventDeliveryTransportTest {
         AtomicReference<String> acceptEncoding = new AtomicReference<>();
         AtomicReference<String> contentType = new AtomicReference<>();
         AtomicReference<byte[]> receivedBody = new AtomicReference<>();
-        server = server();
-        server.createContext("/callback", exchange -> {
+        server.handle("/callback", exchange -> {
             method.set(exchange.getRequestMethod());
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             idempotencyKey.set(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
@@ -61,7 +49,6 @@ class ApacheEventDeliveryTransportTest {
             exchange.sendResponseHeaders(204, -1);
             exchange.close();
         });
-        server.start();
         byte[] payload = "{\"eventId\":\"event-1\"}".getBytes(StandardCharsets.UTF_8);
 
         try (ApacheEventDeliveryTransport transport =
@@ -79,46 +66,21 @@ class ApacheEventDeliveryTransportTest {
         assertArrayEquals(payload, receivedBody.get());
     }
 
-    @Test
-    void returnsRedirectResponsesWithoutFollowingThem() throws Exception {
-        AtomicBoolean redirectedTargetCalled = new AtomicBoolean();
-        server = server();
-        server.createContext("/start", exchange -> {
-            exchange.getResponseHeaders().set("Location", "/redirected");
-            exchange.sendResponseHeaders(302, -1);
-            exchange.close();
-        });
-        server.createContext("/redirected", exchange -> {
-            redirectedTargetCalled.set(true);
-            exchange.sendResponseHeaders(204, -1);
-            exchange.close();
-        });
-        server.start();
-
-        try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
-            DeliveryResponse response = transport.execute(
-                    request("/start", "{}".getBytes(StandardCharsets.UTF_8)),
-                    Duration.ofSeconds(2));
-
-            assertEquals(302, response.statusCode());
-        }
-        assertFalse(redirectedTargetCalled.get());
-    }
-
     @ParameterizedTest
     @MethodSource("retryAfterResponses")
     void readsRetryAfterWithoutWaitingOrRetryingInTheClient(
             int statusCode, List<String> headerValues, Instant expectedRetryTime) throws Exception {
         AtomicInteger requests = new AtomicInteger();
-        server = server();
-        server.createContext("/callback", exchange -> {
+        server.handle("/callback", exchange -> {
             requests.incrementAndGet();
             headerValues.forEach(value -> exchange.getResponseHeaders().add("Retry-After", value));
+            if (statusCode == 302) {
+                // 리다이렉트를 따르면 같은 경로에 두 번째 요청이 도착한다.
+                exchange.getResponseHeaders().add("Location", "/callback");
+            }
             exchange.sendResponseHeaders(statusCode, -1);
             exchange.close();
         });
-        server.start();
 
         try (var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
             DeliveryResponse response = transport.execute(
@@ -153,14 +115,12 @@ class ApacheEventDeliveryTransportTest {
 
     @Test
     void discardsOnlyTheBoundedResponseBody() throws Exception {
-        server = server();
-        server.createContext("/callback", exchange -> {
+        server.handle("/callback", exchange -> {
             byte[] body = "123456789".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             exchange.getResponseBody().write(body);
             exchange.close();
         });
-        server.start();
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8), 1, 1, CLOCK)) {
@@ -176,13 +136,11 @@ class ApacheEventDeliveryTransportTest {
 
     @Test
     void mapsAnOversizedResponseHeaderLineToResponseTooLarge() throws Exception {
-        server = server();
-        server.createContext("/callback", exchange -> {
+        server.handle("/callback", exchange -> {
             exchange.getResponseHeaders().add("X-Oversized", "x".repeat(256));
             exchange.sendResponseHeaders(204, -1);
             exchange.close();
         });
-        server.start();
 
         try (ApacheEventDeliveryTransport transport =
                 new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1, CLOCK)) {
@@ -199,31 +157,19 @@ class ApacheEventDeliveryTransportTest {
     @Test
     void cancelsAStreamingResponseAtTheDeadlineAndDeliversTheNextRequest() throws Exception {
         byte[] payload = "{}".getBytes(StandardCharsets.UTF_8);
-        try (var streaming = new StreamingHttpTestServer();
-                var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
+        try (var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
             OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
-                    () -> transport.execute(request(streaming.uri("delivery.test", "/stream"), payload),
-                            Duration.ofSeconds(2)));
+                    () -> transport.execute(request("/stream", payload), Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.READ_TIMEOUT, failure.kind());
-            assertEquals(204, transport.execute(
-                    request(streaming.uri("delivery.test", "/quick"), payload), Duration.ofSeconds(1)).statusCode());
-            assertTrue(streaming.awaitDisconnected());
+            assertEquals(204, transport.execute(request("/quick", payload), Duration.ofSeconds(1)).statusCode());
+            assertTrue(server.awaitDisconnected());
         }
     }
 
-    private HttpServer server() throws Exception {
-        return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-    }
-
-    private ApprovedDeliveryRequest request(String path, byte[] payload) throws Exception {
-        int port = server.getAddress().getPort();
-        return request(URI.create("http://delivery.test:" + port + path), payload);
-    }
-
-    private static ApprovedDeliveryRequest request(URI uri, byte[] payload) {
+    private ApprovedDeliveryRequest request(String path, byte[] payload) {
         ValidatedDeliveryEndpoint endpoint = new ValidatedDeliveryEndpoint(
-                uri, "delivery.test");
+                server.uri("delivery.test", path), "delivery.test");
         return new ApprovedDeliveryRequest(
                 endpoint,
                 List.of(InetAddress.getLoopbackAddress()),

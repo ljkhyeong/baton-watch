@@ -13,14 +13,12 @@ import com.personal.baton.watch.application.monitoring.model.SynchronizationStat
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
-import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
-import com.personal.baton.watch.domain.system.SystemStatus;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -649,11 +647,6 @@ class MonitorApiSecurityIntegrationTest {
                 }
                 return references.contains(projection().resourceReference()) ? List.of(projection()) : List.of();
             };
-        }
-
-        @Bean
-        GetSystemStatusUseCase getSystemStatusUseCase() {
-            return () -> new SystemStatus("baton-watch", SystemStatus.State.UP, NOW);
         }
     }
 }

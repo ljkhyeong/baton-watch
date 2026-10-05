@@ -102,7 +102,7 @@ class MonitoringLoadRecoveryTest extends MonitoringPersistenceIntegrationTestSup
         var failingSender = deliveryWorker(deliveries, payload -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             failedPayloads.add(payload);
-            return EventDeliveryObservation.forHttpStatus(503);
+            return EventDeliveryObservation.forHttpStatus(503, null);
         }, clock);
         for (int index = 0; index < monitors; index++) {
             assertThat(failingSender.runEventDeliveries().retryScheduled()).isOne();
@@ -116,7 +116,7 @@ class MonitoringLoadRecoveryTest extends MonitoringPersistenceIntegrationTestSup
         var recoveredSender = deliveryWorker(deliveries, payload -> {
             assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
             deliveredPayloads.add(payload);
-            return EventDeliveryObservation.forHttpStatus(204);
+            return EventDeliveryObservation.forHttpStatus(204, null);
         }, clock);
         for (int index = 0; index < monitors; index++) {
             assertThat(recoveredSender.runEventDeliveries().delivered()).isOne();

@@ -41,8 +41,8 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
     @Override
     public List<InetAddress> resolve(String hostname, Duration timeout) throws DnsLookupException {
+        // JVM은 null 호스트를 루프백으로 해석하므로 조회 전에 거부한다.
         Objects.requireNonNull(hostname, "hostname");
-        Objects.requireNonNull(timeout, "timeout");
         if (Thread.currentThread().isInterrupted()) {
             throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
         }

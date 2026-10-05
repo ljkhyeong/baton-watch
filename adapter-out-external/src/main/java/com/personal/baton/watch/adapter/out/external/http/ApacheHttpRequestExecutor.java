@@ -3,9 +3,11 @@ package com.personal.baton.watch.adapter.out.external.http;
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.net.InetAddress;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -21,16 +23,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import javax.net.ssl.SSLException;
 import org.apache.hc.client5.http.ConnectTimeoutException;
 import org.apache.hc.client5.http.classic.methods.HttpUriRequestBase;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.core5.http.ClassicHttpResponse;
 import org.apache.hc.core5.http.ConnectionRequestTimeoutException;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.MessageConstraintException;
+import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.io.IOFunction;
 import org.apache.hc.core5.util.Args;
 
-/** 제한된 HTTP 실행기를 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
+/** 제한된 HTTP 실행기와 IP 고정 클라이언트 생성을 소유하고 각 요청에 하나의 강제 기한을 적용한다. */
 public final class ApacheHttpRequestExecutor implements AutoCloseable {
 
     private final ExecutorService executor;
+    private final PinnedApacheClientFactory clientFactory = new PinnedApacheClientFactory();
     private final Set<FutureTask<?>> requests = ConcurrentHashMap.newKeySet();
 
     public ApacheHttpRequestExecutor(
@@ -42,11 +48,33 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
-    public <T> T execute(HttpUriRequestBase request, Duration timeout, IOFunction<Runnable, T> operation)
+    /**
+     * 승인된 주소에 고정한 요청 범위 클라이언트 하나로 요청을 실행한다. 요청은 제출 전에 완성해 넘긴다.
+     * 응답 헤더를 받은 뒤 처리기를 호출하고, 처리기가 성공하면 지정한 방식으로, 실패하면 즉시 응답을 닫는다.
+     */
+    public <T> T executePinned(
+            HttpUriRequestBase request,
+            String hostname,
+            List<InetAddress> approvedAddresses,
+            ApacheHttpClientLimits limits,
+            Duration remainingTime,
+            CloseMode successCloseMode,
+            IOFunction<ClassicHttpResponse, T> handler)
             throws OutboundHttpFailure {
-        Objects.requireNonNull(request, "request");
-        Objects.requireNonNull(timeout, "timeout");
-        Objects.requireNonNull(operation, "operation");
+        return execute(request, remainingTime, onResponseStarted -> {
+            // 양수 기한을 확인한 뒤 작업자에서 단계별 제한을 남은 시간으로 줄인다.
+            try (CloseableHttpClient client = clientFactory.open(
+                    hostname, approvedAddresses, limits.cappedBy(remainingTime))) {
+                return ApacheResponseLifecycle.execute(client, request, successCloseMode, response -> {
+                    onResponseStarted.run();
+                    return handler.apply(response);
+                });
+            }
+        });
+    }
+
+    <T> T execute(HttpUriRequestBase request, Duration timeout, IOFunction<Runnable, T> operation)
+            throws OutboundHttpFailure {
         if (Thread.currentThread().isInterrupted()) {
             request.cancel();
             throw new OutboundHttpFailure(OutboundHttpFailure.Kind.INTERNAL_FAILURE);

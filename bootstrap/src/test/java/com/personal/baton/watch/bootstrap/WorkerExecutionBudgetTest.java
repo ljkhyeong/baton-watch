@@ -7,52 +7,30 @@ import org.junit.jupiter.api.Test;
 
 class WorkerExecutionBudgetTest {
 
-    private static final Duration EXECUTION_BUDGET = Duration.ofSeconds(60);
-    private static final Duration TOTAL_TIMEOUT = Duration.ofSeconds(5);
-    private static final DatabaseRuntimeProperties DATABASE = BootstrapTestFixtures.databaseRuntimeProperties();
-    private static final PersistenceProperties PERSISTENCE = BootstrapTestFixtures.persistenceProperties();
-
     @Test
     void acceptsDefaultCheckAndDeliveryBudgets() {
-        WorkerExecutionBudget.requireSafe(
-                "check",
-                EXECUTION_BUDGET,
-                Duration.ofSeconds(30),
-                TOTAL_TIMEOUT,
-                1,
-                DATABASE,
-                PERSISTENCE);
-        WorkerExecutionBudget.requireSafe(
-                "event delivery",
-                EXECUTION_BUDGET,
-                Duration.ofSeconds(60),
-                TOTAL_TIMEOUT,
-                2,
-                DATABASE,
-                PERSISTENCE);
+        budget("check", 30, 1);
+        budget("event delivery", 60, 2);
     }
 
     @Test
     void rejectsALeaseThatCannotCoverOneItem() {
-        assertThrows(IllegalArgumentException.class, () -> WorkerExecutionBudget.requireSafe(
-                "check",
-                EXECUTION_BUDGET,
-                Duration.ofSeconds(18),
-                TOTAL_TIMEOUT,
-                1,
-                DATABASE,
-                PERSISTENCE));
+        assertThrows(IllegalArgumentException.class, () -> budget("check", 18, 1));
     }
 
     @Test
     void rejectsABatchThatCannotFinishWithinTheWorkerBudget() {
-        assertThrows(IllegalArgumentException.class, () -> WorkerExecutionBudget.requireSafe(
-                "event delivery",
-                EXECUTION_BUDGET,
+        assertThrows(IllegalArgumentException.class, () -> budget("event delivery", 60, 3));
+    }
+
+    private static void budget(String worker, long leaseSeconds, int batchSize) {
+        WorkerExecutionBudget.requireSafe(
+                worker,
                 Duration.ofSeconds(60),
-                TOTAL_TIMEOUT,
-                3,
-                DATABASE,
-                PERSISTENCE));
+                Duration.ofSeconds(leaseSeconds),
+                Duration.ofSeconds(5),
+                batchSize,
+                BootstrapTestFixtures.databaseRuntimeProperties(),
+                BootstrapTestFixtures.persistenceProperties());
     }
 }

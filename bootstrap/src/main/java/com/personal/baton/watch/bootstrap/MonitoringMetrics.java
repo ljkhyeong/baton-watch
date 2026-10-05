@@ -44,42 +44,24 @@ final class MonitoringMetrics {
 
     MonitoringMetrics(MeterRegistry registry) {
         this.registry = registry;
-        Gauge.builder(
-                        "baton.watch.check.inflight",
-                        inFlightChecks,
-                        AtomicLong::get)
-                .description("현재 실행 중인 URL 점검 수")
-                .register(registry);
-        TimeGauge.builder(
-                        "baton.watch.check.schedule.delay",
-                        maximumCheckScheduleDelaySeconds,
-                        TimeUnit.SECONDS,
-                        AtomicLong::get)
-                .description("지금 실행 가능한 점검 중 최대 지연 시간")
-                .register(registry);
-        Gauge.builder(
-                        "baton.watch.event.delivery.inflight",
-                        inFlightDeliveries,
-                        AtomicLong::get)
-                .description("현재 실행 중인 상태 변경 이벤트 전달 수")
-                .register(registry);
-        Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
-                .description("아직 전달되지 않은 상태 변경 이벤트 수")
-                .register(registry);
-        TimeGauge.builder(
-                        "baton.watch.event.delivery.oldest.age",
-                        oldestEventAgeSeconds,
-                        TimeUnit.SECONDS,
-                        AtomicLong::get)
-                .description("미전달 상태 변경 이벤트의 최대 대기 시간")
-                .register(registry);
-        TimeGauge.builder(
-                        "baton.watch.database.clock.offset",
-                        databaseClockOffsetMillis,
-                        TimeUnit.MILLISECONDS,
-                        AtomicLong::get)
-                .description("JVM 시각에서 PostgreSQL 시각을 뺀 값")
-                .register(registry);
+        gauge("baton.watch.check.inflight", "현재 실행 중인 URL 점검 수", inFlightChecks);
+        timeGauge(
+                "baton.watch.check.schedule.delay",
+                "지금 실행 가능한 점검 중 최대 지연 시간",
+                maximumCheckScheduleDelaySeconds,
+                TimeUnit.SECONDS);
+        gauge("baton.watch.event.delivery.inflight", "현재 실행 중인 상태 변경 이벤트 전달 수", inFlightDeliveries);
+        gauge("baton.watch.event.delivery.backlog", "아직 전달되지 않은 상태 변경 이벤트 수", eventDeliveryBacklog);
+        timeGauge(
+                "baton.watch.event.delivery.oldest.age",
+                "미전달 상태 변경 이벤트의 최대 대기 시간",
+                oldestEventAgeSeconds,
+                TimeUnit.SECONDS);
+        timeGauge(
+                "baton.watch.database.clock.offset",
+                "JVM 시각에서 PostgreSQL 시각을 뺀 값",
+                databaseClockOffsetMillis,
+                TimeUnit.MILLISECONDS);
         // 첫 실패·리스 회수 전의 0도 수집하도록 경보용 카운터를 미리 등록한다.
         record(() -> registry.counter(CHECK_FINALIZATIONS, "status", "failure"));
         record(() -> registry.counter(DELIVERY_FINALIZATIONS, "status", "failure"));
@@ -194,6 +176,14 @@ final class MonitoringMetrics {
 
     void updateDatabaseClockOffset(Duration offset) {
         databaseClockOffsetMillis.set(offset.toMillis());
+    }
+
+    private void gauge(String name, String description, AtomicLong value) {
+        Gauge.builder(name, value, AtomicLong::get).description(description).register(registry);
+    }
+
+    private void timeGauge(String name, String description, AtomicLong value, TimeUnit unit) {
+        TimeGauge.builder(name, value, unit, AtomicLong::get).description(description).register(registry);
     }
 
     private void increment(String name, double amount, String... tags) {

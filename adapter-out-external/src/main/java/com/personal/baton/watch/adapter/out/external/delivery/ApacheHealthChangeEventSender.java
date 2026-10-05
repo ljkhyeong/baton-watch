@@ -1,6 +1,5 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
-import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import com.personal.baton.watch.adapter.out.external.check.BoundedDnsLookup;
 import com.personal.baton.watch.adapter.out.external.check.GlobalAddressPolicy;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
@@ -8,7 +7,6 @@ import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPa
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import java.net.URI;
 import java.time.Clock;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import tools.jackson.databind.ObjectMapper;
 
@@ -31,12 +29,8 @@ public final class ApacheHealthChangeEventSender implements HealthChangeEventSen
             int httpQueueCapacity,
             ObjectMapper objectMapper,
             Clock clock) {
-        Objects.requireNonNull(limits, "limits");
-        Objects.requireNonNull(clock, "clock");
         ValidatedDeliveryEndpoint validatedEndpoint = new DeliveryEndpointPolicy().validate(endpoint);
         requireValidBearerToken(bearerToken);
-        OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
-        OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
         HealthChangeEventJsonSerializer serializer = new HealthChangeEventJsonSerializer(objectMapper);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheEventDeliveryTransport apacheTransport =

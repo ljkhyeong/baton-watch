@@ -287,7 +287,7 @@ class JdbcHealthChangeEventDeliveryPersistenceIntegrationTest
         return new EventDeliveryFinalization(
                 event.payload().eventId(),
                 event.leaseToken(),
-                EventDeliveryObservation.forHttpStatus(204),
+                EventDeliveryObservation.forHttpStatus(204, null),
                 completedAt,
                 null);
     }

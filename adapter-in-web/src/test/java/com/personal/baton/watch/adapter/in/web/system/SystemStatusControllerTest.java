@@ -6,9 +6,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
-import com.personal.baton.watch.domain.system.SystemStatus;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -21,12 +21,8 @@ class SystemStatusControllerTest {
 
     @BeforeEach
     void setUp() {
-        GetSystemStatusUseCase useCase = () -> new SystemStatus(
-                "baton-watch",
-                SystemStatus.State.UP,
-                Instant.parse("2026-08-01T00:00:00Z")
-        );
-        mockMvc = MockMvcBuilders.standaloneSetup(new SystemStatusController(useCase)).build();
+        Clock clock = Clock.fixed(Instant.parse("2026-08-01T00:00:00Z"), ZoneOffset.UTC);
+        mockMvc = MockMvcBuilders.standaloneSetup(new SystemStatusController(clock)).build();
     }
 
     @Test

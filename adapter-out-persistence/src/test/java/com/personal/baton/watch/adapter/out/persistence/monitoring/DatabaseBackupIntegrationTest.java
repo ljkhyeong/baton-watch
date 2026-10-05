@@ -30,7 +30,7 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
         var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
-                EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
+                EventDeliveryObservation.forHttpStatus(503, null), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));
 
         Path archive = temporary.resolve("database.dump");

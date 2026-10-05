@@ -85,7 +85,7 @@ class MeteredHealthChangeEventSenderTest {
             }
         });
         MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
-                ignored -> EventDeliveryObservation.forHttpStatus(204),
+                ignored -> EventDeliveryObservation.forHttpStatus(204, null),
                 new MonitoringMetrics(registry));
 
         EventDeliveryObservation observation = sender.send(null);
@@ -100,7 +100,7 @@ class MeteredHealthChangeEventSenderTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry(SimpleConfig.DEFAULT, clock);
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
         when(clock.monotonicTime()).thenThrow(new IllegalStateException("clock unavailable"));
-        EventDeliveryObservation expected = EventDeliveryObservation.forHttpStatus(204);
+        EventDeliveryObservation expected = EventDeliveryObservation.forHttpStatus(204, null);
         MeteredHealthChangeEventSender sender = new MeteredHealthChangeEventSender(
                 ignored -> expected, metrics);
 

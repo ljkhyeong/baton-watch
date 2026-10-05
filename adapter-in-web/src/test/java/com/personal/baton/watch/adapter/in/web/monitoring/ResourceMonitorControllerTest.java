@@ -113,30 +113,6 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.targetUrl").doesNotExist());
     }
 
-    @ParameterizedTest
-    @CsvSource({
-        "INACTIVE, , , INACTIVE",
-        "ACTIVE, 30, , SCHEDULED",
-        "ACTIVE, 0, , QUEUED",
-        "ACTIVE, 0, 30, IN_PROGRESS"
-    })
-    void exposesCheckStatusWithoutExposingLeaseDetails(
-            MonitoringState state, Long nextOffset, Long leaseOffset, String expected) throws Exception {
-        getMonitor = reference -> Optional.of(projection(state, nextOffset, leaseOffset));
-        rebuildMockMvc();
-
-        mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.monitoringState").value(state.name()))
-                .andExpect(jsonPath("$.checkStatus").value(expected))
-                .andExpect(jsonPath("$.health").value("UNKNOWN"))
-                .andExpect(jsonPath("$.leaseExpiresAt").doesNotExist())
-                .andExpect(jsonPath("$.leaseToken").doesNotExist())
-                .andExpect(jsonPath("$.leaseAttemptId").doesNotExist())
-                .andExpect(jsonPath("$.targetUrl").doesNotExist());
-    }
-
     @Test
     void batchLookupPreservesRequestOrderAndReportsMissingReferencesOnce() throws Exception {
         getMonitors = references -> {
@@ -158,6 +134,7 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.monitors[0].health").value("UNKNOWN"))
                 .andExpect(jsonPath("$.monitors[0].leaseExpiresAt").doesNotExist())
                 .andExpect(jsonPath("$.monitors[0].leaseToken").doesNotExist())
+                .andExpect(jsonPath("$.monitors[0].leaseAttemptId").doesNotExist())
                 .andExpect(jsonPath("$.monitors[0].targetUrl").doesNotExist())
                 .andExpect(jsonPath("$.monitors[1].resourceReference").value("resource-2"))
                 .andExpect(jsonPath("$.monitors[1].checkStatus").value("INACTIVE"))
@@ -270,9 +247,13 @@ class ResourceMonitorControllerTest {
 
     @Test
     void returnsTheCurrentProjection() throws Exception {
+        getMonitor = reference -> Optional.of(projection(MonitoringState.ACTIVE, 30L, null));
+        rebuildMockMvc();
+
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resourceReference").value("resource-1"))
+                .andExpect(jsonPath("$.checkStatus").value("SCHEDULED"))
                 .andExpect(jsonPath("$.lastOutcome").doesNotExist())
                 .andExpect(jsonPath("$.lastCheckedAt").doesNotExist())
                 .andExpect(jsonPath("$.lastConclusiveAt").value("2026-07-31T23:59:00Z"));

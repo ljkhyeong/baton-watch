@@ -122,7 +122,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
-                EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
+                EventDeliveryObservation.forHttpStatus(503, null), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));
         insertOlderHistory();
         var before = databaseRows();

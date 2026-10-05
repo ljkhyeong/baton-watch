@@ -61,24 +61,13 @@ class MonitoringMetricsTest {
     @Test
     void exposesZeroFailureAndRecoveryCountersBeforeFirstIncident() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+        new MonitoringMetrics(registry);
 
         assertAll(
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.lease.recoveries")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
-
-        metrics.recordCheckFinalizationFailure();
-        metrics.recordEventDeliveryFinalizationFailure();
-        metrics.recordCheckClaim(claimedCheck(true));
-        metrics.recordEventDeliveryClaim(claimedEvent(true));
-
-        assertAll(
-                () -> assertEquals(1.0, count(registry, "baton.watch.check.finalizations", "status", "failure")),
-                () -> assertEquals(1.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
-                () -> assertEquals(1.0, count(registry, "baton.watch.check.lease.recoveries")),
-                () -> assertEquals(1.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
     }
 
     @Test
@@ -143,19 +132,6 @@ class MonitoringMetricsTest {
     }
 
     @Test
-    void updatesBacklogGaugesWithoutIdentifiers() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        MonitoringMetrics metrics = new MonitoringMetrics(registry);
-
-        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(
-                7,
-                Optional.of(Duration.ofSeconds(91))));
-
-        assertEquals(7.0, registry.get("baton.watch.event.delivery.backlog").gauge().value());
-        assertEquals(91.0, registry.get("baton.watch.event.delivery.oldest.age").gauge().value());
-    }
-
-    @Test
     void recordsMonitoringMaintenanceItemsIndependently() {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
@@ -170,17 +146,7 @@ class MonitoringMetricsTest {
     }
 
     @Test
-    void reportsSignedDatabaseClockOffsetInSeconds() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        MonitoringMetrics metrics = new MonitoringMetrics(registry);
-
-        metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
-
-        assertEquals(-1.5, registry.get("baton.watch.database.clock.offset").gauge().value());
-    }
-
-    @Test
-    void exportsSecondGaugesUnderTheNamesUsedByAlertRules() {
+    void exportsGaugesUnderTheNamesUsedByAlertRulesAndDashboards() {
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
@@ -188,13 +154,16 @@ class MonitoringMetricsTest {
         metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(91))));
         metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
 
-        // 경보 규칙과 대시보드가 참조하는 Prometheus 이름과 초 단위 값을 유지한다.
+        // 경보 규칙과 대시보드가 참조하는 Prometheus 이름과 값을 유지한다. 시간 게이지는 초 단위다.
         Map<String, Double> scraped = registry.scrape().lines()
                 .filter(line -> !line.startsWith("#"))
                 .collect(Collectors.toMap(
                         line -> line.substring(0, line.lastIndexOf(' ')),
                         line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1))));
         assertAll(
+                () -> assertEquals(0.0, scraped.get("baton_watch_check_inflight")),
+                () -> assertEquals(0.0, scraped.get("baton_watch_event_delivery_inflight")),
+                () -> assertEquals(1.0, scraped.get("baton_watch_event_delivery_backlog")),
                 () -> assertEquals(17.0, scraped.get("baton_watch_check_schedule_delay_seconds")),
                 () -> assertEquals(91.0, scraped.get("baton_watch_event_delivery_oldest_age_seconds")),
                 () -> assertEquals(-1.5, scraped.get("baton_watch_database_clock_offset_seconds")));

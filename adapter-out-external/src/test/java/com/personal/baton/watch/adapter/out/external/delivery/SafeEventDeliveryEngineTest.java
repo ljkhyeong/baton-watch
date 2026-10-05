@@ -99,11 +99,7 @@ class SafeEventDeliveryEngineTest {
     void treatsRedirectAsClientErrorWithoutAnotherRequest() throws Exception {
         RecordingTransport transport = new RecordingTransport(302);
 
-        EventDeliveryObservation observation = engine(
-                        new RecordingDnsLookup(List.of(address("8.8.8.8"))),
-                        transport,
-                        System::nanoTime)
-                .send(event());
+        EventDeliveryObservation observation = engine(transport).send(event());
 
         assertEquals(EventDeliveryOutcome.HTTP_CLIENT_ERROR, observation.outcome());
         assertEquals(302, observation.httpStatusCode());
@@ -114,11 +110,7 @@ class SafeEventDeliveryEngineTest {
     void mapsUnsupportedFinalHttpMetadataToNetworkFailure() throws Exception {
         RecordingTransport transport = new RecordingTransport(101);
 
-        EventDeliveryObservation observation = engine(
-                        new RecordingDnsLookup(List.of(address("8.8.8.8"))),
-                        transport,
-                        System::nanoTime)
-                .send(event());
+        EventDeliveryObservation observation = engine(transport).send(event());
 
         assertEquals(EventDeliveryOutcome.NETWORK_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
@@ -129,9 +121,7 @@ class SafeEventDeliveryEngineTest {
         Instant retryAt = Instant.parse("2026-08-01T00:02:00Z");
         DeliveryTransport transport = (request, remaining) -> new DeliveryResponse(503, retryAt);
 
-        EventDeliveryObservation observation = engine(
-                new RecordingDnsLookup(List.of(address("8.8.8.8"))), transport, System::nanoTime)
-                .send(event());
+        EventDeliveryObservation observation = engine(transport).send(event());
 
         assertEquals(EventDeliveryObservation.forHttpStatus(503, retryAt), observation);
     }
@@ -144,11 +134,7 @@ class SafeEventDeliveryEngineTest {
             throw new OutboundHttpFailure(kind);
         };
 
-        EventDeliveryObservation observation = engine(
-                        new RecordingDnsLookup(List.of(address("8.8.8.8"))),
-                        transport,
-                        System::nanoTime)
-                .send(event());
+        EventDeliveryObservation observation = engine(transport).send(event());
 
         assertEquals(expected, observation.outcome());
         assertNull(observation.httpStatusCode());
@@ -208,6 +194,10 @@ class SafeEventDeliveryEngineTest {
         assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, observation.outcome());
         assertEquals(0, dns.calls);
         assertTrue(transport.requests.isEmpty());
+    }
+
+    private static SafeEventDeliveryEngine engine(DeliveryTransport transport) throws Exception {
+        return engine(new RecordingDnsLookup(List.of(address("8.8.8.8"))), transport, System::nanoTime);
     }
 
     private static SafeEventDeliveryEngine engine(

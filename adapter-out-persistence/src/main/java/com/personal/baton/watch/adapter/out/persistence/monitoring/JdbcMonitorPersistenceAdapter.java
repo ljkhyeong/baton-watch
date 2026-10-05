@@ -46,7 +46,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
     @Override
     public SynchronizationResult synchronize(
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
-        Objects.requireNonNull(synchronizedAt, "synchronizedAt");
         return transactions.execute(
                 ignored -> synchronizeInTransaction(command, synchronizedAt));
     }

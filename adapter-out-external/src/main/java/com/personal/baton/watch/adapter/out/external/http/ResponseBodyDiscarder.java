@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.http;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Objects;
 import org.apache.hc.core5.http.ContentTooLongException;
 import org.apache.hc.core5.http.HttpEntity;
 
@@ -13,7 +12,6 @@ import org.apache.hc.core5.http.HttpEntity;
 public final class ResponseBodyDiscarder {
 
     public void discard(HttpEntity entity, long limit) throws IOException {
-        Objects.requireNonNull(entity, "entity");
         long declaredLength = entity.getContentLength();
         if (declaredLength > limit) {
             throw tooLarge();

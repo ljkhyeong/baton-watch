@@ -1,10 +1,8 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
-import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
-import java.util.Objects;
 
 /** 운영용 점검기 퍼사드. 제한된 DNS 및 HTTP 실행기를 소유한다. */
 public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
@@ -19,9 +17,6 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
             int dnsQueueCapacity,
             int httpThreadCount,
             int httpQueueCapacity) {
-        Objects.requireNonNull(limits, "limits");
-        OutboundResourceBounds.requireDnsExecutorBounds(dnsThreadCount, dnsQueueCapacity);
-        OutboundResourceBounds.requireRequestExecutorBounds(httpThreadCount, httpQueueCapacity);
         BoundedDnsLookup boundedDnsLookup = new BoundedDnsLookup(dnsThreadCount, dnsQueueCapacity);
         ApacheHttpHopTransport apacheTransport =
                 new ApacheHttpHopTransport(limits, httpThreadCount, httpQueueCapacity);

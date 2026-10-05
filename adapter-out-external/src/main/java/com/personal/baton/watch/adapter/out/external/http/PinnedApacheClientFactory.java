@@ -18,13 +18,13 @@ import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.Timeout;
 
 /** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
-public final class PinnedApacheClientFactory {
+final class PinnedApacheClientFactory {
 
     private static final Duration MINIMUM_SOCKET_TIMEOUT = Duration.ofMillis(1);
 
     private final SSLContext sslContext;
 
-    public PinnedApacheClientFactory() {
+    PinnedApacheClientFactory() {
         this(SSLContexts.createDefault());
     }
 
@@ -32,7 +32,7 @@ public final class PinnedApacheClientFactory {
         this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
     }
 
-    public CloseableHttpClient open(
+    CloseableHttpClient open(
             String hostname,
             List<InetAddress> approvedAddresses,
             ApacheHttpClientLimits limits) {

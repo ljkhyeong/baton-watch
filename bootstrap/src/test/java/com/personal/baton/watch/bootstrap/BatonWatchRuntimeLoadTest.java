@@ -156,7 +156,7 @@ class BatonWatchRuntimeLoadTest {
                 .when(urlChecker)
                 .check(any());
         doAnswer(ignored -> EventDeliveryObservation.forHttpStatus(
-                        deliveryAvailable.get() ? 204 : 503))
+                        deliveryAvailable.get() ? 204 : 503, null))
                 .when(eventSender)
                 .send(any());
     }

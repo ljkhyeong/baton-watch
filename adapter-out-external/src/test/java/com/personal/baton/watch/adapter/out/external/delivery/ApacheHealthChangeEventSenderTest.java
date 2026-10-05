@@ -51,7 +51,7 @@ class ApacheHealthChangeEventSenderTest {
     }
 
     @Test
-    void rejectsAllExecutorBoundsBeforeCreatingOwnedResources() {
+    void rejectsDnsAndHttpExecutorBoundsOutsideTheLimits() {
         URI endpoint = URI.create("https://events.example.com/callback");
         String token = "0123456789abcdef0123456789abcdef";
         ObjectMapper objectMapper = new ObjectMapper();

@@ -2,13 +2,9 @@ package com.personal.baton.watch.application.monitoring.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
-import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
-import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
-import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -40,7 +36,8 @@ class MonitoringMaintenanceServicesTest {
 
     @Test
     void retentionCleanupUsesFixedClockCutoffAndBatchBound() {
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence();
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence();
+        persistence.purgedAttempts = 3;
         PurgeAttemptHistoryService service = new PurgeAttemptHistoryService(
                 persistence, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofDays(30), 100);
 
@@ -84,34 +81,6 @@ class MonitoringMaintenanceServicesTest {
             this.markedAt = markedAt;
             this.limit = limit;
             return 2;
-        }
-    }
-
-    private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
-
-        private Instant completedBefore;
-        private int limit;
-
-        @Override
-        public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Duration getOldestDueCheckDelay() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int purgeAttempts(Instant completedBefore, int limit) {
-            this.completedBefore = completedBefore;
-            this.limit = limit;
-            return 3;
         }
     }
 }
