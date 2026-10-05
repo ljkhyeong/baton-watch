@@ -62,7 +62,7 @@ public final class GlobalAddressPolicy {
             cidr("2620:4f:8000::", 48));
 
     public List<InetAddress> approve(List<InetAddress> answer) throws AddressPolicyException {
-        if (answer == null || answer.isEmpty()) {
+        if (answer.isEmpty()) {
             throw new AddressPolicyException();
         }
 

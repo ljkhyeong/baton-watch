@@ -37,11 +37,6 @@ class MonitorApiSecurityConfiguration {
     }
 
     @Bean
-    MonitorApiAuthenticationEntryPoint monitorApiAuthenticationEntryPoint(ObjectMapper objectMapper) {
-        return new MonitorApiAuthenticationEntryPoint(objectMapper);
-    }
-
-    @Bean
     RequestRejectedHandler monitorApiRequestRejectedHandler(
             ObjectMapper objectMapper,
             ObservationRegistry observationRegistry) {
@@ -64,15 +59,13 @@ class MonitorApiSecurityConfiguration {
     SecurityFilterChain versionedApiSecurityFilterChain(
             HttpSecurity http,
             MonitorBearerTokenAuthenticationManager authenticationManager,
-            MonitorApiAuthenticationEntryPoint authenticationEntryPoint,
             ObjectMapper objectMapper) throws Exception {
         return stateless(http)
                 .securityMatcher(VERSIONED_API)
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
-                .exceptionHandling(errors -> errors.authenticationEntryPoint(authenticationEntryPoint))
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .authenticationManagerResolver(request -> authenticationManager)
-                        .authenticationEntryPoint(authenticationEntryPoint))
+                        .authenticationEntryPoint(new MonitorApiAuthenticationEntryPoint(objectMapper)))
                 .addFilterAfter(
                         new MonitorApiRequestBodyLimitFilter(objectMapper),
                         AuthorizationFilter.class)

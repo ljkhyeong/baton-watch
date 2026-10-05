@@ -14,7 +14,6 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpHeaders;
-import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.io.CloseMode;
 
 /** 이미 검증되고 DNS에 고정된 단일 홉용 Apache HttpClient 5 전송 구현. */
@@ -63,11 +62,10 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
         try (CloseableHttpClient client = clientFactory.open(
                 target.target().hostname(), target.addresses(), clientLimits)) {
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(target.target().uri()), request, CloseMode.IMMEDIATE, response -> {
+                    client, request, CloseMode.IMMEDIATE, response -> {
                         onResponseStarted.run();
                         List<String> locations = Arrays.stream(response.getHeaders(HttpHeaders.LOCATION))
                                 .map(Header::getValue)
-                                .map(value -> Objects.requireNonNullElse(value, ""))
                                 .toList();
                         // 도달 여부는 응답 헤더로 판단하고 본문을 읽거나 비우지 않는다.
                         return new HttpHopResponse(response.getCode(), locations);

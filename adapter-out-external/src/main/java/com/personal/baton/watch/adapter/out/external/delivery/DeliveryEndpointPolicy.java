@@ -11,9 +11,6 @@ final class DeliveryEndpointPolicy {
             "event delivery endpoint violates policy";
 
     ValidatedDeliveryEndpoint validate(URI endpoint) {
-        if (endpoint == null) {
-            throw new IllegalArgumentException(REJECTION_MESSAGE);
-        }
         final TargetUrl target;
         try {
             target = new TargetUrl(endpoint.toString()).requireSafeEncodedCharacters();

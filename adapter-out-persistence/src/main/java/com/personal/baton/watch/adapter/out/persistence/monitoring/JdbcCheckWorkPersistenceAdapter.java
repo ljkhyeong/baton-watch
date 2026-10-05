@@ -11,7 +11,6 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalizationSt
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.HealthDerivationPolicy;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
@@ -27,7 +26,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.util.Assert;
 
 /** 점검 점유·완료 처리와 보존 기간이 지난 시도 삭제를 담당한다. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
@@ -47,21 +45,18 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     @Override
     public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
-        Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
-                leaseDuration, "leaseDuration");
         return transactions.execute(ignored -> {
             Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
                     .query(OffsetDateTime.class)
                     .single()
                     .toInstant();
-            Instant leaseUntil = claimedAt.plus(supportedLease);
+            Instant leaseUntil = claimedAt.plus(leaseDuration);
             return claimInTransaction(claimedAt, leaseUntil);
         });
     }
 
     @Override
     public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
-        Objects.requireNonNull(finalization, "finalization");
         return transactions.execute(ignored -> finalizeInTransaction(finalization));
     }
 
@@ -88,8 +83,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
-        Objects.requireNonNull(completedBefore, "completedBefore");
-        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> jdbc.sql("""
                         WITH completed_candidates AS MATERIALIZED (
                             SELECT attempt.attempt_id, result.completed_at AS retention_at
@@ -197,9 +190,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 leaseToken,
                 new TargetUrl(monitor.targetUrl()),
                 claimedAt,
-                monitor.leaseAttemptId() != null
-                        && monitor.leaseExpiresAt() != null
-                        && !monitor.leaseExpiresAt().isAfter(claimedAt)));
+                monitor.leaseAttemptId() != null));
     }
 
     private CheckFinalizationStatus finalizeInTransaction(

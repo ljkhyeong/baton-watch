@@ -9,7 +9,6 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
@@ -23,7 +22,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.util.Assert;
 
 /** 상태 변경 이벤트의 전달 예약·점유·결과를 DB에 저장한다. */
 public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeEventDeliveryPersistencePort {
@@ -38,8 +36,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             changed_at,
             delivery_status,
             delivery_attempt,
-            delivery_lease_token,
-            delivery_lease_expires_at
+            delivery_lease_token
             """;
 
     private final JdbcClient jdbc;
@@ -53,28 +50,23 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
 
     @Override
     public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
-        Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
-                leaseDuration, "leaseDuration");
         return transactions.execute(ignored -> {
             Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
                     .query(OffsetDateTime.class)
                     .single()
                     .toInstant();
-            Instant leaseUntil = claimedAt.plus(supportedLease);
+            Instant leaseUntil = claimedAt.plus(leaseDuration);
             return claimInTransaction(claimedAt, leaseUntil);
         });
     }
 
     @Override
     public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
-        Objects.requireNonNull(finalization, "finalization");
         return transactions.execute(ignored -> finalizeInTransaction(finalization));
     }
 
     @Override
     public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
-        Objects.requireNonNull(deliveredBefore, "deliveredBefore");
-        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> jdbc.sql("""
                         WITH candidates AS MATERIALIZED (
                             SELECT event_id
@@ -150,9 +142,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 leaseToken,
                 deliveryAttempt,
                 claimedAt,
-                event.leaseToken() != null
-                        && event.leaseExpiresAt() != null
-                        && !event.leaseExpiresAt().isAfter(claimedAt)));
+                event.leaseToken() != null));
     }
 
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
@@ -226,8 +216,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 instant(resultSet, "changed_at"),
                 DeliveryStatus.valueOf(resultSet.getString("delivery_status")),
                 resultSet.getInt("delivery_attempt"),
-                resultSet.getObject("delivery_lease_token", UUID.class),
-                instant(resultSet, "delivery_lease_expires_at"));
+                resultSet.getObject("delivery_lease_token", UUID.class));
     }
 
     private enum DeliveryStatus {
@@ -245,7 +234,6 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             Instant changedAt,
             DeliveryStatus deliveryStatus,
             int deliveryAttempt,
-            UUID leaseToken,
-            Instant leaseExpiresAt) {
+            UUID leaseToken) {
     }
 }

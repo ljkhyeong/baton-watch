@@ -20,7 +20,6 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.HttpHeaders;
-import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 
@@ -79,7 +78,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             request.setEntity(new ByteArrayEntity(delivery.payload(), ContentType.APPLICATION_JSON));
 
             return ApacheResponseLifecycle.execute(
-                    client, HttpHost.create(delivery.endpoint().uri()), request, CloseMode.GRACEFUL, response -> {
+                    client, request, CloseMode.GRACEFUL, response -> {
                         onResponseStarted.run();
                         Instant retryNotBefore = retryNotBefore(response);
                         HttpEntity entity = response.getEntity();
@@ -96,7 +95,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport, AutoClose
             return null;
         }
         Header[] headers = response.getHeaders(HttpHeaders.RETRY_AFTER);
-        if (headers.length != 1 || headers[0].getValue() == null) {
+        if (headers.length != 1) {
             return null;
         }
         String value = headers[0].getValue().trim();

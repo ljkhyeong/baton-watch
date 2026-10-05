@@ -306,7 +306,9 @@ class ResourceMonitorControllerTest {
         "{}",
         "{\"sourceRevision\":-1,\"monitoringState\":\"INACTIVE\"}",
         "{\"sourceRevision\":\"invalid\",\"monitoringState\":\"INACTIVE\"}",
-        "{\"sourceRevision\":42,\"monitoringState\":\"PAUSED\"}"
+        "{\"sourceRevision\":42,\"monitoringState\":\"PAUSED\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\"}",
+        "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\",\"targetUrl\":\"https://example.com/health\"}"
     })
     void rejectsMalformedOrInvalidRequestsWithAStableProblem(String body) throws Exception {
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")

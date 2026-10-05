@@ -21,7 +21,8 @@ public final class PostgresTransactionOperations implements TransactionOperation
             JdbcTemplate jdbc, TransactionOperations transactions, Duration lockTimeout) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
-        this.lockTimeoutSetting = setting(lockTimeout);
+        // 설정 계층에서 양의 정수 밀리초로 검증한 값을 그대로 적용한다.
+        this.lockTimeoutSetting = lockTimeout.toMillis() + "ms";
     }
 
     @Override
@@ -35,19 +36,5 @@ public final class PostgresTransactionOperations implements TransactionOperation
             jdbc.queryForObject(APPLY_LOCK_TIMEOUT, String.class, lockTimeoutSetting);
             return action.doInTransaction(status);
         });
-    }
-
-    private static String setting(Duration lockTimeout) {
-        Objects.requireNonNull(lockTimeout, "lockTimeout");
-        long milliseconds;
-        try {
-            milliseconds = lockTimeout.toMillis();
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException("lockTimeout is too large");
-        }
-        if (milliseconds < 1 || !Duration.ofMillis(milliseconds).equals(lockTimeout)) {
-            throw new IllegalArgumentException("lockTimeout must be a positive whole-millisecond duration");
-        }
-        return milliseconds + "ms";
     }
 }

@@ -8,7 +8,6 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.time.Duration;
-import java.util.Objects;
 import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -36,13 +35,6 @@ public record EventDeliveryProperties(
 
     static final int MAX_DELIVERY_BATCH_SIZE = 100;
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
-
-    public EventDeliveryProperties {
-        if (enabled) {
-            Objects.requireNonNull(endpoint, "endpoint");
-            Objects.requireNonNull(bearerToken, "bearerToken");
-        }
-    }
 
     URI endpointUri() {
         try {

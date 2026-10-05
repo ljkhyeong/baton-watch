@@ -20,10 +20,6 @@ final class MonitorApiException extends RuntimeException {
         this.retryAfterSeconds = retryAfterSeconds;
     }
 
-    static MonitorApiException invalidRequest() {
-        return new MonitorApiException(HttpStatus.BAD_REQUEST, MonitorApiProblem.INVALID_REQUEST, 0);
-    }
-
     static MonitorApiException invalidTarget() {
         return new MonitorApiException(
                 HttpStatus.UNPROCESSABLE_CONTENT,

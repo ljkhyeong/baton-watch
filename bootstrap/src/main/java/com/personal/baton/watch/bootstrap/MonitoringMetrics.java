@@ -10,9 +10,11 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.TimeGauge;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
 
@@ -48,11 +50,11 @@ final class MonitoringMetrics {
                         AtomicLong::get)
                 .description("현재 실행 중인 URL 점검 수")
                 .register(registry);
-        Gauge.builder(
+        TimeGauge.builder(
                         "baton.watch.check.schedule.delay",
                         maximumCheckScheduleDelaySeconds,
+                        TimeUnit.SECONDS,
                         AtomicLong::get)
-                .baseUnit("seconds")
                 .description("지금 실행 가능한 점검 중 최대 지연 시간")
                 .register(registry);
         Gauge.builder(
@@ -64,15 +66,18 @@ final class MonitoringMetrics {
         Gauge.builder("baton.watch.event.delivery.backlog", eventDeliveryBacklog, AtomicLong::get)
                 .description("아직 전달되지 않은 상태 변경 이벤트 수")
                 .register(registry);
-        Gauge.builder("baton.watch.event.delivery.oldest.age", oldestEventAgeSeconds, AtomicLong::get)
-                .baseUnit("seconds")
+        TimeGauge.builder(
+                        "baton.watch.event.delivery.oldest.age",
+                        oldestEventAgeSeconds,
+                        TimeUnit.SECONDS,
+                        AtomicLong::get)
                 .description("미전달 상태 변경 이벤트의 최대 대기 시간")
                 .register(registry);
-        Gauge.builder(
+        TimeGauge.builder(
                         "baton.watch.database.clock.offset",
                         databaseClockOffsetMillis,
-                        value -> value.get() / 1_000.0)
-                .baseUnit("seconds")
+                        TimeUnit.MILLISECONDS,
+                        AtomicLong::get)
                 .description("JVM 시각에서 PostgreSQL 시각을 뺀 값")
                 .register(registry);
         // 첫 실패·리스 회수 전의 0도 수집하도록 경보용 카운터를 미리 등록한다.

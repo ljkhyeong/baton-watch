@@ -26,7 +26,6 @@ import java.util.Objects;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.util.Assert;
 
 /** 모니터 동기화, 프로젝션 조회, 오래된 프로젝션 처리를 담당하는 JDBC 어댑터다. */
 public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePort {
@@ -47,7 +46,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
     @Override
     public SynchronizationResult synchronize(
             SynchronizeMonitorCommand command, Instant synchronizedAt) {
-        Objects.requireNonNull(command, "command");
         Objects.requireNonNull(synchronizedAt, "synchronizedAt");
         return transactions.execute(
                 ignored -> synchronizeInTransaction(command, synchronizedAt));
@@ -55,7 +53,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     @Override
     public Optional<MonitorProjection> findProjection(ResourceReference resourceReference) {
-        Objects.requireNonNull(resourceReference, "resourceReference");
         return jdbc.sql(
                         "SELECT " + MONITOR_COLUMNS
                                 + " FROM watch_monitor WHERE resource_reference = ?")
@@ -129,12 +126,6 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     @Override
     public int markStaleUnknown(Instant staleBefore, Instant markedAt, int limit) {
-        Objects.requireNonNull(staleBefore, "staleBefore");
-        Objects.requireNonNull(markedAt, "markedAt");
-        Assert.isTrue(limit > 0, "limit must be positive");
-        if (staleBefore.isAfter(markedAt)) {
-            throw new IllegalArgumentException("stale cutoff cannot follow marked time");
-        }
         return transactions.execute(
                 ignored -> markStaleInTransaction(staleBefore, markedAt, limit));
     }

@@ -7,7 +7,6 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
@@ -57,20 +56,12 @@ public record WatchProperties(
                 && staleAfter.compareTo(checkInterval) <= 0) {
             throw new IllegalArgumentException("staleAfter must exceed checkInterval");
         }
-        if (retention != null
-                && retention.isPositive()
-                && staleAfter != null
-                && staleAfter.isPositive()
-                && retention.compareTo(staleAfter) <= 0) {
-            throw new IllegalArgumentException("retention must exceed staleAfter");
-        }
     }
 
     public record Http(
             @NotNull @DurationMin(inclusive = false) Duration connectTimeout,
             @NotNull @DurationMin(inclusive = false) Duration responseTimeout,
             @NotNull @DurationMin(inclusive = false) Duration totalTimeout,
-            @Min(1) @Max(OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES) long maxResponseBytes,
             @Min(0) @Max(3) int maxRedirects,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_COUNT) int maxHeaderCount,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_LINE_LENGTH) int maxHeaderLineLength,
@@ -82,7 +73,6 @@ public record WatchProperties(
 
     private static void requireToken(String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
-        Objects.requireNonNull(token, "apiToken");
         if (token.length() > MAX_API_TOKEN_LENGTH || !BEARER_TOKEN.matcher(token).matches()) {
             throw new IllegalArgumentException(
                     "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");

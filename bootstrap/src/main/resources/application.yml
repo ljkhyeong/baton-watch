@@ -50,7 +50,6 @@ watch:
     connect-timeout: 2s
     response-timeout: 3s
     total-timeout: 5s
-    max-response-bytes: 65536
     max-redirects: 3
     max-header-count: 100
     max-header-line-length: 8192

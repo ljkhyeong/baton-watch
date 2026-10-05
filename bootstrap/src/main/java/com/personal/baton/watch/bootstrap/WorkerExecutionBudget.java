@@ -18,21 +18,15 @@ final class WorkerExecutionBudget {
             PersistenceProperties persistence) {
         Duration connectionTimeout = Duration.ofMillis(database.connectionTimeoutMillis());
         Duration transactionTimeout = persistence.transactionTimeout();
-        Duration leaseBudget;
-        Duration batchBudget;
-        try {
-            leaseBudget = transactionTimeout
-                    .multipliedBy(2)
-                    .plus(connectionTimeout)
-                    .plus(totalTimeout);
-            Duration itemExecutionBudget = connectionTimeout
-                    .plus(transactionTimeout)
-                    .multipliedBy(2)
-                    .plus(totalTimeout);
-            batchBudget = itemExecutionBudget.multipliedBy(batchSize);
-        } catch (ArithmeticException exception) {
-            throw new IllegalArgumentException(worker + " execution budget is too large");
-        }
+        Duration leaseBudget = transactionTimeout
+                .multipliedBy(2)
+                .plus(connectionTimeout)
+                .plus(totalTimeout);
+        Duration itemExecutionBudget = connectionTimeout
+                .plus(transactionTimeout)
+                .multipliedBy(2)
+                .plus(totalTimeout);
+        Duration batchBudget = itemExecutionBudget.multipliedBy(batchSize);
         if (leaseDuration.compareTo(leaseBudget) <= 0) {
             throw new IllegalArgumentException(worker + " leaseDuration must exceed one item execution budget");
         }

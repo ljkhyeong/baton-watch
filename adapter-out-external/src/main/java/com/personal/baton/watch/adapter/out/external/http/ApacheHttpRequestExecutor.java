@@ -54,13 +54,8 @@ public final class ApacheHttpRequestExecutor implements AutoCloseable {
         if (!timeout.isPositive()) {
             throw new OutboundHttpFailure(OutboundHttpFailure.Kind.CONNECT_TIMEOUT);
         }
-
-        long timeoutNanos;
-        try {
-            timeoutNanos = timeout.toNanos();
-        } catch (ArithmeticException exception) {
-            throw new OutboundHttpFailure(OutboundHttpFailure.Kind.INTERNAL_FAILURE);
-        }
+        // 작업을 제출하기 전에 기한을 계산해 기한 없이 실행되는 요청이 남지 않게 한다.
+        long timeoutNanos = timeout.toNanos();
 
         AtomicBoolean responseStarted = new AtomicBoolean();
         FutureTask<T> future = new FutureTask<>(

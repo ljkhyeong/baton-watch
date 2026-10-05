@@ -87,7 +87,6 @@ final class BootstrapTestFixtures {
                         Duration.ofSeconds(2),
                         Duration.ofSeconds(3),
                         Duration.ofSeconds(5),
-                        65_536,
                         3,
                         100,
                         8_192,

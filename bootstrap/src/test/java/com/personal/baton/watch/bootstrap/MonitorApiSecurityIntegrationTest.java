@@ -370,6 +370,10 @@ class MonitorApiSecurityIntegrationTest {
                 "/api/v1/resource-monitors/resource-1",
                 null,
                 MediaType.APPLICATION_XML_VALUE);
+        HttpResponse<String> unauthenticatedHtmlAccept = get(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.TEXT_HTML_VALUE);
         HttpResponse<String> methodNotAllowed = post("/api/v1/system/status", API_TOKEN);
         HttpResponse<String> unsupportedMediaType = put(
                 "/api/v1/resource-monitors/resource-1",
@@ -388,6 +392,7 @@ class MonitorApiSecurityIntegrationTest {
 
         assertUnauthorized(unauthenticatedMediaType);
         assertUnauthorized(unauthenticatedAccept);
+        assertUnauthorized(unauthenticatedHtmlAccept);
         assertProblem(
                 methodNotAllowed,
                 405,

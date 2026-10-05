@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.spy;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -25,6 +25,8 @@ import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -179,10 +181,32 @@ class MonitoringMetricsTest {
     }
 
     @Test
+    void exportsSecondGaugesUnderTheNamesUsedByAlertRules() {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        MonitoringMetrics metrics = new MonitoringMetrics(registry);
+
+        metrics.updateCheckScheduleDelay(Duration.ofSeconds(17));
+        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(91))));
+        metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
+
+        // 경보 규칙과 대시보드가 참조하는 Prometheus 이름과 초 단위 값을 유지한다.
+        Map<String, Double> scraped = registry.scrape().lines()
+                .filter(line -> !line.startsWith("#"))
+                .collect(Collectors.toMap(
+                        line -> line.substring(0, line.lastIndexOf(' ')),
+                        line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1))));
+        assertAll(
+                () -> assertEquals(17.0, scraped.get("baton_watch_check_schedule_delay_seconds")),
+                () -> assertEquals(91.0, scraped.get("baton_watch_event_delivery_oldest_age_seconds")),
+                () -> assertEquals(-1.5, scraped.get("baton_watch_database_clock_offset_seconds")));
+    }
+
+    @Test
     void ignoresCounterFailures() {
-        MeterRegistry registry = mock(MeterRegistry.class);
-        when(registry.counter(anyString(), any(String[].class)))
-                .thenThrow(new IllegalStateException("meter registry unavailable"));
+        // 게이지 등록은 실제 레지스트리로 두고 카운터 기록만 실패시킨다.
+        MeterRegistry registry = spy(new SimpleMeterRegistry());
+        doThrow(new IllegalStateException("meter registry unavailable"))
+                .when(registry).counter(anyString(), any(String[].class));
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
         assertDoesNotThrow(() -> metrics.recordCheckClaim(claimedCheck(false)));
