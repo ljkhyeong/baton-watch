@@ -49,6 +49,8 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
         if (!timeout.isPositive()) {
             throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
         }
+        // 작업을 제출하기 전에 기한을 계산해 기한 없이 실행되는 조회가 남지 않게 한다.
+        long timeoutNanos = timeout.toNanos();
 
         Future<InetAddress[]> future;
         try {
@@ -58,7 +60,7 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
         }
 
         try {
-            InetAddress[] resolved = future.get(timeout.toNanos(), TimeUnit.NANOSECONDS);
+            InetAddress[] resolved = future.get(timeoutNanos, TimeUnit.NANOSECONDS);
             return List.of(resolved);
         } catch (TimeoutException exception) {
             future.cancel(true);

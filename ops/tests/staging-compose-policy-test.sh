@@ -30,6 +30,7 @@ render_config() {
 
     env \
         -u WATCH_COMPOSE_PROJECT_NAME \
+        -u WATCH_CHECK_ENABLED \
         -u WATCH_DB_OWNER_PASSWORD_FILE \
         -u WATCH_DB_RUNTIME_PASSWORD_FILE \
         -u WATCH_API_TOKEN_FILE \
