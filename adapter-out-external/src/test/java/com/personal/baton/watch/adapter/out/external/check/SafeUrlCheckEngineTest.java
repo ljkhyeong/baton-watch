@@ -64,6 +64,8 @@ class SafeUrlCheckEngineTest {
             https://Example.COM/docs/page | ?page=2 | https://Example.COM/docs/page?page=2
             https://Example.COM/docs/a%2Fb?old=%2F | ?next=%2f%3F&tag=a+b | https://Example.COM/docs/a%2Fb?next=%2f%3F&tag=a+b
             https://Example.COM/docs/page?old=1 | ? | https://Example.COM/docs/page?
+            https://Example.COM/문서?old=1 | ?page=2 | https://Example.COM/문서?page=2
+            https://Example.COM/docs | ?q=값 | https://Example.COM/docs?q=값
             https://Example.COM/docs//page | /docs/page | https://Example.COM/docs/page
             https://Example.COM/docs/page | /docs//page | https://Example.COM/docs//page
             https://Example.COM/docs//page | next | https://Example.COM/docs//next
@@ -105,6 +107,7 @@ class SafeUrlCheckEngineTest {
     @ParameterizedTest
     @CsvSource({
         "https://example.com/docs/page?page=2, ?page=2, 302",
+        "https://example.com/문서?page=2, ?page=2, 302",
         "https://example.com/docs//page, page, 302",
         "https://example.com/docs//page, ./page, 302",
         "https://example.com/docs//page, next/../page, 302",

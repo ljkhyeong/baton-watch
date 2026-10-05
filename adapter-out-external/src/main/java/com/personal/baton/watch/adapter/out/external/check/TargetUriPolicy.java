@@ -4,7 +4,6 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Locale;
-import org.apache.hc.client5.http.utils.URIUtils;
 
 /** 기준 {@code TargetUrl} 정책을 홉별 리다이렉트 및 순환 처리에 맞게 연결한다. */
 final class TargetUriPolicy {
@@ -19,20 +18,22 @@ final class TargetUriPolicy {
 
     URI resolveRedirect(ValidatedUri current, String location) {
         TargetUrl.requireSafeReferenceCharacters(location);
+        URI base = current.uri();
         if (location.startsWith("?")) {
-            return URIUtils.resolve(current.uri(), location);
+            // 쿼리만 바꾸는 이동은 현재 경로를 원문 그대로 유지한다. Apache 해석기는 비ASCII 경로를 인코딩한다.
+            return URI.create(base.getScheme() + "://" + base.getRawAuthority() + base.getRawPath() + location);
         }
         URI reference = URI.create(location);
         URI resolved;
         if (reference.isAbsolute() || reference.getRawAuthority() != null
                 || reference.getRawPath().isEmpty() || reference.getRawPath().startsWith("/")) {
-            resolved = current.uri().resolve(reference);
+            resolved = base.resolve(reference);
         } else {
             // JDK의 상대 경로 정규화는 빈 구간도 제거하므로, 경로 병합에서는 슬래시를 보존한다.
-            String basePath = current.uri().getRawPath();
+            String basePath = base.getRawPath();
             String directory = basePath.isEmpty() ? "/" : basePath.substring(0, basePath.lastIndexOf('/') + 1);
             String suffix = location.substring(reference.getRawPath().length());
-            resolved = URI.create(current.uri().getScheme() + "://" + current.uri().getRawAuthority()
+            resolved = URI.create(base.getScheme() + "://" + base.getRawAuthority()
                     + directory + reference.getRawPath() + suffix);
         }
 
