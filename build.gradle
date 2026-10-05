@@ -58,11 +58,3 @@ subprojects {
         useJUnitPlatform()
     }
 }
-
-tasks.named('assemble') {
-    dependsOn ':bootstrap:bootJar'
-}
-
-tasks.named('check') {
-    dependsOn subprojects.collect { it.tasks.named('test') }
-}

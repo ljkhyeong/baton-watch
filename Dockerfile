@@ -27,15 +27,8 @@ COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch
 
 FROM postgres AS database-operations
-ARG OCI_SOURCE
-ARG OCI_VERSION
-ARG OCI_REVISION
 LABEL org.opencontainers.image.title="BATON WATCH 데이터베이스 운영 작업" \
-      org.opencontainers.image.description="BATON WATCH PostgreSQL 운영 작업 이미지" \
-      org.opencontainers.image.source="${OCI_SOURCE}" \
-      org.opencontainers.image.version="${OCI_VERSION}" \
-      org.opencontainers.image.revision="${OCI_REVISION}" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.description="BATON WATCH PostgreSQL 운영 작업 이미지"
 COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-operation.sh
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "70", "70", "/opt/watch/staging-database-operation.sh", "configure-runtime-role"]
@@ -52,34 +45,37 @@ RUN find /flyway/drivers -mindepth 1 -maxdepth 1 ! -name 'postgresql-*.jar' -exe
         /flyway/lib/flyway/flyway-sqlserver-*.jar \
     && rm -rf /flyway/lib/aad /flyway/lib/netty
 
-FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS migrations
+FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS jre-base
 ARG OCI_SOURCE
 ARG OCI_VERSION
 ARG OCI_REVISION
-ENV PATH="/flyway:${PATH}"
-WORKDIR /flyway
-LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
-      org.opencontainers.image.description="BATON WATCH Flyway 마이그레이션 이미지" \
-      org.opencontainers.image.source="${OCI_SOURCE}" \
+LABEL org.opencontainers.image.source="${OCI_SOURCE}" \
       org.opencontainers.image.version="${OCI_VERSION}" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apk add --no-cache \
-        "bash=5.3.9-r1" \
         "libcrypto3=3.5.9-r0" \
         "libexpat=2.8.5-r0" \
         "libssl3=3.5.9-r0" \
+        "su-exec=0.3-r0"
+COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
+RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch
+
+FROM jre-base AS migrations
+ENV PATH="/flyway:${PATH}"
+WORKDIR /flyway
+LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
+      org.opencontainers.image.description="BATON WATCH Flyway 마이그레이션 이미지"
+RUN apk add --no-cache \
+        "bash=5.3.9-r1" \
         "openssl=3.5.9-r0" \
         "p11-kit=0.26.2-r0" \
         "p11-kit-trust=0.26.2-r0" \
-        "sqlite-libs=3.53.4-r0" \
-        "su-exec=0.3-r0"
+        "sqlite-libs=3.53.4-r0"
 COPY --from=flyway-source /flyway /flyway
-COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 COPY --chmod=0555 adapter-out-persistence/src/main/resources/db/migration /flyway/sql
 COPY --chmod=0555 ops/flyway /flyway/callbacks
-RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch \
-    && find /flyway/sql /flyway/callbacks -type f -exec chmod 0444 {} +
+RUN find /flyway/sql /flyway/callbacks -type f -exec chmod 0444 {} +
 COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-operation.sh
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
@@ -118,24 +114,10 @@ USER 65532:65532
 ENTRYPOINT ["cloudflared", "--no-autoupdate"]
 CMD ["version"]
 
-FROM eclipse-temurin:21.0.12_8-jre-alpine-3.24@sha256:974b08960c5d96694c780e65b2d5705268ab1e1ca1a0dd0caf4ba6c3fe34d699 AS runtime
-ARG OCI_SOURCE
-ARG OCI_VERSION
-ARG OCI_REVISION
+FROM jre-base AS runtime
 LABEL org.opencontainers.image.title="BATON WATCH" \
-      org.opencontainers.image.description="BATON WATCH 애플리케이션 런타임 이미지" \
-      org.opencontainers.image.source="${OCI_SOURCE}" \
-      org.opencontainers.image.version="${OCI_VERSION}" \
-      org.opencontainers.image.revision="${OCI_REVISION}" \
-      org.opencontainers.image.licenses="Apache-2.0"
+      org.opencontainers.image.description="BATON WATCH 애플리케이션 런타임 이미지"
 RUN command -v wget >/dev/null \
-    && apk add --no-cache \
-        "libcrypto3=3.5.9-r0" \
-        "libexpat=2.8.5-r0" \
-        "libssl3=3.5.9-r0" \
-        "su-exec=0.3-r0"
-COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
-RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch \
     && addgroup -S -g 10001 baton \
     && adduser -S -D -H -u 10001 -G baton baton
 WORKDIR /app

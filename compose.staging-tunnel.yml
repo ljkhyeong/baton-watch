@@ -93,8 +93,6 @@ services:
 
 networks:
   watch-ingress:
-    driver: bridge
-    internal: false
 
 secrets:
   cloudflare-tunnel-token:

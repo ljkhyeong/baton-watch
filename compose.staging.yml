@@ -193,11 +193,8 @@ services:
 
 networks:
   watch-db:
-    driver: bridge
     internal: true
   watch-edge:
-    driver: bridge
-    internal: false
 
 volumes:
   watch-postgres-data:

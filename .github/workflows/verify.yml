@@ -218,18 +218,11 @@ jobs:
                 --file compose.staging-tunnel.yml \
                 config --no-consistency --format json
           )"
-          postgres_image="$(
-            printf '%s\n' "${staging_config}" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["postgres"]["image"])'
+          images="$(
+            python3 -c 'import json,sys; s=json.load(sys.stdin)["services"]; print(*(s[n]["image"] for n in ("postgres", "watch-gateway", "cloudflared")))' \
+              <<<"${staging_config}"
           )"
-          gateway_image="$(
-            printf '%s\n' "${staging_config}" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["watch-gateway"]["image"])'
-          )"
-          cloudflared_image="$(
-            printf '%s\n' "${staging_config}" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["cloudflared"]["image"])'
-          )"
+          read -r postgres_image gateway_image cloudflared_image <<<"${images}"
           docker pull "${gateway_image}"
           image_archive_dir="build/image-evidence/${GITHUB_SHA}"
           ./ops/scan-supply-chain.sh \
