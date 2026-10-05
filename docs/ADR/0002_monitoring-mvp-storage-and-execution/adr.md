@@ -141,10 +141,10 @@ Spring JDBC의 `StatementCreatorUtils` 구문 매개변수 로거를 `OFF`로 �
 새 동기화 명령은 저장 전에 같은 검사를 통과해야 한다. 외부 어댑터는 DNS/주소 승인 전에
 원본 리다이렉트 참조 검증, 해석과 루프 감지를 위한 정규화만 추가한다.
 
-쿼리만 지정한 리다이렉트는 기존 Apache HttpClient의 `URIUtils.resolve`로 해석한다.
-JDK `URI.resolve`가 `/docs/page?old=1`과 `?page=2`를 `/docs/?page=2`로 합치는 문제를
-보완해 원래 경로를 보존한다. 나머지 참조는 기존 해석을 유지해 Apache 함수의 별도
-정규화가 주소 처리에 영향을 주지 않게 한다. 해석 전 문자 검사, 해석 후 대상 검증,
+쿼리만 지정한 리다이렉트는 현재 URI의 원문 경로에 참조를 그대로 붙여 해석한다.
+JDK `URI.resolve`는 `/docs/page?old=1`과 `?page=2`를 `/docs/?page=2`로 합치고,
+Apache `URIUtils.resolve`는 `/문서` 같은 비ASCII 경로를 퍼센트 인코딩해 순환 판정 키가
+달라지므로 둘 다 쓰지 않는다. 해석 전 문자 검사, 해석 후 대상 검증,
 DNS 재검증·IP 고정·순환 감지와 리다이렉트 상한은 그대로 적용한다.
 
 Spring 예약 기능은 bootstrap에 있으며 애플리케이션 유스케이스를 호출한다. 대상
