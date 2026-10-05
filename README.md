@@ -216,7 +216,7 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 
 공급망 검사의 차단 사유와 재검사 조건은 [HANDOFF.md](HANDOFF.md)에서 관리합니다.
 보고서의 이미지·플랫폼·검사 시점을 확인하며, 과거 검사 결과만으로 현재 배포 준비가
-완료됐다고 판단하지 않습니다. 날짜별 결과는 [이전 인계 기록](docs/history/handoff-2026-09-05.md)에 보관합니다.
+완료됐다고 판단하지 않습니다. 날짜별 결과는 [9월 5일](docs/history/handoff-2026-09-05.md)·[10월 5일](docs/history/handoff-2026-10-05.md) 이전 인계 기록에 보관합니다.
 
 Gradle·GitHub Actions·Dockerfile·Compose 이미지는 주간 Dependabot 점검을 사용하며 자동 병합하지 않습니다.
 Alpine 고정 패키지와 Trivy·Prometheus 검사용 이미지는 자동 갱신 대상이 아니므로
