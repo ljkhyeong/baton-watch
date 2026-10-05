@@ -41,7 +41,6 @@ REVOKE UPDATE (
     completed_at,
     duration_seconds,
     duration_nanos,
-    response_bytes,
     redirect_count
 )
     ON TABLE watch_result

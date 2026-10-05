@@ -83,7 +83,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
-        finalizeAt(claimed, completedAt, CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0));
+        finalizeAt(claimed, completedAt, CheckObservation.forHttpStatus(200, Duration.ZERO, 0));
     }
 
     protected void finalizeAt(ClaimedCheck claimed, Instant completedAt, CheckObservation observation) {

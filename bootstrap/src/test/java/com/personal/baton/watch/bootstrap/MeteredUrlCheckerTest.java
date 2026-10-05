@@ -28,7 +28,6 @@ class MeteredUrlCheckerTest {
         CheckObservation expected = CheckObservation.forHttpStatus(
                 204,
                 Duration.ofMillis(37),
-                123,
                 0);
         MeteredUrlChecker checker = new MeteredUrlChecker(
                 ignored -> {
@@ -97,7 +96,6 @@ class MeteredUrlCheckerTest {
         CheckObservation expected = CheckObservation.forHttpStatus(
                 204,
                 Duration.ofMillis(17),
-                0,
                 0);
         MeteredUrlChecker checker = new MeteredUrlChecker(
                 ignored -> expected,

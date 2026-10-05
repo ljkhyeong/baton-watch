@@ -41,14 +41,9 @@ abstract class PostgresPersistenceIntegrationTestSupport {
         testDataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         jdbc = new JdbcTemplate(testDataSource);
-        migrateCleanTo("latest");
-    }
-
-    protected void migrateCleanTo(String target) {
         Flyway flyway = Flyway.configure()
                 .dataSource(testDataSource)
                 .cleanDisabled(false)
-                .target(target)
                 .load();
         flyway.clean();
         flyway.migrate();

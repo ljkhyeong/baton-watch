@@ -15,7 +15,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.awaitility.Awaitility;
-import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -92,52 +91,6 @@ class JdbcMonitoringSchemaIntegrationTest extends PostgresPersistenceIntegration
         assertThat(indexDefinition("ix_watch_monitor_lease_attempt"))
                 .contains("(lease_attempt_id)")
                 .contains("lease_attempt_id IS NOT NULL");
-    }
-
-    @Test
-    void laterMigrationsMakeExistingOutboxEventsPendingDueAndSummarized() {
-        migrateCleanTo("1");
-
-        jdbc.update("""
-                INSERT INTO watch_monitor (
-                    resource_reference, source_revision, monitor_status, target_url,
-                    current_health, consecutive_failures, next_check_at, created_at, updated_at
-                ) VALUES (?, 1, 'INACTIVE', NULL, 'UNKNOWN', 0, NULL, ?, ?)
-                """,
-                "resource:migration",
-                databaseTime(BASE_TIME),
-                databaseTime(BASE_TIME));
-        UUID eventId = UUID.randomUUID();
-        Instant changedAt = BASE_TIME.plusSeconds(1);
-        jdbc.update("""
-                INSERT INTO watch_health_change_event (
-                    event_id, resource_reference, source_revision, attempt_id,
-                    previous_health, current_health, changed_at
-                ) VALUES (?, ?, 1, NULL, 'HEALTHY', 'UNKNOWN', ?)
-                """,
-                eventId,
-                "resource:migration",
-                databaseTime(changedAt));
-
-        Flyway.configure().dataSource(testDataSource).load().migrate();
-
-        var migratedEvent = jdbc.queryForMap(
-                "SELECT delivery_status, delivery_attempt, next_attempt_at FROM watch_health_change_event WHERE event_id = ?",
-                eventId);
-        assertThat(migratedEvent)
-                .containsEntry("delivery_status", "PENDING")
-                .containsEntry("delivery_attempt", 0);
-        assertThat(((Timestamp) migratedEvent.get("next_attempt_at")).toInstant())
-                .isEqualTo(changedAt);
-        var backlog = jdbc.queryForMap("""
-                        SELECT pending_count, oldest_changed_at
-                        FROM watch_health_change_event_backlog
-                        WHERE singleton
-                        """);
-        assertThat(backlog)
-                .containsEntry("pending_count", 1L);
-        assertThat(((Timestamp) backlog.get("oldest_changed_at")).toInstant())
-                .isEqualTo(changedAt);
     }
 
     @Test

@@ -178,8 +178,8 @@ migration_evidence="$(
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$migration_evidence" != "1,2,3,4,5,6" ]]; then
-    fail "Flyway V1~V6 적용 증거가 올바르지 않습니다"
+if [[ "$migration_evidence" != "1" ]]; then
+    fail "Flyway V1 적용 증거가 올바르지 않습니다"
 fi
 
 role_evidence="$(
@@ -343,10 +343,10 @@ printf '%s\n' \
     ");" \
     "INSERT INTO public.watch_result (" \
     "  attempt_id, outcome, http_status_code, completed_at," \
-    "  duration_seconds, duration_nanos, response_bytes, redirect_count" \
+    "  duration_seconds, duration_nanos, redirect_count" \
     ") VALUES (" \
     "  '00000000-0000-0000-0000-000000000010', 'SUCCESS', 204," \
-    "  transaction_timestamp(), 0, 0, 0, 0" \
+    "  transaction_timestamp(), 0, 0, 0" \
     ");" \
     "INSERT INTO public.watch_health_change_event (" \
     "  event_id, resource_reference, source_revision, attempt_id," \

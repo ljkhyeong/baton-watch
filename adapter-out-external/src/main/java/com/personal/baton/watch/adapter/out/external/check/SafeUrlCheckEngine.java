@@ -123,7 +123,7 @@ final class SafeUrlCheckEngine {
             return failure(CheckOutcome.NETWORK_FAILURE, startedAt, redirectCount);
         }
         return CheckObservation.forHttpStatus(
-                status, elapsed(startedAt), 0, redirectCount);
+                status, elapsed(startedAt), redirectCount);
     }
 
     private CheckObservation transportFailure(
@@ -141,7 +141,7 @@ final class SafeUrlCheckEngine {
 
     private CheckObservation failure(CheckOutcome outcome, long startedAt, int redirectCount) {
         return CheckObservation.failure(
-                outcome, elapsed(startedAt), 0, redirectCount);
+                outcome, elapsed(startedAt), redirectCount);
     }
 
     private Duration remaining(long startedAt) {

@@ -46,7 +46,7 @@ class RunDueChecksServiceTest {
                 persistence,
                 target -> {
                     calls.add("check");
-                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0);
+                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0);
                 },
                 5);
 
@@ -115,7 +115,7 @@ class RunDueChecksServiceTest {
                 CLAIM.targetUrl(),
                 databaseClaimedAt,
                 false));
-        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0), 1);
 
         service.runDueChecks();
 
@@ -130,7 +130,7 @@ class RunDueChecksServiceTest {
     void reportsNonAppliedFinalizationsByTheirPersistenceStatus(CheckFinalizationStatus status) {
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
         persistence.status = status;
-        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0), 1);
 
         DueCheckBatchResult result = service.runDueChecks();
 

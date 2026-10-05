@@ -59,7 +59,7 @@ class MonitoringLoadRecoveryTest extends MonitoringPersistenceIntegrationTestSup
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("부하 시험이 중단됐습니다", exception);
             }
-            return CheckObservation.forHttpStatus(200, Duration.ofMillis(checkDelayMillis), 0, 0);
+            return CheckObservation.forHttpStatus(200, Duration.ofMillis(checkDelayMillis), 0);
         }, clock, LEASE, Duration.ofDays(1), Duration.ofSeconds(30), 1);
 
         // 완료 처리의 백로그 트리거만 막는다. 이미 커밋한 점유는 리스 회수로 복구해야 한다.

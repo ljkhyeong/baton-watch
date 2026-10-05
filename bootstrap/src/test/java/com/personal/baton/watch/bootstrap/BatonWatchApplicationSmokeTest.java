@@ -266,7 +266,7 @@ class BatonWatchApplicationSmokeTest {
                 ORDER BY installed_rank
                 """,
                 String.class);
-        assertThat(appliedVersions).containsSubsequence("1", "2", "3", "4");
+        assertThat(appliedVersions).containsExactly("1");
         assertThat(environment.getProperty("management.server.address"))
                 .isEqualTo("127.0.0.1");
         assertThat(environment.getProperty("management.endpoints.web.exposure.include"))

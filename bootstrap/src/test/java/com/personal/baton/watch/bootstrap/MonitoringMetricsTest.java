@@ -98,7 +98,6 @@ class MonitoringMetricsTest {
         metrics.recordCheckAttempt(CheckObservation.failure(
                 CheckOutcome.CONNECT_TIMEOUT,
                 Duration.ofMillis(125),
-                0,
                 0));
         ClaimedHealthChangeEvent claimedEvent = claimedEvent(true);
         metrics.recordEventDeliveryClaim(claimedEvent);

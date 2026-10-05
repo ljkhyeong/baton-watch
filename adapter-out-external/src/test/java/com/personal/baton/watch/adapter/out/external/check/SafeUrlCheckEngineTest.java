@@ -48,7 +48,6 @@ class SafeUrlCheckEngineTest {
         assertEquals(CheckOutcome.SUCCESS, observation.outcome());
         assertEquals(204, observation.httpStatusCode());
         assertEquals(Duration.ofMillis(10), observation.duration());
-        assertEquals(0, observation.responseBytes());
         assertEquals(1, observation.redirectCount());
         assertEquals(List.of("Example.COM", "Example.COM"), dns.hostnames);
         assertEquals(2, transport.targets.size());
@@ -147,7 +146,6 @@ class SafeUrlCheckEngineTest {
                 .check(new TargetUrl("https://public.example/"));
 
         assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertEquals(0, observation.responseBytes());
         assertEquals(1, observation.redirectCount());
         assertEquals(List.of("public.example", "blocked.example"), dns.hostnames);
         assertEquals(1, transport.targets.size());
@@ -214,7 +212,6 @@ class SafeUrlCheckEngineTest {
 
         assertEquals(CheckOutcome.TOO_MANY_REDIRECTS, observation.outcome());
         assertEquals(3, observation.redirectCount());
-        assertEquals(0, observation.responseBytes());
         assertEquals(4, dns.hostnames.size());
         assertEquals(4, transport.targets.size());
     }
@@ -248,7 +245,6 @@ class SafeUrlCheckEngineTest {
 
         assertEquals(CheckOutcome.NETWORK_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
-        assertEquals(0, observation.responseBytes());
     }
 
     @ParameterizedTest
@@ -268,7 +264,6 @@ class SafeUrlCheckEngineTest {
         assertEquals(expected, observation.outcome());
         assertEquals(Duration.ofMillis(10), observation.duration());
         assertEquals(1, observation.redirectCount());
-        assertEquals(0, observation.responseBytes());
         assertNull(observation.httpStatusCode());
     }
 

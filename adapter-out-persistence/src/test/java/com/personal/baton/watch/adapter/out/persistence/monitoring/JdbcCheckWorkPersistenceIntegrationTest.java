@@ -119,7 +119,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(recovered.recoveredLease()).isTrue();
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
-                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                         recoveredAt.plusSeconds(1),
                         recoveredAt.plusSeconds(61))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
@@ -171,7 +171,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization valid = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 42, 1),
+                CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 1),
                 completedAt,
                 completedAt.plus(INTERVAL));
         CheckFinalization wrongToken = new CheckFinalization(
@@ -191,9 +191,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
         assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(1);
         assertThat(jdbc.queryForObject(
-                "SELECT response_bytes FROM watch_result WHERE attempt_id = ?",
-                Long.class,
-                claimed.attemptId())).isEqualTo(42L);
+                "SELECT redirect_count FROM watch_result WHERE attempt_id = ?",
+                Integer.class,
+                claimed.attemptId())).isEqualTo(1);
     }
 
     @Test
@@ -203,7 +203,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                 completedAt,
                 completedAt.plus(INTERVAL));
         JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
@@ -238,7 +238,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                 completedAt,
                 completedAt.plus(INTERVAL));
         assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))

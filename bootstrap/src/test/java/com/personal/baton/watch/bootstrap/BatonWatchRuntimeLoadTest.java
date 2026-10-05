@@ -147,7 +147,7 @@ class BatonWatchRuntimeLoadTest {
                             return CheckObservation.internalFailure();
                         }
                         Thread.sleep(CHECK_DELAY);
-                        return CheckObservation.forHttpStatus(200, CHECK_DELAY, 0, 0);
+                        return CheckObservation.forHttpStatus(200, CHECK_DELAY, 0);
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
                         return CheckObservation.internalFailure();

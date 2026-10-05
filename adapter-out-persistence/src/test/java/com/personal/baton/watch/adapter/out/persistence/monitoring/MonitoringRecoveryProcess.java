@@ -56,7 +56,7 @@ public final class MonitoringRecoveryProcess {
                         if (mode.equals("check-block")) {
                             blockAfterClaim(checkpoint);
                         }
-                        return CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0);
+                        return CheckObservation.forHttpStatus(200, Duration.ZERO, 0);
                     }, clock, Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofSeconds(30), 1);
             await().pollInterval(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(80))
                     .until(() -> worker.runDueChecks().applied() == 1);

@@ -50,7 +50,7 @@ class MonitorCheckRequestIntegrationTest extends MonitoringPersistenceIntegratio
 
         assertThat(requestAt(claim.claimedAt().plusSeconds(1)).status()).isEqualTo(Status.IN_PROGRESS);
         finalizeAt(claim, claim.claimedAt().plusSeconds(2),
-                CheckObservation.forHttpStatus(200, Duration.ofMillis(100), 0, 0));
+                CheckObservation.forHttpStatus(200, Duration.ofMillis(100), 0));
 
         synchronizeInactive(REFERENCE.value(), 8, claim.claimedAt().plusSeconds(3));
         assertThat(requestAt(claim.claimedAt().plusSeconds(4)).status()).isEqualTo(Status.INACTIVE);

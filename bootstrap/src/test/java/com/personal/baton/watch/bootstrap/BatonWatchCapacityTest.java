@@ -70,8 +70,8 @@ class BatonWatchCapacityTest {
             int millis = index % 4 == 0 ? slowMillis : 100;
             Thread.sleep(millis);
             return index % 4 == 0
-                    ? CheckObservation.failure(CheckOutcome.READ_TIMEOUT, Duration.ofMillis(millis), 0, 0)
-                    : CheckObservation.forHttpStatus(200, Duration.ofMillis(millis), 0, 0);
+                    ? CheckObservation.failure(CheckOutcome.READ_TIMEOUT, Duration.ofMillis(millis), 0)
+                    : CheckObservation.forHttpStatus(200, Duration.ofMillis(millis), 0);
         }).when(checker).check(any());
 
         Instant startedAt = Instant.now();
@@ -92,8 +92,8 @@ class BatonWatchCapacityTest {
         jdbc.update("""
                 INSERT INTO watch_result (
                     attempt_id, outcome, http_status_code, completed_at,
-                    duration_seconds, duration_nanos, response_bytes, redirect_count
-                ) SELECT attempt_id, 'SUCCESS', 200, claimed_at, 0, 0, 0, 0
+                    duration_seconds, duration_nanos, redirect_count
+                ) SELECT attempt_id, 'SUCCESS', 200, claimed_at, 0, 0, 0
                   FROM watch_attempt WHERE claimed_at < now() - interval '30 days'
                 """);
 

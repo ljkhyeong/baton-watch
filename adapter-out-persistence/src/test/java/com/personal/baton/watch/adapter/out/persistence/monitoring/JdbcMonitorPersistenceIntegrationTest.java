@@ -125,7 +125,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         synchronize("resource:target-change", 1, "https://one.example/path", BASE_TIME);
         ClaimedCheck first = claimOne();
         Instant completedAt = first.claimedAt().plusSeconds(1);
-        finalizeAt(first, completedAt, CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0));
+        finalizeAt(first, completedAt, CheckObservation.forHttpStatus(204, Duration.ZERO, 0));
         assertThat(projection("resource:target-change").lastConclusiveAt()).contains(completedAt);
 
         jdbc.update("""
@@ -145,7 +145,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,
-                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                         changedAt.plusSeconds(1),
                         changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
@@ -213,7 +213,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck claimed = claimOne();
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         finalizeAt(claimed, completedAt,
-                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0));
+                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0));
 
         assertThat(monitorPersistence.markStaleUnknown(
                         completedAt.minusNanos(1_000), completedAt.plusSeconds(600), 10))
@@ -281,7 +281,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck claimed = claimOne();
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         finalizeAt(claimed, completedAt,
-                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0));
+                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0));
         MonitorProjection before = projection(reference);
         Instant updatedAt = jdbc.queryForObject(
                         "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",

@@ -37,7 +37,7 @@ SELECT json_build_object(
                    attempt.claimed_at AS "claimedAt", result.outcome,
                    result.http_status_code AS "httpStatusCode", result.completed_at AS "completedAt",
                    result.duration_seconds + result.duration_nanos / 1000000000.0 AS "durationSeconds",
-                   result.response_bytes AS "responseBytes", result.redirect_count AS "redirectCount"
+                   result.redirect_count AS "redirectCount"
             FROM public.watch_attempt attempt
             LEFT JOIN public.watch_result result USING (attempt_id)
             WHERE attempt.resource_reference = $1

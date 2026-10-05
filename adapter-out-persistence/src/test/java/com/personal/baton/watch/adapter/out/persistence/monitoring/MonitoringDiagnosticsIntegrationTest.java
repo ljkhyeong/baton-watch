@@ -118,7 +118,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         synchronize(REFERENCE, 1, TARGET, BASE_TIME);
         var check = claimOne();
         finalizeAt(check, check.claimedAt(),
-                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 16, 0));
+                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 0));
         var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),

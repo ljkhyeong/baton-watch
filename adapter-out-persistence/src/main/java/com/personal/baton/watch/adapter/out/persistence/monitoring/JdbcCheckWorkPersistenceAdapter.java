@@ -233,9 +233,8 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                             completed_at,
                             duration_seconds,
                             duration_nanos,
-                            response_bytes,
                             redirect_count
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
                         """)
                 .params(
                         finalization.attemptId(),
@@ -244,7 +243,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                         databaseTime(finalization.completedAt()),
                         observation.duration().getSeconds(),
                         observation.duration().getNano(),
-                        observation.responseBytes(),
                         observation.redirectCount())
                 .update();
 
