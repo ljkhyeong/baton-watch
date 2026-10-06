@@ -12,7 +12,6 @@ import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
-import com.personal.baton.watch.domain.monitoring.HealthDerivationPolicy;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
@@ -32,14 +31,12 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     private final JdbcClient jdbc;
     private final TransactionOperations transactions;
-    private final HealthDerivationPolicy healthPolicy;
     private final JdbcHealthChangeEventAppender eventAppender;
 
     public JdbcCheckWorkPersistenceAdapter(
             JdbcClient jdbc, TransactionOperations transactions) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
-        this.healthPolicy = new HealthDerivationPolicy();
         this.eventAppender = new JdbcHealthChangeEventAppender(jdbc);
     }
 
@@ -246,8 +243,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                         observation.redirectCount())
                 .update();
 
-        HealthDerivation derived = healthPolicy.derive(
-                monitor.derivation(), observation.outcome());
+        HealthDerivation derived = monitor.derivation().after(observation.outcome());
         Instant lastConclusiveAt = observation.outcome().isConclusive()
                 ? finalization.completedAt()
                 : monitor.lastConclusiveAt();

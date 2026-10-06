@@ -41,12 +41,7 @@ final class SafeUrlCheckEngine {
         long startedAt = clock.getAsLong();
         int redirectCount = 0;
         try {
-            ValidatedUri current;
-            try {
-                current = targetPolicy.prepare(targetUrl);
-            } catch (IllegalArgumentException exception) {
-                return failure(CheckOutcome.DESTINATION_REJECTED, startedAt, redirectCount);
-            }
+            ValidatedUri current = targetPolicy.prepare(targetUrl);
 
             Set<String> visited = new HashSet<>();
             visited.add(current.loopKey());

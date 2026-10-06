@@ -1,22 +1,19 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
-import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEventsUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.EventDeliveryMaintenanceUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.MonitoringMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -45,13 +42,12 @@ class MonitoringSchedulingTest {
                     () -> () -> new DueCheckBatchResult(0, 0, 0, 0))
             .withBean(RunEventDeliveriesUseCase.class,
                     () -> () -> new EventDeliveryBatchResult(0, 0, 0, 0, 0))
-            .withBean(MarkStaleProjectionsUseCase.class, () -> () -> 0)
-            .withBean(PurgeAttemptHistoryUseCase.class, () -> () -> 0)
-            .withBean(PurgeDeliveredEventsUseCase.class, () -> () -> 0)
-            .withBean(GetCheckScheduleDelayUseCase.class, () -> () -> Duration.ZERO)
-            .withBean(GetDatabaseClockOffsetUseCase.class, () -> () -> Duration.ZERO)
-            .withBean(GetEventDeliveryBacklogUseCase.class,
-                    () -> () -> new EventDeliveryBacklog(0, Optional.empty()))
+            .withBean(MonitoringMaintenanceUseCase.class, () -> mock(MonitoringMaintenanceUseCase.class))
+            .withBean(EventDeliveryMaintenanceUseCase.class, () -> {
+                EventDeliveryMaintenanceUseCase maintenance = mock(EventDeliveryMaintenanceUseCase.class);
+                when(maintenance.eventDeliveryBacklog()).thenReturn(new EventDeliveryBacklog(0, Duration.ZERO));
+                return maintenance;
+            })
             .withPropertyValues(
                     "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                     "watch.poll-interval=1h", "watch.maintenance-interval=1h",

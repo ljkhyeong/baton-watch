@@ -30,7 +30,6 @@ import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -120,7 +119,7 @@ class MonitoringMetricsTest {
         assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
         assertEquals(1L, timer(registry, "baton.watch.event.delivery.duration", "outcome", "connect_timeout").count());
 
-        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(1))));
+        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Duration.ofSeconds(1)));
         metrics.recordStaleProjections(1);
         metrics.recordPurgedAttempts(1);
         metrics.recordPurgedDeliveredEvents(1);
@@ -151,7 +150,7 @@ class MonitoringMetricsTest {
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
         metrics.updateCheckScheduleDelay(Duration.ofSeconds(17));
-        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Optional.of(Duration.ofSeconds(91))));
+        metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Duration.ofSeconds(91)));
         metrics.updateDatabaseClockOffset(Duration.ofMillis(-1_500));
 
         // 경보 규칙과 대시보드가 참조하는 Prometheus 이름과 값을 유지한다. 시간 게이지는 초 단위다.

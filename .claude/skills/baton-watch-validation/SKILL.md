@@ -31,7 +31,7 @@ git ls-files --others --exclude-standard
 | 계층 구조만 | `./gradlew :bootstrap:architectureTest` | `finish`가 Java·Gradle 변경 시 자동 실행 |
 | 운영 Python·셸 | 해당 `ops/tests` 검사, `bash -n`·ShellCheck | DB·Docker 호출 변경이면 실제 연동 |
 | Compose·이미지 | 파일 조합별 `docker compose config`, 정책 테스트 | [운영](../baton-watch-ops/SKILL.md) 스킬 |
-| 부하·복구 | `processRecoveryTest`, `loadTest`, `runtimeLoadTest`, `capacityTest` | 리스·종료·일정·동시성 변경 또는 측정 요청 시 |
+| 부하·복구 | `processRecoveryTest`, `loadTest`, `runtimeLoadTest` | 리스·종료·일정·동시성 변경 또는 측정 요청 시 |
 
 영역별 테스트 클래스는 [API](../baton-watch-api-contract/SKILL.md), [영속성](../baton-watch-persistence/SKILL.md), [외부 통신](../baton-watch-outbound-http/SKILL.md), [관측성](../baton-watch-observability/SKILL.md) 스킬을 따른다.
 

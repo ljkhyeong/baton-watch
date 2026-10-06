@@ -169,9 +169,7 @@ final class MonitoringMetrics {
 
     void updateEventDeliveryBacklog(EventDeliveryBacklog backlog) {
         eventDeliveryBacklog.set(backlog.pendingCount());
-        oldestEventAgeSeconds.set(backlog.oldestEventAge()
-                .map(Duration::toSeconds)
-                .orElse(0L));
+        oldestEventAgeSeconds.set(backlog.oldestEventAge().toSeconds());
     }
 
     void updateDatabaseClockOffset(Duration offset) {

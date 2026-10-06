@@ -14,7 +14,6 @@ import com.personal.baton.watch.application.monitoring.port.out.MonitorPersisten
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
-import com.personal.baton.watch.domain.monitoring.HealthDerivationPolicy;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
@@ -32,14 +31,12 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
 
     private final JdbcClient jdbc;
     private final TransactionOperations transactions;
-    private final HealthDerivationPolicy healthPolicy;
     private final JdbcHealthChangeEventAppender eventAppender;
 
     public JdbcMonitorPersistenceAdapter(
             JdbcClient jdbc, TransactionOperations transactions) {
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
         this.transactions = Objects.requireNonNull(transactions, "transactions");
-        this.healthPolicy = new HealthDerivationPolicy();
         this.eventAppender = new JdbcHealthChangeEventAppender(jdbc);
     }
 
@@ -269,7 +266,7 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
                 .list();
 
         for (MonitorRow monitor : stale) {
-            HealthDerivation markedStale = healthPolicy.markStale(monitor.derivation());
+            HealthDerivation markedStale = monitor.derivation().stale();
             jdbc.sql("""
                             UPDATE watch_monitor
                             SET current_health = ?, consecutive_failures = ?, updated_at = ?

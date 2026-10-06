@@ -172,7 +172,6 @@ Java·빌드 변경은 ArchUnit으로 계층 방향과 어댑터 간 직접 의�
 ~~~bash
 ./gradlew :adapter-out-persistence:loadTest --no-daemon
 ./gradlew :bootstrap:runtimeLoadTest --no-daemon
-./gradlew :bootstrap:capacityTest --no-daemon
 ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
 python3 ops/tests/gateway-test.py
@@ -309,7 +308,6 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 배포 파일 제공과 실제 가동·인증·외부 접속 검증은 구분합니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
-- [운영 기본 설정의 용량 참고 시험](docs/runbooks/capacity-test.md)
 - [BATON 연동 확인과 복구 조건](docs/runbooks/baton-integration-review.md)
 - [BATON 자료 상태·재점검의 공개 HTTPS 검증](docs/runbooks/baton-resource-health-verification.md)
 - [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md)

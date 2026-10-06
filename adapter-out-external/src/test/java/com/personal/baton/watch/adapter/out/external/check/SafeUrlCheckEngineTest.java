@@ -176,16 +176,6 @@ class SafeUrlCheckEngineTest {
     }
 
     @Test
-    void rejectsAHistoricalUnsafeTargetBeforeDnsOrConnection() throws Exception {
-
-        CheckObservation observation = engine().check(new TargetUrl("https://example.com/%0d%0aHost:internal"));
-
-        assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
-        assertEquals(List.of(), dns.hostnames);
-        assertEquals(0, transport.targets.size());
-    }
-
-    @Test
     void stopsAfterThreeFollowedRedirects() throws Exception {
         transport.add(redirect(301, "https://one.example/"));
         transport.add(redirect(302, "https://two.example/"));

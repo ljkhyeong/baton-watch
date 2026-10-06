@@ -13,7 +13,7 @@ final class DeliveryEndpointPolicy {
     ValidatedDeliveryEndpoint validate(URI endpoint) {
         final TargetUrl target;
         try {
-            target = new TargetUrl(endpoint.toString()).requireSafeEncodedCharacters();
+            target = new TargetUrl(endpoint.toString());
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException(REJECTION_MESSAGE);
         }

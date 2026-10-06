@@ -3,7 +3,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
@@ -73,29 +72,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         WHERE resource_reference = 'resource:database-time'
                         """, OffsetDateTime.class).toInstant())
                 .isEqualTo(leaseExpiresAt);
-    }
-
-    @Test
-    void claimsHistoricalUnsafeTargetWithoutRollingBackOtherDueWork() {
-        String historicalTarget = "https://legacy.example/%0d%0aHost:internal";
-        synchronize("resource:a-legacy", 1, "https://legacy.example/path", BASE_TIME);
-        synchronize("resource:b-current", 1, "https://current.example/path", BASE_TIME);
-        jdbc.update(
-                "UPDATE watch_monitor SET target_url = ? WHERE resource_reference = ?",
-                historicalTarget,
-                "resource:a-legacy");
-
-        List<ClaimedCheck> claims = List.of(claimOne(), claimOne());
-
-        assertThat(claims)
-                .extracting(claim -> claim.targetUrl().value())
-                .containsExactly(historicalTarget, "https://current.example/path");
-        assertThat(jdbc.query(
-                "SELECT resource_reference, source_revision, target_url FROM watch_attempt ORDER BY resource_reference",
-                (resultSet, row) -> tuple(resultSet.getString(1), resultSet.getLong(2), resultSet.getString(3))))
-                .containsExactly(
-                        tuple("resource:a-legacy", 1L, historicalTarget),
-                        tuple("resource:b-current", 1L, "https://current.example/path"));
     }
 
     @Test

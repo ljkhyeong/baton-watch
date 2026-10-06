@@ -28,15 +28,6 @@ class MonitoringApplicationModelTest {
                 REFERENCE, REVISION, MonitoringState.INACTIVE, Optional.of(TARGET)));
     }
 
-    @Test
-    void synchronizationRejectsTargetsThatAreUnsafeForOutboundChecks() {
-        TargetUrl historicalTarget = new TargetUrl("https://example.com/%0d%0aHost:internal");
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> SynchronizeMonitorCommand.active(REFERENCE, REVISION, historicalTarget));
-    }
-
     @ParameterizedTest
     @CsvSource({
         "200, SUCCESS",

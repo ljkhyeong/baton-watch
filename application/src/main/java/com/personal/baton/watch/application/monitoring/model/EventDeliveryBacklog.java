@@ -1,7 +1,7 @@
 package com.personal.baton.watch.application.monitoring.model;
 
 import java.time.Duration;
-import java.util.Optional;
 
-public record EventDeliveryBacklog(long pendingCount, Optional<Duration> oldestEventAge) {
+/** 미전달 이벤트가 없으면 {@code oldestEventAge}는 0이다. */
+public record EventDeliveryBacklog(long pendingCount, Duration oldestEventAge) {
 }

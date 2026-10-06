@@ -9,7 +9,6 @@ import java.util.Locale;
 final class TargetUriPolicy {
 
     ValidatedUri prepare(TargetUrl targetUrl) {
-        targetUrl.requireSafeEncodedCharacters();
         URI uri = targetUrl.uri();
         String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
         String hostname = uri.getHost();

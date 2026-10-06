@@ -16,8 +16,7 @@ public record TargetUrl(String value) {
     private static final Pattern UNSAFE_ESCAPE = Pattern.compile("%(?:[01]\\p{XDigit}|7[Ff]|5[Cc])");
 
     public TargetUrl {
-        Objects.requireNonNull(value, "value");
-        validateRawCharacters(value);
+        requireSafeReferenceCharacters(value);
         validateUri(parse(value));
     }
 
@@ -25,17 +24,13 @@ public record TargetUrl(String value) {
         return parse(value);
     }
 
-    /** 기존 DB 값은 읽을 수 있도록, 인코딩된 문자 검증을 생성자와 분리한다. */
-    public TargetUrl requireSafeEncodedCharacters() {
-        validateEncodedCharacters(value);
-        return this;
-    }
-
-    /** 정규화 전의 대상 URL 또는 리다이렉트 주소에서 허용하지 않는 문자를 검사한다. */
+    /** 대상 URL과 정규화 전 리다이렉트 주소에서 허용하지 않는 원문·인코딩 문자를 검사한다. */
     public static void requireSafeReferenceCharacters(String value) {
         Objects.requireNonNull(value, "value");
         validateRawCharacters(value);
-        validateEncodedCharacters(value);
+        if (UNSAFE_ESCAPE.matcher(value).find()) {
+            throw invalid();
+        }
     }
 
     @Override
@@ -50,12 +45,6 @@ public record TargetUrl(String value) {
                         codePoint == '\\'
                                 || Character.isISOControl(codePoint)
                                 || Character.getType(codePoint) == Character.SURROGATE)) {
-            throw invalid();
-        }
-    }
-
-    private static void validateEncodedCharacters(String value) {
-        if (UNSAFE_ESCAPE.matcher(value).find()) {
             throw invalid();
         }
     }

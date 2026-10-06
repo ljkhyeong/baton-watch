@@ -33,16 +33,12 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             Duration checkInterval,
             Duration internalFailureRetryInterval,
             int batchSize) {
-        this.persistence = Objects.requireNonNull(persistence, "persistence");
-        this.checker = Objects.requireNonNull(checker, "checker");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.leaseDuration = TimeBoundaryPolicy.requireSupportedOffset(leaseDuration, "leaseDuration");
-        this.checkInterval = TimeBoundaryPolicy.requireSupportedOffset(checkInterval, "checkInterval");
-        this.internalFailureRetryInterval = TimeBoundaryPolicy.requireSupportedOffset(
-                internalFailureRetryInterval, "internalFailureRetryInterval");
-        if (batchSize <= 0) {
-            throw new IllegalArgumentException("batchSize must be positive");
-        }
+        this.persistence = persistence;
+        this.checker = checker;
+        this.clock = clock;
+        this.leaseDuration = leaseDuration;
+        this.checkInterval = checkInterval;
+        this.internalFailureRetryInterval = internalFailureRetryInterval;
         this.batchSize = batchSize;
     }
 

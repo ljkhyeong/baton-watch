@@ -25,8 +25,8 @@ class MonitoringValueTypesTest {
     void acceptsAbsoluteHttpTargetsWithDefaultPortsAndQueries() {
         new TargetUrl("http://example.com:80/health?detail=short");
         new TargetUrl("https://status.example.com:443");
-        new TargetUrl("https://example.com/a%20path?literal=%25").requireSafeEncodedCharacters();
-        new TargetUrl("https://example.com/자료/\uD83D\uDE00?검색=한글").requireSafeEncodedCharacters();
+        new TargetUrl("https://example.com/a%20path?literal=%25");
+        new TargetUrl("https://example.com/자료/\uD83D\uDE00?검색=한글");
         String prefix = "https://example.com/";
         new TargetUrl(prefix + "a".repeat(TargetUrl.MAX_LENGTH - prefix.length()));
         assertThrows(
@@ -65,17 +65,7 @@ class MonitoringValueTypesTest {
             "https://example.com/?query=\uDFFF",
             "https://example.com%2e.evil.example/health",
             "https:///missing-host",
-            "https://example.com:443:443/health"
-        };
-
-        for (String target : invalidTargets) {
-            assertThrows(IllegalArgumentException.class, () -> new TargetUrl(target));
-        }
-    }
-
-    @Test
-    void rehydratesHistoricalTargetsButRejectsUnsafeEscapesBeforeOutboundUse() {
-        String[] unsafeTargets = {
+            "https://example.com:443:443/health",
             "https://example.com/%00",
             "https://example.com/%1f",
             "https://example.com/%7F",
@@ -83,9 +73,8 @@ class MonitoringValueTypesTest {
             "https://example.com/%5C%5Cevil.example"
         };
 
-        for (String value : unsafeTargets) {
-            TargetUrl historicalTarget = new TargetUrl(value);
-            assertThrows(IllegalArgumentException.class, historicalTarget::requireSafeEncodedCharacters);
+        for (String target : invalidTargets) {
+            assertThrows(IllegalArgumentException.class, () -> new TargetUrl(target));
         }
     }
 

@@ -3,14 +3,12 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChangeEventSender;
 import com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
-import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEventsUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.EventDeliveryMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
+import com.personal.baton.watch.application.monitoring.service.EventDeliveryMaintenanceService;
 import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetryPolicy;
-import com.personal.baton.watch.application.monitoring.service.GetEventDeliveryBacklogService;
-import com.personal.baton.watch.application.monitoring.service.PurgeDeliveredEventsService;
 import com.personal.baton.watch.application.monitoring.service.RunEventDeliveriesService;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -108,18 +106,12 @@ class EventDeliveryConfiguration {
     }
 
     @Bean
-    PurgeDeliveredEventsUseCase purgeDeliveredEventsUseCase(
+    EventDeliveryMaintenanceUseCase eventDeliveryMaintenanceUseCase(
             HealthChangeEventDeliveryPersistencePort persistence,
             Clock clock,
             EventDeliveryProperties properties) {
-        return new PurgeDeliveredEventsService(
+        return new EventDeliveryMaintenanceService(
                 persistence, clock, properties.retention(), properties.maintenanceBatchSize());
-    }
-
-    @Bean
-    GetEventDeliveryBacklogUseCase getEventDeliveryBacklogUseCase(
-            HealthChangeEventDeliveryPersistencePort persistence, Clock clock) {
-        return new GetEventDeliveryBacklogService(persistence, clock);
     }
 
     static final class EnabledCondition implements Condition {

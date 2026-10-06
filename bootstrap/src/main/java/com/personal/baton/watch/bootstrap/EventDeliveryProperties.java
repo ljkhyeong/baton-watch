@@ -1,7 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -22,12 +21,12 @@ public record EventDeliveryProperties(
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration leaseDuration,
         @NotNull @DurationMin(seconds = 5) Duration initialRetryDelay,
         @NotNull @DurationMin(seconds = 5) Duration maxRetryDelay,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration retention,
         @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,

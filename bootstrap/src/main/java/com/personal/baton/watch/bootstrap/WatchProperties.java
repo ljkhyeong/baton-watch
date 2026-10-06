@@ -1,7 +1,6 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,24 +22,26 @@ public record WatchProperties(
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration leaseDuration,
         @NotNull @DurationMin(seconds = 60)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration checkInterval,
         @NotNull @DurationMin(seconds = 30)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration internalFailureRetryInterval,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration staleAfter,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration retention,
         @Min(1) @Max(MAX_CHECK_BATCH_SIZE) int checkBatchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
 
+    /** 시각에 더하거나 빼는 양의 기간 설정 상한이다. */
+    static final long MAX_TIME_OFFSET_DAYS = 365;
     static final int MAX_CHECK_BATCH_SIZE = 100;
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
     static final int MAX_API_TOKEN_LENGTH = 200;

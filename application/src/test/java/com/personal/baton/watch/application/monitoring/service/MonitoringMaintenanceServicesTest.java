@@ -21,31 +21,40 @@ class MonitoringMaintenanceServicesTest {
     private static final Instant NOW = Instant.parse("2026-08-01T12:00:00Z");
 
     @Test
-    void staleSweepUsesFixedClockThresholdAndBatchBound() {
-        RecordingMonitorPersistence persistence = new RecordingMonitorPersistence();
-        MarkStaleProjectionsService service = new MarkStaleProjectionsService(
-                persistence, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(10), 25);
+    void staleSweepAndRetentionUseTheirOwnFixedClockCutoffsAndBatchBound() {
+        RecordingMonitorPersistence monitors = new RecordingMonitorPersistence();
+        RecordingCheckWorkPersistence checkWork = new RecordingCheckWorkPersistence();
+        checkWork.purgedAttempts = 3;
+        MonitoringMaintenanceService service = new MonitoringMaintenanceService(
+                monitors,
+                checkWork,
+                () -> NOW,
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                Duration.ofMinutes(10),
+                Duration.ofDays(30),
+                25);
 
-        int changed = service.markStaleProjectionsUnknown();
+        assertEquals(2, service.markStaleProjectionsUnknown());
+        assertEquals(NOW.minus(Duration.ofMinutes(10)), monitors.staleBefore);
+        assertEquals(NOW, monitors.markedAt);
+        assertEquals(25, monitors.limit);
 
-        assertEquals(2, changed);
-        assertEquals(NOW.minus(Duration.ofMinutes(10)), persistence.staleBefore);
-        assertEquals(NOW, persistence.markedAt);
-        assertEquals(25, persistence.limit);
+        assertEquals(3, service.purgeAttemptHistory());
+        assertEquals(NOW.minus(Duration.ofDays(30)), checkWork.completedBefore);
+        assertEquals(25, checkWork.limit);
     }
 
     @Test
-    void retentionCleanupUsesFixedClockCutoffAndBatchBound() {
-        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence();
-        persistence.purgedAttempts = 3;
-        PurgeAttemptHistoryService service = new PurgeAttemptHistoryService(
-                persistence, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofDays(30), 100);
+    void calculatesSignedDatabaseOffsetFromTheLocalMeasurementMidpoint() {
+        Instant before = Instant.parse("2026-08-01T00:00:00Z");
+        Instant after = before.plusSeconds(4);
 
-        int purged = service.purgeAttemptHistory();
-
-        assertEquals(3, purged);
-        assertEquals(NOW.minus(Duration.ofDays(30)), persistence.completedBefore);
-        assertEquals(100, persistence.limit);
+        assertEquals(
+                Duration.ofSeconds(1),
+                MonitoringMaintenanceService.clockOffset(before, before.plusSeconds(1), after));
+        assertEquals(
+                Duration.ofSeconds(-1),
+                MonitoringMaintenanceService.clockOffset(before, before.plusSeconds(3), after));
     }
 
     private static final class RecordingMonitorPersistence implements MonitorPersistencePort {

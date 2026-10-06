@@ -30,14 +30,11 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             Duration leaseDuration,
             EventDeliveryRetryPolicy retryPolicy,
             int batchSize) {
-        this.persistence = Objects.requireNonNull(persistence, "persistence");
-        this.sender = Objects.requireNonNull(sender, "sender");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.leaseDuration = TimeBoundaryPolicy.requireSupportedOffset(leaseDuration, "leaseDuration");
-        this.retryPolicy = Objects.requireNonNull(retryPolicy, "retryPolicy");
-        if (batchSize <= 0) {
-            throw new IllegalArgumentException("batchSize must be positive");
-        }
+        this.persistence = persistence;
+        this.sender = sender;
+        this.clock = clock;
+        this.leaseDuration = leaseDuration;
+        this.retryPolicy = retryPolicy;
         this.batchSize = batchSize;
     }
 
