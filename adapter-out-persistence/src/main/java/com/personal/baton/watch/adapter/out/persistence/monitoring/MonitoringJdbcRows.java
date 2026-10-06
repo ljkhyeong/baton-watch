@@ -29,7 +29,8 @@ final class MonitoringJdbcRows {
             next_check_at,
             lease_token,
             lease_attempt_id,
-            lease_expires_at
+            lease_expires_at,
+            last_check_requested_at
             """;
 
     private MonitoringJdbcRows() {
@@ -50,7 +51,8 @@ final class MonitoringJdbcRows {
                 instant(resultSet, "next_check_at"),
                 resultSet.getObject("lease_token", UUID.class),
                 resultSet.getObject("lease_attempt_id", UUID.class),
-                instant(resultSet, "lease_expires_at"));
+                instant(resultSet, "lease_expires_at"),
+                instant(resultSet, "last_check_requested_at"));
     }
 
     static JdbcClient.MappedQuerySpec<MonitorRow> lockMonitor(JdbcClient jdbc, String resourceReference) {
@@ -82,7 +84,8 @@ final class MonitoringJdbcRows {
             Instant nextCheckAt,
             UUID leaseToken,
             UUID leaseAttemptId,
-            Instant leaseExpiresAt) {
+            Instant leaseExpiresAt,
+            Instant lastCheckRequestedAt) {
 
         HealthDerivation derivation() {
             return new HealthDerivation(health, consecutiveFailures);

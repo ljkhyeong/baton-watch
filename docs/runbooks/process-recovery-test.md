@@ -51,5 +51,5 @@ Java 21과 실행 중인 Docker가 필요하다.
 시험용 수신 서버는 BATON의 DB 기반 중복 처리를 검증하지 않는다. 이 시험에서는
 WATCH 프로세스 중단 후 리스 회수와 동일 이벤트 재전달을 확인한다. 실제 BATON의
 중복 처리 방지·이벤트 반영, 운영 Hikari 풀, 호스트 중단과 운영 처리량은 별도 검증이
-필요하다. [부하 시험](load-recovery-test.md)과
+필요하다. [전체 런타임 부하 시험](runtime-load-test.md)과
 [공개 전달 검증](public-staging-event-delivery.md)의 범위를 함께 참고한다.

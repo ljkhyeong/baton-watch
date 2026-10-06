@@ -40,12 +40,13 @@ public final class MonitoringRecoveryProcess {
         var driverProperties = new Properties();
         driverProperties.setProperty("connectTimeout", "3");
         driverProperties.setProperty("socketTimeout", "10");
+        driverProperties.setProperty("options", "-c lock_timeout=1000ms");
         dataSource.setConnectionProperties(driverProperties);
         var template = new JdbcTemplate(dataSource);
         template.setQueryTimeout(5);
         var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         transaction.setTimeout(5);
-        var transactions = new PostgresTransactionOperations(template, transaction, Duration.ofSeconds(1));
+        var transactions = new PostgresTransactionOperations(transaction);
         var jdbc = JdbcClient.create(template);
         Clock clock = Clock.fixed(Instant.parse(System.getenv("WATCH_RECOVERY_TIME")), ZoneOffset.UTC);
 

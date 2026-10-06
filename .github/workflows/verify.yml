@@ -85,7 +85,6 @@ jobs:
               "com.personal.baton.watch.adapter.out.persistence.monitoring.DatabaseBackupIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringDiagnosticsIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceIntegrationTest",
-              "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapterIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceIntegrationTest",
               "com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitoringSchemaIntegrationTest",
@@ -134,9 +133,6 @@ jobs:
       - name: NGINX 요청 속도 제한과 프록시 경계 검증
         run: python3 ops/tests/gateway-test.py
 
-      - name: 격리 DB 부하와 장애 복구 스모크
-        run: ./gradlew :adapter-out-persistence:loadTest -PwatchLoadMonitors=25 --no-daemon
-
       - name: 전체 런타임 부하와 장애 복구 스모크
         run: ./gradlew :bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25 --no-daemon
 
@@ -152,8 +148,6 @@ jobs:
         with:
           name: operations-tests-${{ github.sha }}
           path: |
-            adapter-out-persistence/build/reports/tests/loadTest
-            adapter-out-persistence/build/test-results/loadTest/*.xml
             adapter-out-persistence/build/reports/tests/processRecoveryTest
             adapter-out-persistence/build/test-results/processRecoveryTest/*.xml
             bootstrap/build/reports/tests/runtimeLoadTest

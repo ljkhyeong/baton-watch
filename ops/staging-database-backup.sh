@@ -95,7 +95,7 @@ verify_backup() {
         --no-psqlrc --set=ON_ERROR_STOP=1 --quiet --tuples-only --no-align \
         --username=watch_restore --dbname=baton_watch \
         <"$SCRIPT_DIR/verify-restored-database.sql" >"$TEMP_DIR/evidence" 2>"$TEMP_DIR/verify.log"; then
-        fail '복원 데이터 확인 실패: 마이그레이션 이력 또는 백로그 요약이 올바르지 않습니다'
+        fail '복원 데이터 확인 실패: 마이그레이션 이력이 올바르지 않습니다'
     fi
     cat "$TEMP_DIR/evidence"
 }

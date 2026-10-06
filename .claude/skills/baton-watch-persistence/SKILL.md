@@ -17,7 +17,7 @@ description: BATON WATCH의 SQL, Flyway 마이그레이션(`db/migration/V*__*.s
 | 저장소 구현 | `adapter-out-persistence/.../persistence/monitoring/Jdbc*`, `MonitoringJdbcRows`, `PostgresTransactionOperations` |
 | 출력 포트 | `application/.../monitoring/port/out/*PersistencePort` |
 | 진단·백업·복원 | `ops/monitor-diagnostics.sql`, `ops/staging-database-backup.sh`, `ops/verify-restored-database.sql`, `ops/compose.restore-test.yml` |
-| 통합 테스트 | `adapter-out-persistence` 테스트. `SharedPostgresExtension`이 Testcontainers PostgreSQL을 띄운다 |
+| 통합 테스트 | `adapter-out-persistence` 테스트. `PostgresPersistenceIntegrationTestSupport`의 싱글턴 Testcontainers PostgreSQL을 JVM당 한 번 띄운다. 이미지는 Gradle 테스트 태스크가 Dockerfile `postgres` 단계에서 넘긴다 |
 
 ## 규칙
 
@@ -39,5 +39,5 @@ python3 ops/run-validation.py run --label <주제>-persistence -- ./gradlew :ada
 
 - 변경한 경합·중복 완료·리스 복구·재시도·보존 시간 경계를 실제 PostgreSQL로 검증한다. 시간 경계는 고정 `Clock`으로 확인한다.
 - Docker가 없어 Testcontainers가 실패하면 환경 차단으로 보고한다. DB 테스트를 건너뛰어 성공 처리하지 않는다.
-- 리스·종료·동시성 동작을 바꾸면 `./gradlew :adapter-out-persistence:processRecoveryTest`, 처리량에 영향이 있으면 `:adapter-out-persistence:loadTest -PwatchLoadMonitors=25`를 추가한다.
+- 리스·종료·동시성 동작을 바꾸면 `./gradlew :adapter-out-persistence:processRecoveryTest`, 처리량에 영향이 있으면 `:bootstrap:runtimeLoadTest -PwatchRuntimeLoadMonitors=25`를 추가한다.
 - 진단 SQL을 바꾸면 읽기 전용 여부와 잠금 시간 제한을 [진단 절차](../../../docs/runbooks/check-control-and-diagnostics.md)와 대조한다.

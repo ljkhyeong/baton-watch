@@ -70,9 +70,8 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
   시도 조회·삽입·보존 삭제, 결과 조회·삽입, 이벤트 조회·삽입·보존 삭제와
   지정된 전달 메타데이터 열 갱신만 허용받습니다. 불변 시도·결과 열과 이벤트 페이로드
-  열은 갱신할 수 없습니다. `flyway_schema_history`를 읽거나 변경할 수 없고,
-  `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접 변경하거나
-  보호된 트리거 함수를 직접 실행할 수 없습니다. `PUBLIC`과 런타임 역할의
+  열은 갱신할 수 없습니다. `flyway_schema_history`를 읽거나 변경할 수 없고
+  `public` 함수를 실행할 수 없습니다. `PUBLIC`과 런타임 역할의
   데이터베이스 `TEMPORARY` 권한도 회수합니다.
 - WATCH는 호스트 포트를 공개하지 않고 `watch-db`와 `watch-edge`에 참여하며,
   해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
@@ -570,7 +569,7 @@ shasum -a 256 "$BACKUP_FILE"
 PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미지가 없으면
 최초 실행 시 내려받습니다. 운영 볼륨·호스트 포트·외부 네트워크는 연결하지
 않습니다. 원본 DB가 아니라 이 임시 컨테이너에 `pg_restore`를 실행하고,
-마이그레이션 성공 이력과 실제 미전달 이벤트·백로그 요약의 일치를 확인합니다.
+마이그레이션 성공 이력을 확인합니다.
 모니터·시도·결과·대기/완료 이벤트·전달 시도 합계만 출력하고 임시 환경을 삭제합니다.
 
 복원 환경은 메모리 1.5GiB, 데이터·WAL을 포함한 임시 저장 공간 1GiB로 제한합니다.
@@ -654,14 +653,12 @@ RUNTIME_PRIVILEGE_EVIDENCE="$(
     "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event', 'DELETE')," \
     "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'changed_at', 'UPDATE')," \
     "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'delivery_status', 'UPDATE')," \
-    "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT')," \
-    "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event_backlog', 'UPDATE')," \
-    "  has_function_privilege(:'runtime_role', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" |
+    "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT'));" |
   staging_compose exec -T --env WATCH_DB_RUNTIME_USER="$WATCH_DB_RUNTIME_USER" \
     postgres sh -c \
     'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --set=runtime_role="$WATCH_DB_RUNTIME_USER"'
 )"
-test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
+test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f'
 ~~~
 
 데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
@@ -670,9 +667,8 @@ test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
 확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
 `TEMPORARY`, 모니터 조회와 삭제 거부, 시도 보존 삭제와 불변 열 갱신 거부,
 결과 삽입과 갱신 거부, 이벤트 보존 삭제와 페이로드 열 갱신 거부, 전달 상태 열
-갱신, `flyway_schema_history` 조회 거부, 백로그 요약 직접 변경 거부와 보호된
-함수 직접 실행 거부가 순서대로
-`f|t|f|t|f|t|f|t|f|t|f|f|f`인지 직접 검증합니다.
+갱신, `flyway_schema_history` 조회 거부가 순서대로
+`f|t|f|t|f|t|f|t|f|t|f`인지 직접 검증합니다.
 
 ## 데이터베이스 비밀번호 교체
 

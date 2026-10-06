@@ -38,7 +38,8 @@ class PersistenceRuntimeConfigurationTest {
                     .containsEntry("loginTimeout", "5")
                     .containsEntry("socketTimeout", "10")
                     .containsEntry("cancelSignalTimeout", "3")
-                    .containsEntry("tcpKeepAlive", "true");
+                    .containsEntry("tcpKeepAlive", "true")
+                    .containsEntry("options", "-c lock_timeout=1000ms");
         });
     }
 
@@ -53,7 +54,8 @@ class PersistenceRuntimeConfigurationTest {
                         "watch.database.idle-timeout-millis=59000",
                         "watch.database.max-lifetime-millis=60000",
                         "watch.database.keepalive-time-millis=30000",
-                        "watch.database.socket-timeout-seconds=20")
+                        "watch.database.socket-timeout-seconds=20",
+                        "watch.persistence.lock-timeout=250ms")
                 .run(context -> {
                     HikariDataSource dataSource = context.getBean(HikariDataSource.class);
                     assertThat(dataSource.getMaximumPoolSize()).isEqualTo(12);
@@ -63,7 +65,8 @@ class PersistenceRuntimeConfigurationTest {
                     assertThat(dataSource.getIdleTimeout()).isEqualTo(59_000L);
                     assertThat(dataSource.getMaxLifetime()).isEqualTo(60_000L);
                     assertThat(dataSource.getDataSourceProperties())
-                            .containsEntry("socketTimeout", "20");
+                            .containsEntry("socketTimeout", "20")
+                            .containsEntry("options", "-c lock_timeout=250ms");
                 });
     }
 
@@ -93,14 +96,16 @@ class PersistenceRuntimeConfigurationTest {
                         "spring.datasource.hikari.maximum-pool-size=64",
                         "spring.datasource.hikari.connection-timeout=0",
                         "spring.datasource.hikari.initialization-fail-timeout=-1",
-                        "spring.datasource.hikari.data-source-properties.socketTimeout=0")
+                        "spring.datasource.hikari.data-source-properties.socketTimeout=0",
+                        "spring.datasource.hikari.data-source-properties.options=-c lock_timeout=0")
                 .run(context -> {
                     HikariDataSource dataSource = context.getBean(HikariDataSource.class);
                     assertThat(dataSource.getMaximumPoolSize()).isEqualTo(8);
                     assertThat(dataSource.getConnectionTimeout()).isEqualTo(3_000L);
                     assertThat(dataSource.getInitializationFailTimeout()).isEqualTo(5_000L);
                     assertThat(dataSource.getDataSourceProperties())
-                            .containsEntry("socketTimeout", "10");
+                            .containsEntry("socketTimeout", "10")
+                            .containsEntry("options", "-c lock_timeout=1000ms");
                 });
     }
 

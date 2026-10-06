@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
+import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTableWhere;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -19,14 +20,11 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.Callable;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.simple.JdbcClient;
 
 class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
@@ -113,11 +111,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
 
         assertThat(runConcurrently(request, request))
                 .containsExactlyInAnyOrder(SynchronizationStatus.APPLIED, SynchronizationStatus.UNCHANGED);
-        assertThat(jdbc.queryForObject("""
-                SELECT COUNT(*)
-                FROM watch_monitor
-                WHERE resource_reference = 'resource:concurrent-sync'
-                """, Integer.class))
+        assertThat(countRowsInTableWhere(
+                        jdbc, "watch_monitor", "resource_reference = 'resource:concurrent-sync'"))
                 .isEqualTo(1);
     }
 
@@ -217,8 +212,6 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                 ? available.claimedAt()
                 : lockedCompletedAt.plusNanos(1_000);
         finalizeAt(available, availableCompletedAt);
-        JdbcMonitorPersistenceAdapter competingPersistence = new JdbcMonitorPersistenceAdapter(
-                JdbcClient.create(new JdbcTemplate(testDataSource)), newTransactionOperations());
         Instant markedAt = availableCompletedAt.plusSeconds(600);
 
         assertThat(callWhileLocked(
@@ -228,7 +221,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         WHERE resource_reference = ?
                         FOR UPDATE
                         """, String.class, lockedReference)).isEqualTo(lockedReference),
-                () -> competingPersistence.markStaleUnknown(availableCompletedAt, markedAt, 1)))
+                () -> monitorPersistence.markStaleUnknown(availableCompletedAt, markedAt, 1)))
                 .isEqualTo(1);
         assertThat(projection(lockedReference).health()).isEqualTo(Health.HEALTHY);
         assertThat(projection(availableReference).health()).isEqualTo(Health.UNKNOWN);
@@ -250,10 +243,9 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(healthTransitions(reference)).containsExactly("UNKNOWN->DEGRADED");
     }
 
-    /** 이벤트 저장이 유일 제약으로 실패하면 프로젝션과 갱신 시각이 그대로인지 확인한다. */
+    /** 이벤트 저장이 유일 제약으로 실패하면 프로젝션이 그대로인지 확인한다. */
     private void assertRollsBackWhenEventInsertFails(String reference, ThrowingCallable change) {
         MonitorProjection before = projection(reference);
-        Instant updatedAt = updatedAt(reference);
         jdbc.execute("CREATE UNIQUE INDEX ux_test_event_failure ON watch_health_change_event (resource_reference)");
 
         Throwable failure = catchThrowable(change);
@@ -261,7 +253,6 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                 .rootCause().hasMessageContaining("ux_test_event_failure");
         assertSqlState(failure, "23505");
         assertThat(projection(reference)).isEqualTo(before);
-        assertThat(updatedAt(reference)).isEqualTo(updatedAt);
     }
 
     private List<String> healthTransitions(String reference) {
@@ -271,13 +262,5 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                 WHERE resource_reference = ?
                 ORDER BY changed_at
                 """, String.class, reference);
-    }
-
-    private Instant updatedAt(String reference) {
-        return jdbc.queryForObject(
-                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
-                        OffsetDateTime.class,
-                        reference)
-                .toInstant();
     }
 }

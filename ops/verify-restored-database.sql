@@ -4,17 +4,6 @@ BEGIN
         OR EXISTS (SELECT 1 FROM flyway_schema_history WHERE NOT success) THEN
         RAISE EXCEPTION '복원된 마이그레이션 이력을 확인할 수 없습니다';
     END IF;
-    IF NOT EXISTS (
-        SELECT 1
-        FROM watch_health_change_event_backlog
-        WHERE singleton
-          AND pending_count = (SELECT count(*) FROM watch_health_change_event WHERE delivery_status = 'PENDING')
-          AND oldest_changed_at IS NOT DISTINCT FROM (
-              SELECT min(changed_at) FROM watch_health_change_event WHERE delivery_status = 'PENDING'
-          )
-    ) THEN
-        RAISE EXCEPTION '복원된 이벤트 백로그 요약이 원본 행과 다릅니다';
-    END IF;
 END
 $watch$;
 

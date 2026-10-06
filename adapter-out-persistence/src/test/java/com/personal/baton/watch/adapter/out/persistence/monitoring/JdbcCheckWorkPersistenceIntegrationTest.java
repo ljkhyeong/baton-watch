@@ -108,11 +108,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void concurrentCheckClaimersReceiveDisjointMonitors() throws Exception {
         synchronize("resource:check-concurrent-1", 1, "https://one.example/path", BASE_TIME);
         synchronize("resource:check-concurrent-2", 1, "https://two.example/path", BASE_TIME);
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
 
         List<Optional<ClaimedCheck>> claims = runConcurrently(
                 () -> checkWorkPersistence.claimDueCheck(LEASE),
-                () -> anotherPersistence.claimDueCheck(LEASE));
+                () -> checkWorkPersistence.claimDueCheck(LEASE));
 
         assertThat(claims)
                 .extracting(claim -> claim.orElseThrow().targetUrl().value())
@@ -130,11 +129,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 "https://locked.example/path",
                 BASE_TIME.minusSeconds(1));
         synchronize(nextReference, 1, "https://next.example/path", BASE_TIME);
-        JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
 
         ClaimedCheck claim = callWhileLocked(
                 () -> assertThat(lockLeadingDueMonitor()).isEqualTo(lockedReference),
-                () -> competingPersistence.claimDueCheck(LEASE)).orElseThrow();
+                () -> checkWorkPersistence.claimDueCheck(LEASE)).orElseThrow();
 
         assertThat(claim.targetUrl().value()).isEqualTo("https://next.example/path");
         assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(1);
@@ -182,11 +180,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                 completedAt,
                 completedAt.plus(INTERVAL));
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
 
         assertThat(runConcurrently(
                         () -> checkWorkPersistence.finalizeCheck(finalization),
-                        () -> anotherPersistence.finalizeCheck(finalization)))
+                        () -> checkWorkPersistence.finalizeCheck(finalization)))
                 .containsExactlyInAnyOrder(
                         CheckFinalizationStatus.APPLIED,
                         CheckFinalizationStatus.ALREADY_FINALIZED);
@@ -270,7 +267,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         ClaimedCheck available = claimed("resource:purge-available");
         finalizeAt(locked, cutoff.minusSeconds(2));
         finalizeAt(available, cutoff.minusSeconds(1));
-        JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
 
         assertThat(callWhileLocked(
                 () -> assertThat(jdbc.queryForObject("""
@@ -279,7 +275,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         WHERE attempt_id = ?
                         FOR UPDATE
                         """, UUID.class, locked.attemptId())).isEqualTo(locked.attemptId()),
-                () -> competingPersistence.purgeAttempts(cutoff, 1)))
+                () -> checkWorkPersistence.purgeAttempts(cutoff, 1)))
                 .isEqualTo(1);
         assertThat(jdbc.queryForList(
                         "SELECT attempt_id FROM watch_attempt ORDER BY attempt_id", UUID.class))
@@ -299,10 +295,5 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 FOR UPDATE
                 """,
                 String.class);
-    }
-
-    private ClaimedCheck claimed(String reference) {
-        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
-        return claimOne();
     }
 }

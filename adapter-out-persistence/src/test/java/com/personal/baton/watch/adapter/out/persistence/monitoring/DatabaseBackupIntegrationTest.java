@@ -27,7 +27,7 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
         synchronize("backup-fixture", 1, "https://backup.example/private-query?token=fixture", BASE_TIME);
         var check = claimOne();
         finalizeAt(check, check.claimedAt());
-        var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+        var event = claimOneDelivery();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
                 EventDeliveryObservation.forHttpStatus(503, null), event.claimedAt(),
@@ -50,11 +50,8 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
     }
 
     @Test
-    void rejectsRestoredBacklogThatDoesNotMatchEvents() throws Exception {
-        jdbc.update("""
-                UPDATE watch_health_change_event_backlog
-                SET pending_count = 1, oldest_changed_at = transaction_timestamp()
-                """);
+    void rejectsRestoredDatabaseWithAFailedMigration() throws Exception {
+        jdbc.update("UPDATE flyway_schema_history SET success = FALSE");
         Path archive = temporary.resolve("inconsistent.dump");
         assertThat(runTool("create", POSTGRES.getContainerId(), archive.toString()).status()).isZero();
         var inconsistent = runTool("verify", archive.toString());

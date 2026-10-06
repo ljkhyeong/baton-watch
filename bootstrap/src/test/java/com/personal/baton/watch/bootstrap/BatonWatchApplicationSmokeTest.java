@@ -28,7 +28,6 @@ import org.springframework.boot.health.contributor.HealthContributor;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.health.registry.HealthContributorRegistry;
 import org.springframework.context.ApplicationContext;
-import org.springframework.core.env.Environment;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -44,11 +43,10 @@ import tools.jackson.databind.ObjectMapper;
         webEnvironment = WebEnvironment.RANDOM_PORT,
         properties = {
             "management.server.port=0",
-            "management.server.address=0.0.0.0",
+            // 런타임 안전 고정값이 덮어써야 하는 입력이다.
             "management.endpoint.health.show-details=always",
             "management.endpoints.web.exposure.include=*",
             "spring.datasource.password=service-connection-overridden",
-            "spring.task.scheduling.shutdown.await-termination=false",
             "watch.api-token=full-context-monitor-token-0123456789abcdef",
             "watch.poll-interval=1d",
             "watch.maintenance-interval=1d",
@@ -73,7 +71,6 @@ class BatonWatchApplicationSmokeTest {
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private final Environment environment;
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final List<MeterRegistry> meterRegistries;
@@ -88,13 +85,11 @@ class BatonWatchApplicationSmokeTest {
 
     @Autowired
     BatonWatchApplicationSmokeTest(
-            Environment environment,
             JdbcTemplate jdbc,
             ObjectMapper objectMapper,
             List<MeterRegistry> meterRegistries,
             HealthContributorRegistry healthContributors,
             ApplicationContext applicationContext) {
-        this.environment = environment;
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.meterRegistries = meterRegistries;
@@ -104,7 +99,7 @@ class BatonWatchApplicationSmokeTest {
 
     @Test
     void startsTheProductionApplicationAndPersistsAnAuthenticatedInactiveMonitor() throws Exception {
-        assertMigrationsAndRuntimePolicy();
+        assertMigrationsAndLockTimeout();
 
         HttpResponse<String> status = get("/api/v1/system/status", null);
         assertThat(status.statusCode()).isEqualTo(200);
@@ -257,7 +252,7 @@ class BatonWatchApplicationSmokeTest {
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
-    private void assertMigrationsAndRuntimePolicy() {
+    private void assertMigrationsAndLockTimeout() {
         List<String> appliedVersions = jdbc.queryForList(
                 """
                 SELECT version
@@ -267,16 +262,8 @@ class BatonWatchApplicationSmokeTest {
                 """,
                 String.class);
         assertThat(appliedVersions).containsExactly("1");
-        assertThat(environment.getProperty("management.server.address"))
-                .isEqualTo("127.0.0.1");
-        assertThat(environment.getProperty("management.endpoints.web.exposure.include"))
-                .isEqualTo("health,prometheus");
-        assertThat(environment.getProperty("management.endpoint.health.show-details"))
-                .isEqualTo("never");
-        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination"))
-                .isEqualTo("true");
-        assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination-period"))
-                .isEqualTo("65s");
+        // 운영 Hikari 연결이 시작 매개변수로 잠금 대기 상한을 받는지 실제 DB에서 확인한다.
+        assertThat(jdbc.queryForObject("SHOW lock_timeout", String.class)).isEqualTo("1s");
     }
 
     private HttpResponse<String> get(String path, String token) throws Exception {

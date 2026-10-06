@@ -13,50 +13,21 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 class PostgresReadDeadlineIntegrationTest
         extends MonitoringPersistenceIntegrationTestSupport {
 
-    private static final int READ_TIMEOUT_SECONDS = 1;
-
     @Test
     void boundsTheNonTransactionalProjectionRead() throws Exception {
-        JdbcTemplate boundedJdbc = boundedJdbc();
-        JdbcMonitorPersistenceAdapter boundedReads = new JdbcMonitorPersistenceAdapter(
-                JdbcClient.create(boundedJdbc), newTransactionOperations());
-
-        assertReadTimesOutWhileTableIsLocked(
-                "LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE",
-                () -> boundedReads.findProjection(new ResourceReference("resource:read-timeout")));
-
-        assertThat(boundedReads.findProjection(new ResourceReference("resource:read-timeout")))
-                .isEmpty();
-    }
-
-    @Test
-    void boundsTheJdbcClientBacklogReadThroughTheSharedJdbcTemplate() throws Exception {
-        JdbcTemplate boundedJdbc = boundedJdbc();
-        JdbcHealthChangeEventDeliveryAdapter boundedReads =
-                new JdbcHealthChangeEventDeliveryAdapter(
-                        JdbcClient.create(boundedJdbc), newTransactionOperations());
-
-        assertReadTimesOutWhileTableIsLocked(
-                "LOCK TABLE watch_health_change_event_backlog IN ACCESS EXCLUSIVE MODE",
-                boundedReads::getBacklogSnapshot);
-
-        assertThat(boundedReads.getBacklogSnapshot().pendingCount()).isZero();
-    }
-
-    private JdbcTemplate boundedJdbc() {
         JdbcTemplate boundedJdbc = new JdbcTemplate(testDataSource);
-        boundedJdbc.setQueryTimeout(READ_TIMEOUT_SECONDS);
-        return boundedJdbc;
-    }
+        boundedJdbc.setQueryTimeout(1);
+        JdbcMonitorPersistenceAdapter boundedReads = new JdbcMonitorPersistenceAdapter(
+                JdbcClient.create(boundedJdbc), transactionTemplate());
+        ResourceReference reference = new ResourceReference("resource:read-timeout");
 
-    private void assertReadTimesOutWhileTableIsLocked(
-            String lockSql, Runnable read) throws Exception {
-        withLockHeld(() -> jdbc.execute(lockSql), () -> {
+        withLockHeld(() -> jdbc.execute("LOCK TABLE watch_monitor IN ACCESS EXCLUSIVE MODE"), () -> {
             Throwable failure = assertTimeout(
-                    Duration.ofSeconds(3), () -> catchThrowable(read::run));
+                    Duration.ofSeconds(3), () -> catchThrowable(() -> boundedReads.findProjection(reference)));
 
             assertSqlState(failure, "57014");
         });
-    }
 
+        assertThat(boundedReads.findProjection(reference)).isEmpty();
+    }
 }

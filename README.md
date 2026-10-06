@@ -165,12 +165,11 @@ Java·빌드 변경은 ArchUnit으로 계층 방향과 어댑터 간 직접 의�
 ~~~
 
 일반 테스트는 실제 DB 백업·격리 복원과 읽기 전용 진단 CLI도 확인합니다. 별도 부하·복구 시험과 경보
-규칙 검사는 다음 명령으로 실행합니다. 부하 시험은 기본 100개 모니터를 사용하며
+규칙 검사는 다음 명령으로 실행합니다. 전체 런타임 부하 시험은 기본 25개 모니터를 사용하며
 운영 처리량이나 SLO를 인증하지 않습니다. 경보 검사는 수집기나 외부 알림을
 활성화하지 않습니다.
 
 ~~~bash
-./gradlew :adapter-out-persistence:loadTest --no-daemon
 ./gradlew :bootstrap:runtimeLoadTest --no-daemon
 ./gradlew :adapter-out-persistence:processRecoveryTest --no-daemon
 ./ops/tests/prometheus-rules-test.sh
@@ -307,7 +306,6 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 - [NGINX 요청 속도 제한 ADR](docs/ADR/0004_ingress-rate-limit/adr.md)
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 배포 파일 제공과 실제 가동·인증·외부 접속 검증은 구분합니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
-- [격리 DB 부하·장애 복구 시험](docs/runbooks/load-recovery-test.md)
 - [BATON 연동 확인과 복구 조건](docs/runbooks/baton-integration-review.md)
 - [BATON 자료 상태·재점검의 공개 HTTPS 검증](docs/runbooks/baton-resource-health-verification.md)
 - [전체 Spring 런타임 부하·복구 시험](docs/runbooks/runtime-load-test.md)

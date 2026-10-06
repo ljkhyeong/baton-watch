@@ -11,6 +11,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -24,8 +25,9 @@ final class BootstrapTestFixtures {
     }
 
     static PostgreSQLContainer postgres(String password) {
-        return new PostgreSQLContainer(DockerImageName.parse(
-                        "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
+        return new PostgreSQLContainer(DockerImageName.parse(Objects.requireNonNull(
+                        System.getProperty("watch.test.postgres-image"),
+                        "Gradle 테스트 태스크로 실행해야 합니다: watch.test.postgres-image 없음"))
                 .asCompatibleSubstituteFor("postgres"))
                 .withDatabaseName("baton_watch")
                 .withUsername("baton_watch")

@@ -19,7 +19,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -28,6 +27,16 @@ import org.springframework.transaction.support.TransactionOperations;
 
 /** 점검 점유·완료 처리와 보존 기간이 지난 시도 삭제를 담당한다. */
 public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersistencePort {
+
+    /** 선점과 일정 지연 게이지가 공유하는 선점 가능 점검 조건이다. 잠금 절은 넣지 않는다. */
+    private static final String CLAIMABLE_CHECK = """
+            FROM watch_monitor
+            WHERE monitor_status = 'ACTIVE'
+              AND next_check_at <= transaction_timestamp()
+              AND (lease_expires_at IS NULL OR lease_expires_at <= transaction_timestamp())
+            ORDER BY next_check_at, resource_reference
+            LIMIT 1
+            """;
 
     private final JdbcClient jdbc;
     private final TransactionOperations transactions;
@@ -42,14 +51,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     @Override
     public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
-        return transactions.execute(ignored -> {
-            Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
-                    .query(OffsetDateTime.class)
-                    .single()
-                    .toInstant();
-            Instant leaseUntil = claimedAt.plus(leaseDuration);
-            return claimInTransaction(claimedAt, leaseUntil);
-        });
+        return transactions.execute(ignored -> claimInTransaction(leaseDuration));
     }
 
     @Override
@@ -61,18 +63,8 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
     public Duration getOldestDueCheckDelay() {
         long delaySeconds = jdbc.sql("""
                         SELECT COALESCE((
-                            SELECT FLOOR(EXTRACT(EPOCH FROM (
-                                transaction_timestamp() - next_check_at
-                            )))::BIGINT
-                            FROM watch_monitor
-                            WHERE monitor_status = 'ACTIVE'
-                              AND next_check_at <= transaction_timestamp()
-                              AND (lease_expires_at IS NULL
-                                   OR lease_expires_at <= transaction_timestamp())
-                            ORDER BY next_check_at, resource_reference
-                            LIMIT 1
-                        ), 0)
-                        """)
+                            SELECT FLOOR(EXTRACT(EPOCH FROM (transaction_timestamp() - next_check_at)))::BIGINT
+                        """ + CLAIMABLE_CHECK + "), 0)")
                 .query(Long.class)
                 .single();
         return Duration.ofSeconds(delaySeconds);
@@ -128,25 +120,21 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 .update());
     }
 
-    private Optional<ClaimedCheck> claimInTransaction(
-            Instant claimedAt, Instant leaseUntil) {
-        Optional<MonitorRow> due = jdbc.sql(
-                        "SELECT " + MONITOR_COLUMNS + """
-                                 FROM watch_monitor
-                                 WHERE monitor_status = 'ACTIVE'
-                                   AND next_check_at <= ?
-                                   AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-                                 ORDER BY next_check_at, resource_reference
-                                 LIMIT 1
-                                 FOR UPDATE SKIP LOCKED
-                                """)
-                .params(databaseTime(claimedAt), databaseTime(claimedAt))
-                .query(MonitoringJdbcRows::mapMonitor)
-                .optional();
-        if (due.isEmpty()) {
+    private Optional<ClaimedCheck> claimInTransaction(Duration leaseDuration) {
+        ClaimableMonitor due = jdbc.sql("SELECT " + MONITOR_COLUMNS
+                        + ", transaction_timestamp() AS claimed_at\n"
+                        + CLAIMABLE_CHECK
+                        + "FOR UPDATE SKIP LOCKED")
+                .query((resultSet, row) -> new ClaimableMonitor(
+                        MonitoringJdbcRows.mapMonitor(resultSet, row), instant(resultSet, "claimed_at")))
+                .optional()
+                .orElse(null);
+        if (due == null) {
             return Optional.empty();
         }
-        MonitorRow monitor = due.orElseThrow();
+        MonitorRow monitor = due.monitor();
+        Instant claimedAt = due.claimedAt();
+        Instant leaseUntil = claimedAt.plus(leaseDuration);
 
         UUID attemptId = UUID.randomUUID();
         UUID leaseToken = UUID.randomUUID();
@@ -156,30 +144,27 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                             resource_reference,
                             source_revision,
                             target_url,
-                            lease_token,
                             claimed_at,
                             lease_expires_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?)
                         """)
                 .params(
                         attemptId,
                         monitor.resourceReference(),
                         monitor.sourceRevision().value(),
                         monitor.targetUrl(),
-                        leaseToken,
                         databaseTime(claimedAt),
                         databaseTime(leaseUntil))
                 .update();
         jdbc.sql("""
                         UPDATE watch_monitor
-                        SET lease_token = ?, lease_attempt_id = ?, lease_expires_at = ?, updated_at = ?
+                        SET lease_token = ?, lease_attempt_id = ?, lease_expires_at = ?
                         WHERE resource_reference = ?
                         """)
                 .params(
                         leaseToken,
                         attemptId,
                         databaseTime(leaseUntil),
-                        databaseTime(claimedAt),
                         monitor.resourceReference())
                 .update();
         return Optional.of(new ClaimedCheck(
@@ -192,12 +177,8 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
     private CheckFinalizationStatus finalizeInTransaction(
             CheckFinalization finalization) {
-        if (resultExists(finalization.attemptId())) {
-            return CheckFinalizationStatus.ALREADY_FINALIZED;
-        }
-
         AttemptRow attempt = jdbc.sql("""
-                        SELECT resource_reference, source_revision, lease_token, claimed_at
+                        SELECT resource_reference, source_revision, claimed_at
                         FROM watch_attempt
                         WHERE attempt_id = ?
                         """)
@@ -205,7 +186,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                 .query(JdbcCheckWorkPersistenceAdapter::mapAttempt)
                 .optional()
                 .orElse(null);
-        if (attempt == null || !attempt.leaseToken().equals(finalization.leaseToken())) {
+        if (attempt == null) {
             return CheckFinalizationStatus.STALE_CLAIM;
         }
         if (finalization.completedAt().isBefore(attempt.claimedAt())) {
@@ -214,6 +195,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
 
         MonitorRow monitor = lockMonitor(jdbc, attempt.resourceReference()).single();
 
+        // 잠금 대기 뒤 새 스냅샷에서 동시 완료를 판정한다.
         if (resultExists(finalization.attemptId())) {
             return CheckFinalizationStatus.ALREADY_FINALIZED;
         }
@@ -257,8 +239,7 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                             next_check_at = ?,
                             lease_token = NULL,
                             lease_attempt_id = NULL,
-                            lease_expires_at = NULL,
-                            updated_at = ?
+                            lease_expires_at = NULL
                         WHERE resource_reference = ?
                         """)
                 .params(
@@ -268,7 +249,6 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                         databaseTime(finalization.completedAt()),
                         databaseTime(lastConclusiveAt),
                         databaseTime(finalization.nextCheckAt()),
-                        databaseTime(finalization.completedAt()),
                         attempt.resourceReference())
                 .update();
 
@@ -304,14 +284,15 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
         return new AttemptRow(
                 resultSet.getString("resource_reference"),
                 new SourceRevision(resultSet.getLong("source_revision")),
-                resultSet.getObject("lease_token", UUID.class),
                 instant(resultSet, "claimed_at"));
     }
 
     private record AttemptRow(
             String resourceReference,
             SourceRevision sourceRevision,
-            UUID leaseToken,
             Instant claimedAt) {
+    }
+
+    private record ClaimableMonitor(MonitorRow monitor, Instant claimedAt) {
     }
 }

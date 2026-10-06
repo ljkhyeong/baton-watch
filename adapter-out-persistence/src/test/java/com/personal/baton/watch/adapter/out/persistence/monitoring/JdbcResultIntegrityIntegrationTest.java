@@ -15,9 +15,7 @@ class JdbcResultIntegrityIntegrationTest extends MonitoringPersistenceIntegratio
 
     @BeforeEach
     void storeSuccessfulCheck() {
-        synchronize(REFERENCE, 1, "https://example.com/", BASE_TIME);
-        var claim = claimOne();
-        finalizeAt(claim, claim.claimedAt());
+        createHealthChangeEvent(REFERENCE);
     }
 
     @ParameterizedTest

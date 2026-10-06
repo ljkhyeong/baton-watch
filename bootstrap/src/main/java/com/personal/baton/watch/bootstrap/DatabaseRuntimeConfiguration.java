@@ -3,6 +3,7 @@ package com.personal.baton.watch.bootstrap;
 import static org.postgresql.PGProperty.CANCEL_SIGNAL_TIMEOUT;
 import static org.postgresql.PGProperty.CONNECT_TIMEOUT;
 import static org.postgresql.PGProperty.LOGIN_TIMEOUT;
+import static org.postgresql.PGProperty.OPTIONS;
 import static org.postgresql.PGProperty.SOCKET_TIMEOUT;
 import static org.postgresql.PGProperty.TCP_KEEP_ALIVE;
 
@@ -18,14 +19,15 @@ import org.springframework.context.annotation.Configuration;
 
 /** Boot가 관리하는 연결 정보와 WATCH가 검증한 데이터베이스 실행 상한을 조립한다. */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(DatabaseRuntimeProperties.class)
+@EnableConfigurationProperties({DatabaseRuntimeProperties.class, PersistenceProperties.class})
 class DatabaseRuntimeConfiguration {
 
     @Bean
     HikariDataSource dataSource(
             DataSourceProperties dataSourceProperties,
             ObjectProvider<JdbcConnectionDetails> connectionDetailsProvider,
-            DatabaseRuntimeProperties runtime) {
+            DatabaseRuntimeProperties runtime,
+            PersistenceProperties persistence) {
         HikariDataSource dataSource = dataSourceProperties.initializeDataSourceBuilder()
                 .type(HikariDataSource.class)
                 .build();
@@ -52,6 +54,8 @@ class DatabaseRuntimeConfiguration {
         SOCKET_TIMEOUT.set(driverProperties, runtime.socketTimeoutSeconds());
         CANCEL_SIGNAL_TIMEOUT.set(driverProperties, runtime.cancelSignalTimeoutSeconds());
         TCP_KEEP_ALIVE.set(driverProperties, runtime.tcpKeepAlive());
+        // WATCH 전용 풀의 모든 연결에 시작부터 같은 잠금 대기 상한을 적용한다(값은 양의 정수 ms로 검증됨).
+        OPTIONS.set(driverProperties, "-c lock_timeout=" + persistence.lockTimeout().toMillis() + "ms");
         return dataSource;
     }
 

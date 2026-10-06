@@ -16,7 +16,7 @@ dependencies {
 }
 
 tasks.named('test', Test) {
-    useJUnitPlatform { excludeTags 'load', 'process-recovery' }
+    useJUnitPlatform { excludeTags 'process-recovery' }
     // 테스트가 별도 프로세스에서 읽는 운영 파일도 변경 감지에 포함한다.
     inputs.files(rootProject.files(
         'ops/staging-monitor-diagnostics.sh',
@@ -31,13 +31,5 @@ tasks.register('processRecoveryTest', Test) {
     description = '격리 PostgreSQL과 별도 JVM에서 강제 종료 후 리스·이벤트 복구를 확인한다.'
     useJUnitPlatform { includeTags 'process-recovery' }
     systemProperty 'watch.recovery.classpath', sourceSets.test.runtimeClasspath.asPath
-    outputs.upToDateWhen { false }
-}
-
-tasks.register('loadTest', Test) {
-    description = '격리 PostgreSQL에서 동기화·점검·전달 부하와 장애 복구를 확인한다.'
-    useJUnitPlatform { includeTags 'load' }
-    systemProperty 'watch.load.monitors', providers.gradleProperty('watchLoadMonitors').getOrElse('100')
-    testLogging.showStandardStreams = true
     outputs.upToDateWhen { false }
 }

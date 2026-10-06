@@ -15,6 +15,15 @@ allprojects {
     }
 }
 
+// 통합 테스트 PostgreSQL 이미지는 Dockerfile postgres 단계의 고정값 하나를 따른다.
+def postgresTestImage = providers.fileContents(layout.projectDirectory.file('Dockerfile')).asText.map { text ->
+    def matcher = text =~ /(?m)^FROM\s+(\S+)\s+AS\s+postgres\s*$/
+    if (!matcher.find()) {
+        throw new GradleException('Dockerfile에서 postgres 단계 이미지를 찾지 못했습니다.')
+    }
+    matcher.group(1)
+}
+
 subprojects {
     apply plugin: 'java-library'
     apply plugin: 'io.spring.dependency-management'
@@ -56,5 +65,6 @@ subprojects {
         testClassesDirs = sourceSets.test.output.classesDirs
         classpath = sourceSets.test.runtimeClasspath
         useJUnitPlatform()
+        systemProperty 'watch.test.postgres-image', postgresTestImage.get()
     }
 }

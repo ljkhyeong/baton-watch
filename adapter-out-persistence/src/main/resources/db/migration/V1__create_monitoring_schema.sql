@@ -26,8 +26,6 @@ CREATE TABLE watch_monitor (
     lease_token              UUID,
     lease_attempt_id         UUID,
     lease_expires_at         TIMESTAMPTZ,
-    created_at               TIMESTAMPTZ NOT NULL,
-    updated_at               TIMESTAMPTZ NOT NULL,
     last_check_requested_at  TIMESTAMPTZ,
     CONSTRAINT watch_monitor_target_matches_status CHECK (
         (monitor_status = 'ACTIVE' AND target_url IS NOT NULL AND next_check_at IS NOT NULL)
@@ -52,10 +50,6 @@ CREATE TABLE watch_monitor (
     )
 );
 
-CREATE UNIQUE INDEX ux_watch_monitor_lease_token
-    ON watch_monitor (lease_token)
-    WHERE lease_token IS NOT NULL;
-
 CREATE INDEX ix_watch_monitor_due
     ON watch_monitor (next_check_at, resource_reference)
     WHERE monitor_status = 'ACTIVE';
@@ -73,7 +67,6 @@ CREATE TABLE watch_attempt (
     resource_reference       VARCHAR(128) NOT NULL REFERENCES watch_monitor (resource_reference),
     source_revision          BIGINT NOT NULL CHECK (source_revision >= 0),
     target_url               VARCHAR(2048) NOT NULL,
-    lease_token              UUID NOT NULL UNIQUE,
     claimed_at               TIMESTAMPTZ NOT NULL,
     lease_expires_at         TIMESTAMPTZ NOT NULL,
     CONSTRAINT watch_attempt_lease_window CHECK (lease_expires_at > claimed_at)
@@ -205,133 +198,11 @@ CREATE UNIQUE INDEX ux_watch_health_change_event_attempt
 CREATE INDEX ix_watch_health_change_event_monitor
     ON watch_health_change_event (resource_reference, changed_at, event_id);
 
-CREATE UNIQUE INDEX ux_watch_health_event_delivery_lease
-    ON watch_health_change_event (delivery_lease_token)
-    WHERE delivery_lease_token IS NOT NULL;
-
 CREATE INDEX ix_watch_health_event_delivery_due
     ON watch_health_change_event (next_attempt_at, changed_at, event_id)
     INCLUDE (delivery_lease_expires_at)
     WHERE delivery_status = 'PENDING';
 
-CREATE INDEX ix_watch_health_event_delivery_pending_changed
-    ON watch_health_change_event (changed_at, event_id)
-    WHERE delivery_status = 'PENDING';
-
 CREATE INDEX ix_watch_health_event_delivery_retention
     ON watch_health_change_event (delivered_at, event_id)
     WHERE delivery_status = 'DELIVERED';
-
-CREATE TABLE watch_health_change_event_backlog (
-    singleton                BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
-    pending_count            BIGINT NOT NULL CHECK (pending_count >= 0),
-    oldest_changed_at        TIMESTAMPTZ,
-    CONSTRAINT watch_health_event_backlog_shape CHECK (
-        (pending_count = 0 AND oldest_changed_at IS NULL)
-        OR (pending_count > 0 AND oldest_changed_at IS NOT NULL)
-    )
-);
-
-INSERT INTO watch_health_change_event_backlog (singleton, pending_count, oldest_changed_at)
-VALUES (TRUE, 0, NULL);
-
-CREATE FUNCTION public.maintain_watch_health_change_event_backlog()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, pg_temp
-AS $$
-BEGIN
-    IF TG_OP = 'INSERT' AND NEW.delivery_status <> 'PENDING' THEN
-        RETURN NULL;
-    ELSIF TG_OP = 'DELETE' AND OLD.delivery_status <> 'PENDING' THEN
-        RETURN NULL;
-    ELSIF TG_OP = 'UPDATE' AND NOT (
-            (OLD.delivery_status = 'PENDING' AND NEW.delivery_status <> 'PENDING')
-            OR (OLD.delivery_status <> 'PENDING' AND NEW.delivery_status = 'PENDING')
-            OR (
-                OLD.delivery_status = 'PENDING'
-                AND NEW.delivery_status = 'PENDING'
-                AND OLD.changed_at IS DISTINCT FROM NEW.changed_at
-            )
-        ) THEN
-        RETURN NULL;
-    END IF;
-
-    -- 잠금 대기 뒤 새 READ COMMITTED 스냅샷으로 실제 백로그를 다시 집계한다.
-    PERFORM 1
-    FROM public.watch_health_change_event_backlog
-    WHERE singleton
-    FOR UPDATE;
-
-    IF TG_OP = 'INSERT' AND NEW.delivery_status = 'PENDING' THEN
-        UPDATE public.watch_health_change_event_backlog
-        SET pending_count = pending_count + 1,
-            oldest_changed_at = CASE
-                WHEN pending_count = 0 THEN NEW.changed_at
-                ELSE LEAST(oldest_changed_at, NEW.changed_at)
-            END
-        WHERE singleton;
-    ELSIF TG_OP = 'DELETE' AND OLD.delivery_status = 'PENDING' THEN
-        UPDATE public.watch_health_change_event_backlog
-        SET pending_count = pending_count - 1,
-            oldest_changed_at = CASE
-                WHEN pending_count = 1 THEN NULL
-                WHEN oldest_changed_at = OLD.changed_at THEN (
-                    SELECT MIN(changed_at)
-                    FROM public.watch_health_change_event
-                    WHERE delivery_status = 'PENDING'
-                )
-                ELSE oldest_changed_at
-            END
-        WHERE singleton;
-    ELSIF TG_OP = 'UPDATE'
-            AND OLD.delivery_status = 'PENDING'
-            AND NEW.delivery_status <> 'PENDING' THEN
-        UPDATE public.watch_health_change_event_backlog
-        SET pending_count = pending_count - 1,
-            oldest_changed_at = CASE
-                WHEN pending_count = 1 THEN NULL
-                WHEN oldest_changed_at = OLD.changed_at THEN (
-                    SELECT MIN(changed_at)
-                    FROM public.watch_health_change_event
-                    WHERE delivery_status = 'PENDING'
-                )
-                ELSE oldest_changed_at
-            END
-        WHERE singleton;
-    ELSIF TG_OP = 'UPDATE'
-            AND OLD.delivery_status <> 'PENDING'
-            AND NEW.delivery_status = 'PENDING' THEN
-        UPDATE public.watch_health_change_event_backlog
-        SET pending_count = pending_count + 1,
-            oldest_changed_at = CASE
-                WHEN pending_count = 0 THEN NEW.changed_at
-                ELSE LEAST(oldest_changed_at, NEW.changed_at)
-            END
-        WHERE singleton;
-    ELSIF TG_OP = 'UPDATE'
-            AND OLD.delivery_status = 'PENDING'
-            AND NEW.delivery_status = 'PENDING'
-            AND OLD.changed_at IS DISTINCT FROM NEW.changed_at THEN
-        UPDATE public.watch_health_change_event_backlog
-        SET oldest_changed_at = (
-            SELECT MIN(changed_at)
-            FROM public.watch_health_change_event
-            WHERE delivery_status = 'PENDING'
-        )
-        WHERE singleton;
-    END IF;
-
-    RETURN NULL;
-END;
-$$;
-
-REVOKE EXECUTE
-    ON FUNCTION public.maintain_watch_health_change_event_backlog()
-    FROM PUBLIC;
-
-CREATE TRIGGER trg_watch_health_change_event_backlog
-AFTER INSERT OR UPDATE OR DELETE ON public.watch_health_change_event
-FOR EACH ROW
-EXECUTE FUNCTION public.maintain_watch_health_change_event_backlog();

@@ -78,6 +78,8 @@ ArchUnit은 테스트 전용 의존성이다. 별도 `architectureTest` 작업�
 
 영속성 모듈의 `test`는 진단·백업 셸, 진단·복원 검증 SQL, 복원 시험 Compose 파일도 입력으로 추적한다.
 이 파일만 바뀌어도 이전 결과를 그대로 재사용하지 않으며, 문서만 바뀌면 기존 결과를 재사용할 수 있다.
+DB 통합 테스트의 PostgreSQL 이미지는 Gradle 테스트 태스크가 Dockerfile `postgres` 단계에서 읽어
+`watch.test.postgres-image`로 넘기므로, IDE에서도 Gradle 테스트 태스크로 실행한다.
 테스트가 새로운 운영 파일을 읽게 되면 [테스트 입력 목록](../../adapter-out-persistence/build.gradle)에도 추가한다.
 
 ## 검증 기록 도구
