@@ -77,7 +77,9 @@ Bearer 인증 스킴은 HTTP 인증 의미에 따라 대소문자를 구분하�
 PUT은 `application/json`을 받는다. 정확한 모니터 PUT 경로의 JSON
 본문은 16 KiB까지 허용하며, `Content-Length`가 이 한도를 초과하거나
 스트림 본문이 이 한도를 넘으면 Jackson 객체화 전에 HTTP 413으로
-거부한다. 이 제한은 인증 성공 뒤에 적용되므로, 자격 증명이 없거나
+거부한다. 이 제한은 인증과 Spring MVC의 핸들러 선택(경로·메서드·
+`Content-Type`·`Accept`)·경로 변수 변환 뒤에 적용한다. 따라서 405·406·415와
+잘못된 경로 참조(400)는 본문 크기보다 먼저 판정하며, 자격 증명이 없거나
 유효하지 않은 대용량 요청은 본문 크기나 JSON을 판단하기 전에 기존
 HTTP 401 문제 응답을 반환한다. 활성 스냅샷은 다음과 같다.
 
@@ -190,7 +192,7 @@ HTTP 의미는 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-15
 
 ### 프레임워크 오류
 
-인증에 성공한 뒤 본문 제한 필터나 Spring MVC가 요청을 거부할 때도
+인증에 성공한 뒤 Spring MVC가 요청을 거부할 때도(본문 제한 포함)
 다음과 같이 같은 오류 응답 형식을 사용한다.
 
 - 잘못된 JSON 또는 요청 검증 실패: HTTP 400,
@@ -223,7 +225,7 @@ HTTP 의미는 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#section-15
 있다면 원시 요청 경로가 아니라 고정된 비식별 URN
 `urn:baton-watch:request`를 사용한다.
 
-MVC 예외 응답과 인증·본문 제한·방화벽 오류 응답은 같은 문제 유형과 필드 생성
+MVC 예외 응답(본문 제한 포함)과 인증·방화벽 오류 응답은 같은 문제 유형과 필드 생성
 규칙을 사용한다. 미인증 HTTP 401 응답에는 `instance`를 넣지 않고
 `type`, `title`, `status`, `code` 네 필드만 반환한다. 그 밖의 위 문제 응답은
 고정된 `instance`를 포함한 다섯 필드를 반환한다. 응답 생성 규칙을 공유해도

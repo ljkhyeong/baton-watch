@@ -1,7 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
@@ -27,19 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 public final class ResourceMonitorController {
 
     private final SynchronizeMonitorUseCase synchronizeMonitor;
-    private final GetMonitorProjectionUseCase getMonitorProjection;
     private final GetMonitorProjectionsUseCase getMonitorProjections;
     private final RequestMonitorCheckUseCase requestMonitorCheck;
     private final Clock clock;
 
     public ResourceMonitorController(
             SynchronizeMonitorUseCase synchronizeMonitor,
-            GetMonitorProjectionUseCase getMonitorProjection,
             GetMonitorProjectionsUseCase getMonitorProjections,
             RequestMonitorCheckUseCase requestMonitorCheck,
             Clock clock) {
         this.synchronizeMonitor = synchronizeMonitor;
-        this.getMonitorProjection = getMonitorProjection;
         this.getMonitorProjections = getMonitorProjections;
         this.requestMonitorCheck = requestMonitorCheck;
         this.clock = clock;
@@ -59,7 +55,8 @@ public final class ResourceMonitorController {
 
     @GetMapping("/{resourceReference}")
     public MonitorResponse get(@PathVariable ResourceReference resourceReference) {
-        return getMonitorProjection.get(resourceReference)
+        return getMonitorProjections.get(List.of(resourceReference)).stream()
+                .findFirst()
                 .map(projection -> MonitorResponse.from(projection, clock.instant()))
                 .orElseThrow(MonitorApiException::notFound);
     }

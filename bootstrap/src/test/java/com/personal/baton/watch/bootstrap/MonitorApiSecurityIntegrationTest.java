@@ -3,14 +3,13 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.personal.baton.watch.adapter.in.web.monitoring.MonitorApiExceptionHandler;
+import com.personal.baton.watch.adapter.in.web.monitoring.MonitorApiRequestBodyLimit;
 import com.personal.baton.watch.adapter.in.web.monitoring.ResourceMonitorController;
-import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.system.SystemStatusController;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
@@ -50,7 +49,6 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -80,6 +78,8 @@ class MonitorApiSecurityIntegrationTest {
     private static final String API_TOKEN = "monitor-api-token-0123456789-abcdef";
     private static final String CONTEXT_PATH = "/watch";
     private static final Instant NOW = Instant.parse("2026-08-02T00:00:00Z");
+    // PRD-0002의 인증된 모니터 PUT 본문 한도
+    private static final int MAX_REQUEST_BODY_BYTES = 16 * 1024;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -269,7 +269,7 @@ class MonitorApiSecurityIntegrationTest {
 
     @Test
     void authenticationPrecedesContentLengthAndChunkedBodyLimits() throws Exception {
-        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        String oversizedBody = "x".repeat(MAX_REQUEST_BODY_BYTES + 1);
         HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
 
         HttpResponse<String> contentLength = put(
@@ -289,7 +289,7 @@ class MonitorApiSecurityIntegrationTest {
 
     @Test
     void authenticatedContentLengthAndChunkedBodiesAboveTheLimitReturnStableProblems() throws Exception {
-        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        String oversizedBody = "x".repeat(MAX_REQUEST_BODY_BYTES + 1);
         String path = "/api/v1/resource-monitors/resource-1";
 
         HttpResponse<String> contentLength = put(path, API_TOKEN, MediaType.APPLICATION_JSON_VALUE, oversizedBody);
@@ -305,7 +305,7 @@ class MonitorApiSecurityIntegrationTest {
     void acceptsAJsonBodyAtTheExactByteLimit() throws Exception {
         String json = "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}";
         String body = json + " ".repeat(
-                MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES
+                MAX_REQUEST_BODY_BYTES
                         - json.getBytes(StandardCharsets.UTF_8).length);
 
         HttpResponse<String> response = put(
@@ -373,6 +373,7 @@ class MonitorApiSecurityIntegrationTest {
                 null,
                 MediaType.TEXT_HTML_VALUE);
         HttpResponse<String> methodNotAllowed = post("/api/v1/system/status", API_TOKEN);
+        HttpResponse<String> resourceMethodNotAllowed = post("/api/v1/resource-monitors/resource-1", API_TOKEN);
         HttpResponse<String> unsupportedMediaType = put(
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
@@ -382,7 +383,7 @@ class MonitorApiSecurityIntegrationTest {
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
                 "application/vnd.baton-watch+json",
-                "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1));
+                "x".repeat(MAX_REQUEST_BODY_BYTES + 1));
         HttpResponse<String> notAcceptable = get(
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
@@ -391,13 +392,16 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(unauthenticatedMediaType);
         assertUnauthorized(unauthenticatedAccept);
         assertUnauthorized(unauthenticatedHtmlAccept);
-        assertProblem(
-                methodNotAllowed,
-                405,
-                "urn:baton-watch:problem:method-not-allowed",
-                "지원하지 않는 HTTP 메서드입니다",
-                "METHOD_NOT_ALLOWED");
-        assertHeaderContains(methodNotAllowed, HttpHeaders.ALLOW, "GET");
+        for (HttpResponse<String> response : List.of(methodNotAllowed, resourceMethodNotAllowed)) {
+            assertProblem(
+                    response,
+                    405,
+                    "urn:baton-watch:problem:method-not-allowed",
+                    "지원하지 않는 HTTP 메서드입니다",
+                    "METHOD_NOT_ALLOWED");
+            assertHeaderContains(response, HttpHeaders.ALLOW, "GET");
+        }
+        assertHeaderContains(resourceMethodNotAllowed, HttpHeaders.ALLOW, "PUT");
         assertProblem(
                 unsupportedMediaType,
                 415,
@@ -588,6 +592,7 @@ class MonitorApiSecurityIntegrationTest {
     @Import({
         MonitorApiSecurityConfiguration.class,
         MonitorApiExceptionHandler.class,
+        MonitorApiRequestBodyLimit.class,
         ResourceMonitorController.class,
         SystemStatusController.class,
         TestWebConfiguration.class
@@ -630,20 +635,10 @@ class MonitorApiSecurityIntegrationTest {
         }
 
         @Bean
-        GetMonitorProjectionUseCase getMonitorProjectionUseCase() {
-            return reference -> {
-                if (reference.value().equals("storage-unavailable")) {
-                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
-                }
-                return Optional.of(projection());
-            };
-        }
-
-        @Bean
         GetMonitorProjectionsUseCase getMonitorProjectionsUseCase() {
             return references -> {
                 if (references.contains(new ResourceReference("storage-unavailable"))) {
-                    throw new DataAccessResourceFailureException("raw-storage-secret");
+                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
                 }
                 return references.contains(projection().resourceReference()) ? List.of(projection()) : List.of();
             };

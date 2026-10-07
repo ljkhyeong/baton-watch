@@ -13,4 +13,4 @@ description: BATON WATCH의 인바운드 HTTP 경로, DTO, 인증, 오류 응답
 - 수동 재점검은 `202` 예약 접수, 기존 도래 일정·유효 리스 합류, 리소스별 새 예약 간격 30초를 유지한다. 상세 조건은 [PRD-0003](../../../docs/PRD/0003_monitoring-mvp/spec.md)을 따른다.
 - 계약을 바꾸면 해당 PRD와 관련 MockMvc 테스트를 함께 갱신한다. 변경한 인증·상태 코드·콘텐츠 타입·필드·시간 형식·호환성을 확인한다.
 
-`./gradlew :adapter-in-web:test`를 실행한다. 런타임 인증·조립도 바꾸면 관련 `bootstrap` 테스트를 포함한다.
+`./gradlew :adapter-in-web:test`를 실행한다. 런타임 인증·조립도 바꾸면 관련 `bootstrap` 테스트를 포함한다. 오류 응답·예외 처리기를 바꾸면 `MonitorApiSecurityIntegrationTest`도 실행한다.

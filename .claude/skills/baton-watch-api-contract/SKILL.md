@@ -14,14 +14,15 @@ description: BATON WATCH의 인바운드 HTTP 경로·DTO·Bearer 인증·Proble
 | --- | --- |
 | 컨트롤러·전송 DTO | `adapter-in-web/.../adapter/in/web/monitoring`, `.../system` |
 | 오류 응답 | `MonitorApiProblem`, `monitoring/MonitorApiExceptionHandler`, `security/MonitorApiProblemWriter` |
-| 인증·본문 제한·방화벽 거부 | `adapter-in-web/.../security`. 필터 체인 조립은 `bootstrap/.../MonitorApiSecurityConfiguration` |
+| 인증·방화벽 거부 | `adapter-in-web/.../security`. 필터 체인 조립은 `bootstrap/.../MonitorApiSecurityConfiguration` |
+| 본문 제한 | `monitoring/MonitorApiRequestBodyLimit`(`RequestBodyAdvice`). 인증·핸들러 선택 뒤 Jackson 객체화 전에 판정 |
 | 계약 테스트 | 웹 모듈 MockMvc 테스트. 실제 Tomcat 인증·거부는 `bootstrap/.../MonitorApiSecurityIntegrationTest` |
 
 ## 규칙
 
 - `/api/v1` 경로와 명시적인 전송 DTO를 사용한다. 컨트롤러는 입력 포트(`application/.../port/in`)에 위임하고 요청 형식 검증은 웹 어댑터에 둔다. 업무 로직 없이 상수와 시각만 돌려주는 공개 상태 API는 `Clock`을 직접 쓴다. 서비스 구현체·출력 포트를 직접 쓰면 ArchUnit이 실패한다.
 - 공개 상태 조회와 인증이 필요한 모니터 API를 구분한다. 공개는 정확한 상태 경로의 `GET`·`HEAD`만 허용하고 하위 경로는 인증을 유지한다.
-- Spring MVC 이전의 인증·방화벽·본문 제한 오류도 공통 Problem Details 형식을 유지한다. 응답에 대상 본문·자격 증명·해석된 IP·원본 예외·BATON 인가 판단을 노출하지 않는다.
+- Spring MVC 이전의 인증·방화벽 오류도 공통 Problem Details 형식을 유지한다. 응답에 대상 본문·자격 증명·해석된 IP·원본 예외·BATON 인가 판단을 노출하지 않는다.
 - 요청 바인딩·Bearer 해석·예외 처리는 기존 Spring MVC·Security 확장점을 사용한다. 같은 필드를 중복 검증하지 않는다. 다만 웹 형식 검증과 도메인 값 타입(`TargetUrl` 등) 검증은 서로 다른 경계이므로 둘 다 유지한다.
 - JSON 입력의 중복 필드·잘못된 타입·소수 리비전은 거부하는 기존 기준을 유지한다. 인증 실패가 본문 오류보다 먼저 판정되는 우선순위를 바꾸지 않는다.
 - 수동 재점검은 `202` 예약 접수, 기존 도래 일정·유효 리스 합류, 리소스별 새 예약 간격 30초를 유지한다. 상세 조건은 [PRD-0003](../../../docs/PRD/0003_monitoring-mvp/spec.md)을 따른다.
@@ -29,7 +30,7 @@ description: BATON WATCH의 인바운드 HTTP 경로·DTO·Bearer 인증·Proble
 
 ## 테스트 선택
 
-- MockMvc는 핸들러 연결·필드·상태 코드를 확인한다. Spring MVC 이전 거부, `HEAD` 본문 생략, 본문 제한, 실제 인증 순서는 `MonitorApiSecurityIntegrationTest`처럼 실제 Tomcat으로 확인한다.
+- MockMvc는 핸들러 연결·필드·상태 코드를 확인한다. Spring MVC 이전 거부, `HEAD` 본문 생략, 본문 제한, 실제 인증 순서는 `MonitorApiSecurityIntegrationTest`처럼 실제 Tomcat으로 확인한다. 프레임워크 405·406·415 오류 계약도 실제 Tomcat 테스트에서 확인한다.
 - 계약을 바꾸면 PRD-0002와 관련 테스트를 함께 갱신한다. 인증·상태 코드·콘텐츠 타입·필드·시간 형식·하위 호환성을 확인한다.
 
 ```bash

@@ -1,23 +1,18 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.ErrorResponseException;
 
-final class MonitorApiException extends RuntimeException {
+/** 상태·헤더는 ErrorResponseException 경로로 전달하고, 응답 필드는 MonitorApiProblem으로 정한다. */
+final class MonitorApiException extends ErrorResponseException {
 
-    private final HttpStatus status;
     private final MonitorApiProblem problem;
-    private final long retryAfterSeconds;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
-        this(status, MonitorApiProblem.of(slug, title, code), 0);
-    }
-
-    private MonitorApiException(HttpStatus status, MonitorApiProblem problem, long retryAfterSeconds) {
-        super(problem.title());
-        this.status = status;
-        this.problem = problem;
-        this.retryAfterSeconds = retryAfterSeconds;
+        super(status);
+        this.problem = MonitorApiProblem.of(slug, title, code);
     }
 
     static MonitorApiException invalidTarget() {
@@ -53,17 +48,17 @@ final class MonitorApiException extends RuntimeException {
                 "비활성 점검 대상은 재점검할 수 없습니다", "MONITOR_INACTIVE");
     }
 
+    static MonitorApiException payloadTooLarge() {
+        return new MonitorApiException(HttpStatus.CONTENT_TOO_LARGE, "payload-too-large",
+                "요청 본문이 허용 크기를 초과했습니다", "PAYLOAD_TOO_LARGE");
+    }
+
+    // 헤더가 인스턴스마다 가변이므로 예외를 캐시하지 않고 매번 만든다.
     static MonitorApiException checkRequestRateLimited(long retryAfterSeconds) {
-        return new MonitorApiException(HttpStatus.TOO_MANY_REQUESTS, MonitorApiProblem.of("check-request-rate-limited",
-                "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED"), retryAfterSeconds);
-    }
-
-    long retryAfterSeconds() {
-        return retryAfterSeconds;
-    }
-
-    HttpStatus status() {
-        return status;
+        MonitorApiException exception = new MonitorApiException(HttpStatus.TOO_MANY_REQUESTS,
+                "check-request-rate-limited", "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED");
+        exception.getHeaders().set(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
+        return exception;
     }
 
     MonitorApiProblem problem() {

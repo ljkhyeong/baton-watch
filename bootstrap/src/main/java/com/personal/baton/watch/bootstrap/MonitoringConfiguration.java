@@ -5,7 +5,6 @@ import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.MonitoringMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
@@ -56,11 +55,6 @@ public class MonitoringConfiguration {
     @Bean
     SynchronizeMonitorUseCase synchronizeMonitorUseCase(MonitorPersistencePort persistence, Clock clock) {
         return command -> persistence.synchronize(command, clock.instant());
-    }
-
-    @Bean
-    GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
-        return persistence::findProjection;
     }
 
     @Bean

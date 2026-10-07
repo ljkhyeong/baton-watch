@@ -16,6 +16,7 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -105,7 +106,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected MonitorProjection projection(String reference) {
-        return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
+        return monitorPersistence.findProjections(List.of(new ResourceReference(reference))).getFirst();
     }
 
     protected static void assertSqlState(Throwable failure, String expectedState) {

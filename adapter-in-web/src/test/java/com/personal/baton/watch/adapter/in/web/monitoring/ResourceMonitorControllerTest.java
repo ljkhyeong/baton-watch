@@ -15,7 +15,6 @@ import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequest
 import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult.Status;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
@@ -40,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -61,7 +61,9 @@ import org.springframework.transaction.NestedTransactionNotSupportedException;
 import org.springframework.transaction.TransactionTimedOutException;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.test.json.JsonCompareMode;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @ExtendWith(OutputCaptureExtension.class)
@@ -70,7 +72,6 @@ class ResourceMonitorControllerTest {
     private static final Instant NOW = Instant.parse("2026-08-01T00:00:00Z");
 
     private SynchronizeMonitorUseCase synchronizeMonitor;
-    private GetMonitorProjectionUseCase getMonitor;
     private GetMonitorProjectionsUseCase getMonitors;
     private RequestMonitorCheckUseCase requestCheck;
     private MockMvc mockMvc;
@@ -78,10 +79,18 @@ class ResourceMonitorControllerTest {
     @BeforeEach
     void setUp() {
         synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
-        getMonitor = reference -> Optional.of(projection());
         getMonitors = references -> List.of(projection());
         requestCheck = reference -> new MonitorCheckRequestResult(Status.SCHEDULED, NOW, 0);
-        rebuildMockMvc();
+        // 메서드 참조는 지금 대입된 대체 구현을 고정하므로, 테스트별 교체가 반영되도록 호출 시점에 필드를 읽는다.
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new ResourceMonitorController(
+                                command -> synchronizeMonitor.synchronize(command),
+                                references -> getMonitors.get(references),
+                                reference -> requestCheck.requestCheck(reference),
+                                Clock.fixed(NOW, ZoneOffset.UTC)),
+                        new FrameworkFailureController())
+                .setControllerAdvice(new MonitorApiExceptionHandler(), new MonitorApiRequestBodyLimit())
+                .build();
     }
 
     @Test
@@ -91,7 +100,6 @@ class ResourceMonitorControllerTest {
                     .isEqualTo("https://example.com/자료/\uD83D\uDE00?secret=hidden");
             return new SynchronizationResult(SynchronizationStatus.APPLIED, projection());
         };
-        rebuildMockMvc();
 
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -122,7 +130,6 @@ class ResourceMonitorControllerTest {
                     projection("resource-2", MonitoringState.INACTIVE, null, null),
                     projection("resource-1", MonitoringState.ACTIVE, 0L, 30L));
         };
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors")
                         .param("resourceReference", "resource-1", "missing", "resource-2", "resource-1", "missing"))
@@ -144,7 +151,6 @@ class ResourceMonitorControllerTest {
     @Test
     void batchLookupReturnsEmptyMonitorsWhenAllReferencesAreMissing() throws Exception {
         getMonitors = references -> List.of();
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors").param("resourceReference", "missing-1", "missing-2"))
                 .andExpect(status().isOk())
@@ -157,11 +163,10 @@ class ResourceMonitorControllerTest {
         getMonitors = references -> {
             throw new AssertionError("조회 대상 없는 요청이 유스케이스에 도달했습니다");
         };
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+                .andExpect(problem(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다",
+                        "INVALID_REQUEST"));
     }
 
     @ParameterizedTest
@@ -170,14 +175,10 @@ class ResourceMonitorControllerTest {
         getMonitors = ignored -> {
             throw new AssertionError("잘못된 조회 대상이 유스케이스에 도달했습니다");
         };
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors").param("resourceReference", references))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"));
+                .andExpect(problem(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다",
+                        "INVALID_REQUEST"));
     }
 
     private static Stream<Arguments> invalidBatchReferences() {
@@ -200,7 +201,6 @@ class ResourceMonitorControllerTest {
         synchronizeMonitor = command -> {
             throw new AssertionError("invalid target reached the synchronization use case");
         };
-        rebuildMockMvc();
 
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -211,44 +211,36 @@ class ResourceMonitorControllerTest {
                                   "targetUrl": "%s"
                                 }
                                 """.formatted(target)))
-                .andExpect(status().isUnprocessableContent())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-target-url"))
-                .andExpect(jsonPath("$.title").value("점검할 수 없는 URL입니다"))
-                .andExpect(jsonPath("$.status").value(422))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INVALID_TARGET_URL"));
+                .andExpect(problem(HttpStatus.UNPROCESSABLE_CONTENT, "invalid-target-url", "점검할 수 없는 URL입니다",
+                        "INVALID_TARGET_URL"));
     }
 
     @ParameterizedTest
     @CsvSource(delimiter = '|', value = {
         "STALE_REVISION | {\"sourceRevision\":41,\"monitoringState\":\"INACTIVE\"}"
-                + " | stale-source-revision | STALE_SOURCE_REVISION",
+                + " | stale-source-revision | 저장된 리비전보다 오래된 요청입니다 | STALE_SOURCE_REVISION",
         "REVISION_CONFLICT | {\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\","
                 + "\"targetUrl\":\"https://example.com/health?secret=hidden\"}"
-                + " | source-revision-conflict | SOURCE_REVISION_CONFLICT"
+                + " | source-revision-conflict | 같은 리비전에 다른 내용이 등록되어 있습니다 | SOURCE_REVISION_CONFLICT"
     })
     void reportsStaleOrDifferentSameRevisionsAsConflicts(
-            SynchronizationStatus result, String body, String slug, String code) throws Exception {
+            SynchronizationStatus result, String body, String slug, String title, String code) throws Exception {
         synchronizeMonitor = command -> new SynchronizationResult(result, projection());
-        rebuildMockMvc();
 
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isConflict())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:" + slug))
-                .andExpect(jsonPath("$.code").value(code))
+                .andExpect(problem(HttpStatus.CONFLICT, slug, title, code))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("secret=hidden"))));
     }
 
     @Test
     void returnsTheCurrentProjection() throws Exception {
-        getMonitor = reference -> Optional.of(projection(MonitoringState.ACTIVE, 30L, null));
-        rebuildMockMvc();
+        getMonitors = references -> {
+            assertThat(references).extracting(ResourceReference::value).containsExactly("resource-1");
+            return List.of(projection(MonitoringState.ACTIVE, 30L, null));
+        };
 
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
                 .andExpect(status().isOk())
@@ -261,12 +253,11 @@ class ResourceMonitorControllerTest {
 
     @Test
     void returnsNotFoundWithoutLeakingTheReference() throws Exception {
-        getMonitor = reference -> Optional.empty();
-        rebuildMockMvc();
+        getMonitors = references -> List.of();
 
         mockMvc.perform(get("/api/v1/resource-monitors/missing-resource"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("MONITOR_NOT_FOUND"))
+                .andExpect(problem(HttpStatus.NOT_FOUND, "monitor-not-found", "등록된 점검 대상이 없습니다",
+                        "MONITOR_NOT_FOUND"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("missing-resource"))));
     }
@@ -274,9 +265,8 @@ class ResourceMonitorControllerTest {
     @Test
     void delegatesPathConversionToSpringWithoutExposingInvalidReferences() throws Exception {
         mockMvc.perform(get("/api/v1/resource-monitors/invalid!reference"))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+                .andExpect(problem(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다",
+                        "INVALID_REQUEST"))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("invalid!reference"))));
     }
@@ -295,75 +285,15 @@ class ResourceMonitorControllerTest {
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
-                .andExpect(status().isBadRequest())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:invalid-request"))
-                .andExpect(jsonPath("$.title").value("요청 형식이 올바르지 않습니다"))
-                .andExpect(jsonPath("$.status").value(400))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
-    }
-
-    @Test
-    void rejectsUnsupportedMethodsWithAStableProblem() throws Exception {
-        mockMvc.perform(post("/api/v1/resource-monitors/resource-1"))
-                .andExpect(status().isMethodNotAllowed())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(header().string(
-                        HttpHeaders.ALLOW,
-                        org.hamcrest.Matchers.containsString("GET")))
-                .andExpect(header().string(
-                        HttpHeaders.ALLOW,
-                        org.hamcrest.Matchers.containsString("PUT")))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:method-not-allowed"))
-                .andExpect(jsonPath("$.title").value("지원하지 않는 HTTP 메서드입니다"))
-                .andExpect(jsonPath("$.status").value(405))
-                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
-    }
-
-    @Test
-    void rejectsUnsupportedRequestMediaTypesWithAStableProblem() throws Exception {
-        mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
-                        .contentType(MediaType.TEXT_PLAIN)
-                        .content("{}"))
-                .andExpect(status().isUnsupportedMediaType())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(header().string(
-                        HttpHeaders.ACCEPT,
-                        org.hamcrest.Matchers.containsString(MediaType.APPLICATION_JSON_VALUE)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:unsupported-media-type"))
-                .andExpect(jsonPath("$.title").value("지원하지 않는 요청 본문 형식입니다"))
-                .andExpect(jsonPath("$.status").value(415))
-                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
-    }
-
-    @Test
-    void rejectsUnacceptableResponseMediaTypesWithAStableProblem() throws Exception {
-        mockMvc.perform(get("/api/v1/resource-monitors/resource-1")
-                        .accept(MediaType.APPLICATION_XML))
-                .andExpect(status().isNotAcceptable())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(header().string(
-                        HttpHeaders.ACCEPT,
-                        org.hamcrest.Matchers.containsString(MediaType.APPLICATION_JSON_VALUE)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:not-acceptable"))
-                .andExpect(jsonPath("$.title").value("요청한 응답 형식을 지원하지 않습니다"))
-                .andExpect(jsonPath("$.status").value(406))
-                .andExpect(jsonPath("$.code").value("NOT_ACCEPTABLE"));
+                .andExpect(problem(HttpStatus.BAD_REQUEST, "invalid-request", "요청 형식이 올바르지 않습니다",
+                        "INVALID_REQUEST"));
     }
 
     @Test
     void normalizesFrameworkServerErrorsWithoutLeakingDetails() throws Exception {
         mockMvc.perform(get("/api/v1/framework-write-failure"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:internal-error"))
-                .andExpect(jsonPath("$.title").value("요청 처리 중 서버 오류가 발생했습니다"))
-                .andExpect(jsonPath("$.status").value(500))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+                .andExpect(problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal-error", "요청 처리 중 서버 오류가 발생했습니다",
+                        "INTERNAL_ERROR"));
     }
 
     @ParameterizedTest
@@ -371,22 +301,15 @@ class ResourceMonitorControllerTest {
     void reportsTemporaryFailuresWithoutRetryingOrLeakingDetails(
             RuntimeException failure, CapturedOutput output) throws Exception {
         AtomicInteger calls = new AtomicInteger();
-        getMonitor = reference -> {
+        getMonitors = references -> {
             calls.incrementAndGet();
             throw failure;
         };
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
-                .andExpect(status().isServiceUnavailable())
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"))
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$", org.hamcrest.Matchers.aMapWithSize(5)))
-                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:service-unavailable"))
-                .andExpect(jsonPath("$.title").value("일시적으로 요청을 처리할 수 없습니다"))
-                .andExpect(jsonPath("$.status").value(503))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"))
-                .andExpect(jsonPath("$.code").value("SERVICE_UNAVAILABLE"));
+                .andExpect(problem(HttpStatus.SERVICE_UNAVAILABLE, "service-unavailable",
+                        "일시적으로 요청을 처리할 수 없습니다", "SERVICE_UNAVAILABLE"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "5"));
 
         assertThat(calls.get()).isEqualTo(1);
         assertThat(output).contains("failureType=" + failure.getClass().getSimpleName())
@@ -407,15 +330,14 @@ class ResourceMonitorControllerTest {
     @ParameterizedTest
     @MethodSource("nonTemporaryFailures")
     void keepsProgrammingAndIntegrityFailuresAsInternalErrors(RuntimeException failure) throws Exception {
-        getMonitor = reference -> {
+        getMonitors = references -> {
             throw failure;
         };
-        rebuildMockMvc();
 
         mockMvc.perform(get("/api/v1/resource-monitors/resource-1"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER))
-                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"));
+                .andExpect(problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal-error", "요청 처리 중 서버 오류가 발생했습니다",
+                        "INTERNAL_ERROR"))
+                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER));
     }
 
     private static Stream<RuntimeException> nonTemporaryFailures() {
@@ -439,53 +361,50 @@ class ResourceMonitorControllerTest {
                 .doesNotContain("Response already committed");
     }
 
-    @Test
-    void acceptsAndMergesCheckRequestsWithoutReturningTargetData() throws Exception {
-        for (Status resultStatus : new Status[] {
-                Status.SCHEDULED, Status.ALREADY_SCHEDULED, Status.IN_PROGRESS}) {
-            requestCheck = reference -> new MonitorCheckRequestResult(
-                    resultStatus, resultStatus == Status.IN_PROGRESS ? null : NOW, 0);
-            rebuildMockMvc();
-            mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
-                    .andExpect(status().isAccepted())
-                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(jsonPath("$.status").value(resultStatus.name()))
-                    .andExpect(jsonPath("$.targetUrl").doesNotExist());
-        }
+    @ParameterizedTest
+    @EnumSource(value = Status.class, names = {"SCHEDULED", "ALREADY_SCHEDULED", "IN_PROGRESS"})
+    void acceptsAndMergesCheckRequestsWithoutReturningTargetData(Status resultStatus) throws Exception {
+        requestCheck = reference -> new MonitorCheckRequestResult(
+                resultStatus, resultStatus == Status.IN_PROGRESS ? null : NOW, 0);
+
+        mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
+                .andExpect(status().isAccepted())
+                .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value(resultStatus.name()))
+                .andExpect(jsonPath("$.targetUrl").doesNotExist());
     }
 
     @Test
     void rejectsMissingInactiveAndTooFrequentCheckRequests() throws Exception {
         requestCheck = reference -> new MonitorCheckRequestResult(Status.NOT_FOUND, null, 0);
-        rebuildMockMvc();
         mockMvc.perform(post("/api/v1/resource-monitors/missing/check-requests"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("MONITOR_NOT_FOUND"));
+                .andExpect(problem(HttpStatus.NOT_FOUND, "monitor-not-found", "등록된 점검 대상이 없습니다",
+                        "MONITOR_NOT_FOUND"))
+                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER));
 
         requestCheck = reference -> new MonitorCheckRequestResult(Status.INACTIVE, null, 0);
-        rebuildMockMvc();
         mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("MONITOR_INACTIVE"));
+                .andExpect(problem(HttpStatus.CONFLICT, "monitor-inactive", "비활성 점검 대상은 재점검할 수 없습니다",
+                        "MONITOR_INACTIVE"))
+                .andExpect(header().doesNotExist(HttpHeaders.RETRY_AFTER));
 
         requestCheck = reference -> new MonitorCheckRequestResult(Status.RATE_LIMITED, null, 12);
-        rebuildMockMvc();
         mockMvc.perform(post("/api/v1/resource-monitors/resource-1/check-requests"))
-                .andExpect(status().isTooManyRequests())
-                .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "12"))
-                .andExpect(jsonPath("$.code").value("CHECK_REQUEST_RATE_LIMITED"))
-                .andExpect(jsonPath("$.instance").value("urn:baton-watch:request"));
+                .andExpect(problem(HttpStatus.TOO_MANY_REQUESTS, "check-request-rate-limited",
+                        "재점검 요청 간격이 너무 짧습니다", "CHECK_REQUEST_RATE_LIMITED"))
+                .andExpect(header().string(HttpHeaders.RETRY_AFTER, "12"));
     }
 
-    private void rebuildMockMvc() {
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceMonitorController(
-                                synchronizeMonitor, getMonitor, getMonitors, requestCheck,
-                                Clock.fixed(NOW, ZoneOffset.UTC)),
-                        new FrameworkFailureController())
-                .setControllerAdvice(new MonitorApiExceptionHandler())
-                .build();
+    private static ResultMatcher problem(HttpStatus httpStatus, String slug, String title, String code) {
+        String body = """
+                {"type":"urn:baton-watch:problem:%s","title":"%s","status":%d,\
+                "instance":"urn:baton-watch:request","code":"%s"}"""
+                .formatted(slug, title, httpStatus.value(), code);
+        return result -> {
+            status().is(httpStatus.value()).match(result);
+            content().contentType(MediaType.APPLICATION_PROBLEM_JSON).match(result);
+            content().json(body, JsonCompareMode.STRICT).match(result);
+        };
     }
 
     @RestController

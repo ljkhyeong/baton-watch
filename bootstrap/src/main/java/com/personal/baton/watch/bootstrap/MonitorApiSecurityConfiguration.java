@@ -2,7 +2,6 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiAuthenticationEntryPoint;
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestRejectedHandler;
-import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationManager;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.context.annotation.Bean;
@@ -13,7 +12,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.firewall.CompositeRequestRejectedHandler;
 import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
@@ -66,9 +64,6 @@ class MonitorApiSecurityConfiguration {
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .authenticationManagerResolver(request -> authenticationManager)
                         .authenticationEntryPoint(new MonitorApiAuthenticationEntryPoint(objectMapper)))
-                .addFilterAfter(
-                        new MonitorApiRequestBodyLimitFilter(objectMapper),
-                        AuthorizationFilter.class)
                 .build();
     }
 

@@ -13,7 +13,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class MonitoringMaintenanceServicesTest {
@@ -71,11 +70,6 @@ class MonitoringMaintenanceServicesTest {
 
         @Override
         public SynchronizationResult synchronize(SynchronizeMonitorCommand command, Instant synchronizedAt) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Optional<MonitorProjection> findProjection(ResourceReference resourceReference) {
             throw new UnsupportedOperationException();
         }
 
