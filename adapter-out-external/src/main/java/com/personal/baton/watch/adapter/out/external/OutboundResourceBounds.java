@@ -2,10 +2,6 @@ package com.personal.baton.watch.adapter.out.external;
 
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import org.apache.hc.core5.util.Args;
 
 /** 운영자가 구성할 수 있는 아웃바운드 HTTP 리소스의 강제 상한. */
@@ -49,12 +45,5 @@ public final class OutboundResourceBounds {
     public static void requireRequestExecutorBounds(int threadCount, int queueCapacity) {
         Args.checkRange(threadCount, 1, MAX_REQUEST_THREADS, "HTTP thread count");
         Args.checkRange(queueCapacity, 1, MAX_REQUEST_QUEUE_CAPACITY, "HTTP queue capacity");
-    }
-
-    public static ExecutorService boundedDaemonExecutor(
-            int threadCount, int queueCapacity, String threadNamePrefix) {
-        return new ThreadPoolExecutor(threadCount, threadCount, 0L, TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(queueCapacity),
-                Thread.ofPlatform().daemon().name(threadNamePrefix, 1).factory());
     }
 }

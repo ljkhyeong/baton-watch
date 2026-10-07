@@ -63,7 +63,6 @@ public record WatchProperties(
             @NotNull @DurationMin(inclusive = false) Duration connectTimeout,
             @NotNull @DurationMin(inclusive = false) Duration responseTimeout,
             @NotNull @DurationMin(inclusive = false) Duration totalTimeout,
-            @Min(0) @Max(3) int maxRedirects,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_COUNT) int maxHeaderCount,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_LINE_LENGTH) int maxHeaderLineLength,
             @Min(1) @Max(OutboundResourceBounds.MAX_DNS_THREADS) int dnsThreads,

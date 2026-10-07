@@ -19,19 +19,17 @@ import java.util.function.LongSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-class SafeUrlCheckEngineTest {
+class ApacheUrlCheckerTest {
 
     private static final String PUBLIC_V4 = "8.8.8.8";
     private static final CheckerLimits DEFAULT_LIMITS = new CheckerLimits(
             Duration.ofSeconds(2),
             Duration.ofSeconds(3),
             Duration.ofSeconds(5),
-            3,
             100,
             8 * 1024);
 
@@ -50,7 +48,7 @@ class SafeUrlCheckEngineTest {
         transport.add(redirect(302, "/next"));
         transport.add(finalStatus(204));
 
-        CheckObservation observation = engine().check(new TargetUrl("https://Example.COM/start"));
+        CheckObservation observation = checker().check(new TargetUrl("https://Example.COM/start"));
 
         assertEquals(CheckOutcome.SUCCESS, observation.outcome());
         assertEquals(204, observation.httpStatusCode());
@@ -98,7 +96,7 @@ class SafeUrlCheckEngineTest {
         transport.add(redirect(302, location));
         transport.add(finalStatus(200));
 
-        CheckObservation observation = engine().check(new TargetUrl(target));
+        CheckObservation observation = checker().check(new TargetUrl(target));
 
         assertEquals(CheckOutcome.SUCCESS, observation.outcome());
         assertEquals(1, observation.redirectCount());
@@ -125,7 +123,7 @@ class SafeUrlCheckEngineTest {
         transport.add(redirect(status, location));
         transport.add(finalStatus(200));
 
-        CheckObservation observation = engine().check(new TargetUrl(target));
+        CheckObservation observation = checker().check(new TargetUrl(target));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         assertEquals(0, observation.redirectCount());
@@ -139,7 +137,7 @@ class SafeUrlCheckEngineTest {
                 InetAddress.getByName(PUBLIC_V4), InetAddress.getByName("10.0.0.1")));
         transport.add(redirect(301, "https://blocked.example/"));
 
-        CheckObservation observation = engine().check(new TargetUrl("https://public.example/"));
+        CheckObservation observation = checker().check(new TargetUrl("https://public.example/"));
 
         assertEquals(CheckOutcome.DESTINATION_REJECTED, observation.outcome());
         assertEquals(1, observation.redirectCount());
@@ -167,7 +165,7 @@ class SafeUrlCheckEngineTest {
     void rejectsUnsafeRedirectsBeforeASecondConnection(String location) throws Exception {
         transport.add(redirect(302, location));
 
-        CheckObservation observation = engine().check(new TargetUrl("https://start.example/"));
+        CheckObservation observation = checker().check(new TargetUrl("https://start.example/"));
 
         assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         assertEquals(0, observation.redirectCount());
@@ -182,7 +180,7 @@ class SafeUrlCheckEngineTest {
         transport.add(redirect(303, "https://three.example/"));
         transport.add(redirect(307, "https://four.example/"));
 
-        CheckObservation observation = engine().check(new TargetUrl("https://start.example/"));
+        CheckObservation observation = checker().check(new TargetUrl("https://start.example/"));
 
         assertEquals(CheckOutcome.TOO_MANY_REDIRECTS, observation.outcome());
         assertEquals(3, observation.redirectCount());
@@ -197,7 +195,7 @@ class SafeUrlCheckEngineTest {
                 new HttpHopResponse(302, List.of("/one", "/two")))) {
             transport.add(response);
 
-            CheckObservation observation = engine().check(new TargetUrl("https://start.example/"));
+            CheckObservation observation = checker().check(new TargetUrl("https://start.example/"));
 
             assertEquals(CheckOutcome.REDIRECT_REJECTED, observation.outcome());
         }
@@ -207,40 +205,39 @@ class SafeUrlCheckEngineTest {
     void mapsUnsupportedFinalHttpStatusToNetworkFailureWithoutStatusMetadata() throws Exception {
         transport.add(finalStatus(199));
 
-        CheckObservation observation = engine().check(new TargetUrl("https://status.example/"));
+        CheckObservation observation = checker().check(new TargetUrl("https://status.example/"));
 
         assertEquals(CheckOutcome.NETWORK_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
     }
 
     @ParameterizedTest
-    @MethodSource("transportFailures")
-    void mapsTransportFailuresWithoutExceptionDetails(
-            OutboundHttpFailure.Kind transportKind, CheckOutcome expected) throws Exception {
+    @EnumSource(OutboundHttpFailure.Kind.class)
+    void mapsTransportFailuresWithoutExceptionDetails(OutboundHttpFailure.Kind kind) throws Exception {
         transport.timePerHop = Duration.ofMillis(5);
-        OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(transportKind);
+        OutboundHttpFailure scriptedFailure = new OutboundHttpFailure(kind);
         transport.add(redirect(302, "/next"));
         transport.add(scriptedFailure);
 
-        CheckObservation observation = engine().check(new TargetUrl("https://failure.example/secret?token=value"));
+        CheckObservation observation = checker().check(new TargetUrl("https://failure.example/secret?token=value"));
 
-        assertEquals(expected, observation.outcome());
+        assertEquals(CheckOutcome.valueOf(kind.name()), observation.outcome());
         assertEquals(Duration.ofMillis(10), observation.duration());
         assertEquals(1, observation.redirectCount());
         assertNull(observation.httpStatusCode());
     }
 
     @ParameterizedTest
-    @CsvSource({"DNS_FAILURE, DNS_FAILURE", "INTERNAL_FAILURE, INTERNAL_FAILURE"})
-    void mapsDnsFailuresWithoutCallingTheTransport(DnsLookupException.Reason reason, CheckOutcome expected) {
+    @EnumSource(value = OutboundHttpFailure.Kind.class, names = {"DNS_FAILURE", "INTERNAL_FAILURE"})
+    void mapsDnsFailuresWithoutCallingTheTransport(OutboundHttpFailure.Kind kind) {
         DnsLookup failingDns = (hostname, timeout) -> {
-            throw new DnsLookupException(reason);
+            throw new OutboundHttpFailure(kind);
         };
 
-        CheckObservation observation = engine(failingDns, transport)
+        CheckObservation observation = checker(failingDns, transport)
                 .check(new TargetUrl("https://missing.example/"));
 
-        assertEquals(expected, observation.outcome());
+        assertEquals(CheckOutcome.valueOf(kind.name()), observation.outcome());
         assertEquals(0, transport.targets.size());
     }
 
@@ -252,7 +249,7 @@ class SafeUrlCheckEngineTest {
             return answer;
         };
 
-        CheckObservation observation = engine(slowDns, transport)
+        CheckObservation observation = checker(slowDns, transport)
                 .check(new TargetUrl("https://slow-dns.example/"));
 
         assertEquals(CheckOutcome.DNS_FAILURE, observation.outcome());
@@ -266,25 +263,19 @@ class SafeUrlCheckEngineTest {
             throw new IllegalArgumentException("detail that must not escape");
         };
 
-        CheckObservation observation = engine(dns, failingTransport)
+        CheckObservation observation = checker(dns, failingTransport)
                 .check(new TargetUrl("https://internal.example/"));
 
         assertEquals(CheckOutcome.INTERNAL_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
     }
 
-    private SafeUrlCheckEngine engine() {
-        return engine(dns, transport);
+    private ApacheUrlChecker checker() {
+        return checker(dns, transport);
     }
 
-    private SafeUrlCheckEngine engine(DnsLookup dnsLookup, HttpHopTransport hopTransport) {
-        return new SafeUrlCheckEngine(
-                DEFAULT_LIMITS,
-                new TargetUriPolicy(),
-                dnsLookup,
-                new GlobalAddressPolicy(),
-                hopTransport,
-                clock);
+    private ApacheUrlChecker checker(DnsLookup dnsLookup, HttpHopTransport hopTransport) {
+        return new ApacheUrlChecker(DEFAULT_LIMITS, dnsLookup, hopTransport, clock);
     }
 
     private static List<InetAddress> publicAnswer() throws Exception {
@@ -297,16 +288,6 @@ class SafeUrlCheckEngineTest {
 
     private static HttpHopResponse redirect(int statusCode, String location) {
         return new HttpHopResponse(statusCode, List.of(location));
-    }
-
-    private static java.util.stream.Stream<Arguments> transportFailures() {
-        return java.util.stream.Stream.of(
-                Arguments.of(OutboundHttpFailure.Kind.CONNECT_TIMEOUT, CheckOutcome.CONNECT_TIMEOUT),
-                Arguments.of(OutboundHttpFailure.Kind.READ_TIMEOUT, CheckOutcome.READ_TIMEOUT),
-                Arguments.of(OutboundHttpFailure.Kind.TLS_FAILURE, CheckOutcome.TLS_FAILURE),
-                Arguments.of(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, CheckOutcome.RESPONSE_TOO_LARGE),
-                Arguments.of(OutboundHttpFailure.Kind.NETWORK_FAILURE, CheckOutcome.NETWORK_FAILURE),
-                Arguments.of(OutboundHttpFailure.Kind.INTERNAL_FAILURE, CheckOutcome.INTERNAL_FAILURE));
     }
 
     private static final class MutableNanoClock implements LongSupplier {

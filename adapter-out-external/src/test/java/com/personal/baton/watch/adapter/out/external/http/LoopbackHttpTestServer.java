@@ -13,11 +13,13 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 외부 통신 테스트용 루프백 HTTP 서버. 테스트별 경로를 추가할 수 있고, 기본 경로를 제공한다.
  * `/stream`은 읽기 제한보다 짧은 간격으로 응답을 보내 전체 시간 제한의 실제 소켓 취소를 확인하고,
  * `/quick`은 요청 본문을 비운 뒤 204를 반환한다. 처리기 스레드 2개로 지연 응답 중 후속 요청을 받는다.
+ * 경로가 고정된 콜백 전송은 {@link #handleStreamThenQuick(String)}으로 같은 시나리오를 재현한다.
  */
 public final class LoopbackHttpTestServer implements AutoCloseable {
 
@@ -34,17 +36,24 @@ public final class LoopbackHttpTestServer implements AutoCloseable {
         }
         server.setExecutor(handlers);
         handle("/stream", this::stream);
-        handle("/quick", exchange -> {
-            try (exchange) {
-                exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
-                exchange.sendResponseHeaders(204, -1);
-            }
-        });
+        handle("/quick", LoopbackHttpTestServer::quick);
         server.start();
     }
 
     public void handle(String path, HttpHandler handler) {
         server.createContext(path, handler);
+    }
+
+    /** 첫 요청은 `/stream`, 이후 요청은 `/quick`과 같이 처리한다. */
+    public void handleStreamThenQuick(String path) {
+        AtomicBoolean streamed = new AtomicBoolean();
+        handle(path, exchange -> {
+            if (streamed.compareAndSet(false, true)) {
+                stream(exchange);
+            } else {
+                quick(exchange);
+            }
+        });
     }
 
     public URI uri(String hostname, String path) {
@@ -68,6 +77,13 @@ public final class LoopbackHttpTestServer implements AutoCloseable {
             disconnected.countDown();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void quick(HttpExchange exchange) throws IOException {
+        try (exchange) {
+            exchange.getRequestBody().transferTo(OutputStream.nullOutputStream());
+            exchange.sendResponseHeaders(204, -1);
         }
     }
 

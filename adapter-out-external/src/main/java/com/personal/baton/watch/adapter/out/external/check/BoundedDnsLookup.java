@@ -1,6 +1,8 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
+import com.personal.baton.watch.adapter.out.external.BoundedTaskExecutor;
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.time.Duration;
@@ -8,11 +10,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.hc.core5.io.IOFunction;
 
@@ -20,9 +17,9 @@ import org.apache.hc.core5.io.IOFunction;
  * JVM DNS 조회를 제한된 스레드 풀에서 실행한다. Future를 취소해도 DNS 조회 자체는
  * 강제로 중지할 수 없다. 스레드 수를 제한하고 인프라의 외부 통신 차단 정책도 유지한다.
  */
-public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
+public final class BoundedDnsLookup implements DnsLookup {
 
-    private final ExecutorService executor;
+    private final BoundedTaskExecutor executor;
     private final IOFunction<String, InetAddress[]> resolver;
 
     public BoundedDnsLookup(int threadCount, int queueCapacity) {
@@ -31,69 +28,30 @@ public final class BoundedDnsLookup implements DnsLookup, AutoCloseable {
 
     BoundedDnsLookup(
             int threadCount, int queueCapacity, IOFunction<String, InetAddress[]> resolver) {
-        this(createExecutor(threadCount, queueCapacity), resolver);
-    }
-
-    BoundedDnsLookup(ExecutorService executor, IOFunction<String, InetAddress[]> resolver) {
-        this.executor = Objects.requireNonNull(executor, "executor");
+        OutboundResourceBounds.requireDnsExecutorBounds(threadCount, queueCapacity);
         this.resolver = Objects.requireNonNull(resolver, "resolver");
+        this.executor = new BoundedTaskExecutor(threadCount, queueCapacity, "watch-dns-");
     }
 
     @Override
-    public List<InetAddress> resolve(String hostname, Duration timeout) throws DnsLookupException {
+    public List<InetAddress> resolve(String hostname, Duration timeout) throws OutboundHttpFailure {
         // JVM은 null 호스트를 루프백으로 해석하므로 조회 전에 거부한다.
         Objects.requireNonNull(hostname, "hostname");
-        if (Thread.currentThread().isInterrupted()) {
-            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
-        }
-        if (!timeout.isPositive()) {
-            throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
-        }
-        // 작업을 제출하기 전에 기한을 계산해 기한 없이 실행되는 조회가 남지 않게 한다.
-        long timeoutNanos = timeout.toNanos();
-
-        Future<InetAddress[]> future;
         try {
-            future = executor.submit(() -> resolver.apply(hostname));
-        } catch (RejectedExecutionException exception) {
-            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
-        }
-
-        try {
-            InetAddress[] resolved = future.get(timeoutNanos, TimeUnit.NANOSECONDS);
-            return List.of(resolved);
+            return List.of(executor.call(() -> resolver.apply(hostname), timeout, () -> {}));
         } catch (TimeoutException exception) {
-            future.cancel(true);
-            throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
-        } catch (InterruptedException exception) {
-            future.cancel(true);
-            Thread.currentThread().interrupt();
-            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
-        } catch (CancellationException exception) {
-            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
+            throw new OutboundHttpFailure(OutboundHttpFailure.Kind.DNS_FAILURE);
         } catch (ExecutionException exception) {
-            if (exception.getCause() instanceof UnknownHostException) {
-                throw new DnsLookupException(DnsLookupException.Reason.DNS_FAILURE);
-            }
-            throw new DnsLookupException(DnsLookupException.Reason.INTERNAL_FAILURE);
-        } finally {
-            if (future.isCancelled() && executor instanceof ThreadPoolExecutor pool) {
-                pool.purge();
-            }
+            throw new OutboundHttpFailure(exception.getCause() instanceof UnknownHostException
+                    ? OutboundHttpFailure.Kind.DNS_FAILURE
+                    : OutboundHttpFailure.Kind.INTERNAL_FAILURE);
+        } catch (CancellationException exception) {
+            throw new OutboundHttpFailure(OutboundHttpFailure.Kind.INTERNAL_FAILURE);
         }
     }
 
     @Override
     public void close() {
-        for (Runnable queued : executor.shutdownNow()) {
-            if (queued instanceof Future<?> future) {
-                future.cancel(false);
-            }
-        }
-    }
-
-    private static ExecutorService createExecutor(int threadCount, int queueCapacity) {
-        OutboundResourceBounds.requireDnsExecutorBounds(threadCount, queueCapacity);
-        return OutboundResourceBounds.boundedDaemonExecutor(threadCount, queueCapacity, "watch-dns-");
+        executor.close();
     }
 }

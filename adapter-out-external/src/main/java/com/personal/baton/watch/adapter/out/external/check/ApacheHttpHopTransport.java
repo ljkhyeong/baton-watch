@@ -1,28 +1,24 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
-import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
 import com.personal.baton.watch.adapter.out.external.http.ApacheHttpRequestExecutor;
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.hc.core5.io.CloseMode;
 
 /** 이미 검증되고 DNS에 고정된 단일 홉용 Apache HttpClient 5 전송 구현. */
-public final class ApacheHttpHopTransport implements HttpHopTransport, AutoCloseable {
+public final class ApacheHttpHopTransport implements HttpHopTransport {
 
-    private final ApacheHttpClientLimits clientLimits;
+    private final CheckerLimits limits;
     private final ApacheHttpRequestExecutor requestExecutor;
 
     public ApacheHttpHopTransport(CheckerLimits limits, int threadCount, int queueCapacity) {
-        this.clientLimits = new ApacheHttpClientLimits(
-                limits.connectTimeout(),
-                limits.responseTimeout(),
-                limits.maxHeaderCount(),
-                limits.maxHeaderLineLength());
+        this.limits = Objects.requireNonNull(limits, "limits");
         this.requestExecutor = new ApacheHttpRequestExecutor(
                 threadCount, queueCapacity, "watch-http-");
     }
@@ -32,9 +28,8 @@ public final class ApacheHttpHopTransport implements HttpHopTransport, AutoClose
             throws OutboundHttpFailure {
         return requestExecutor.executePinned(
                 new HttpGet(target.target().uri()),
-                target.target().hostname(),
                 target.addresses(),
-                clientLimits,
+                limits,
                 remainingTime,
                 CloseMode.IMMEDIATE,
                 response -> {

@@ -123,7 +123,6 @@ public class MonitoringConfiguration {
                 http.connectTimeout(),
                 http.responseTimeout(),
                 http.totalTimeout(),
-                http.maxRedirects(),
                 http.maxHeaderCount(),
                 http.maxHeaderLineLength());
         return new ApacheUrlChecker(

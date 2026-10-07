@@ -78,6 +78,22 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void pinsAHostThatStartsWithAPunycodeLabel() throws Exception {
+        AtomicReference<String> host = new AtomicReference<>();
+        server.handle("/idn", exchange -> {
+            host.set(exchange.getRequestHeaders().getFirst("Host"));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        ApprovedTarget idn = target("xn--bcher-kva.test", "/idn");
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(idn, Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals(idn.target().uri().getAuthority(), host.get());
+    }
+
+    @Test
     void acceptsALargeDeclaredBodyWithoutWaitingForIt() throws Exception {
         CountDownLatch releaseBody = new CountDownLatch(1);
         server.handle("/large", exchange -> {
@@ -198,7 +214,7 @@ class ApacheHttpHopTransportTest {
         });
         CheckerLimits limits = new CheckerLimits(
                 Duration.ofSeconds(1), Duration.ofNanos(timeoutNanos), Duration.ofSeconds(10),
-                3, 100, 8_192);
+                100, 8_192);
         ApprovedTarget target = target("/slow");
         try (var transport = new ApacheHttpHopTransport(limits, 1, 1)) {
             AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
@@ -226,8 +242,12 @@ class ApacheHttpHopTransportTest {
     private enum StopReason { TIMEOUT, CALLER_INTERRUPTED, SHUTDOWN }
 
     private ApprovedTarget target(String path) {
-        URI uri = server.uri("check.test", path);
-        ValidatedUri validated = new ValidatedUri(uri, "http", "check.test", uri.toString());
+        return target("check.test", path);
+    }
+
+    private ApprovedTarget target(String hostname, String path) {
+        URI uri = server.uri(hostname, path);
+        ValidatedUri validated = new ValidatedUri(uri, "http", hostname, uri.toString());
         return new ApprovedTarget(validated, List.of(InetAddress.getLoopbackAddress()));
     }
 
@@ -240,7 +260,6 @@ class ApacheHttpHopTransportTest {
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
-                3,
                 maxHeaderCount,
                 8_192);
     }

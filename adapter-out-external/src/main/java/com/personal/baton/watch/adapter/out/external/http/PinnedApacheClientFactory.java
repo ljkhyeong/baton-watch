@@ -35,9 +35,10 @@ final class PinnedApacheClientFactory {
     CloseableHttpClient open(
             String hostname,
             List<InetAddress> approvedAddresses,
-            ApacheHttpClientLimits limits) {
-        Timeout connectTimeout = socketTimeout(limits.connectTimeout());
-        Timeout responseTimeout = socketTimeout(limits.responseTimeout());
+            ApacheHttpClientLimits limits,
+            Duration remainingTime) {
+        Timeout connectTimeout = socketTimeout(limits.connectTimeout(), remainingTime);
+        Timeout responseTimeout = socketTimeout(limits.responseTimeout(), remainingTime);
         Http1Config http1Config = Http1Config.custom()
                 .setMaxHeaderCount(limits.maxHeaderCount())
                 .setMaxLineLength(limits.maxHeaderLineLength())
@@ -66,27 +67,25 @@ final class PinnedApacheClientFactory {
                         .setMaxConnPerRoute(1)
                         .build();
 
-        try {
-            return HttpClients.custom()
-                    .setConnectionManager(connectionManager)
-                    .setDefaultRequestConfig(requestConfig)
-                    .disableAutomaticRetries()
-                    .disableRedirectHandling()
-                    .disableCookieManagement()
-                    .disableAuthCaching()
-                    .disableContentCompression()
-                    .disableConnectionState()
-                    .disableDefaultUserAgent()
-                    .build();
-        } catch (RuntimeException | Error exception) {
-            connectionManager.close();
-            throw exception;
-        }
+        return HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                .disableAutomaticRetries()
+                .disableRedirectHandling()
+                .disableCookieManagement()
+                .disableAuthCaching()
+                .disableContentCompression()
+                .disableConnectionState()
+                .disableDefaultUserAgent()
+                .build();
     }
 
-    private static Timeout socketTimeout(Duration duration) {
-        // 소켓에서 0밀리초는 무제한이므로 양수 제한이 잘려 비활성화되지 않게 한다.
-        return Timeout.of(duration.compareTo(MINIMUM_SOCKET_TIMEOUT) < 0
-                ? MINIMUM_SOCKET_TIMEOUT : duration);
+    /**
+     * 단계 제한을 남은 전체 기한으로 줄인다. 소켓에서 0밀리초는 무제한이므로
+     * 1밀리초 미만으로 잘린 양수 제한은 1밀리초로 올린다.
+     */
+    static Timeout socketTimeout(Duration limit, Duration remainingTime) {
+        Duration capped = limit.compareTo(remainingTime) <= 0 ? limit : remainingTime;
+        return Timeout.of(capped.compareTo(MINIMUM_SOCKET_TIMEOUT) < 0 ? MINIMUM_SOCKET_TIMEOUT : capped);
     }
 }

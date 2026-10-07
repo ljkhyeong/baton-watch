@@ -15,11 +15,11 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 | 역할 | 위치 |
 | --- | --- |
 | 정적 URL 구문 | `domain/.../monitoring/TargetUrl`(등록), `adapter-out-external/.../check/TargetUriPolicy`(리다이렉트 연결) |
-| 대상 점검 흐름 | `check/SafeUrlCheckEngine`(홉·순환), `ApacheHttpHopTransport`, `ApacheUrlChecker` |
-| 주소 정책·DNS | `check/GlobalAddressPolicy`, `BoundedDnsLookup`. IANA 기준은 `ops/check-iana-registry.sh`·`ops/iana-registry-sha256.txt` |
-| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`(실행기 내부), `ApacheHttpClientLimits` |
-| 실행·취소·응답 수명 | `http/ApacheHttpRequestExecutor.executePinned`(두 전송의 공통 진입점), `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
-| 콜백 | `delivery/DeliveryEndpointPolicy`, `SafeEventDeliveryEngine`, `ApacheEventDeliveryTransport`. 설정은 `bootstrap/.../EventDeliveryProperties`·`EventDeliveryConfiguration` |
+| 대상 점검 흐름 | `check/ApacheUrlChecker`(홉·순환·실행기 소유), `ApacheHttpHopTransport` |
+| 주소 정책·DNS | `check/GlobalAddressPolicy`, `BoundedDnsLookup`. 실패 분류는 `http/OutboundHttpFailure` 하나로 공유한다. IANA 기준은 `ops/check-iana-registry.sh`·`ops/iana-registry-sha256.txt` |
+| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`(실행기 내부, 단계 제한 축소·1밀리초 하한), `ApacheHttpClientLimits`(`CheckerLimits`·`EventDeliveryLimits`가 구현하는 공통 제한) |
+| 실행·취소·응답 수명 | `BoundedTaskExecutor`(DNS·HTTP 공통 기한·취소·대기열 정리·종료), `http/ApacheHttpRequestExecutor.executePinned`(두 전송의 공통 진입점), `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
+| 콜백 | `delivery/DeliveryEndpointPolicy`, `ApacheHealthChangeEventSender`, `ApacheEventDeliveryTransport`(콜백 URI·토큰 고정), `HealthChangeEventRequest`(고정 DTO 직렬화). 설정은 `bootstrap/.../EventDeliveryProperties`·`EventDeliveryConfiguration` |
 | 결과 분류 | `domain/.../monitoring/CheckOutcome` |
 
 ## 규칙
@@ -43,7 +43,7 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 
 ```bash
 python3 ops/run-validation.py run --label <주제>-reproduction -- \
-  ./gradlew :adapter-out-external:test --tests '*SafeUrlCheckEngineTest'
+  ./gradlew :adapter-out-external:test --tests '*ApacheUrlCheckerTest'
 python3 ops/run-validation.py run --label <주제>-external -- ./gradlew :adapter-out-external:test
 ```
 

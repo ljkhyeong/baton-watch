@@ -51,10 +51,8 @@ class ApacheEventDeliveryTransportTest {
         });
         byte[] payload = "{\"eventId\":\"event-1\"}".getBytes(StandardCharsets.UTF_8);
 
-        try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
-            DeliveryResponse response = transport.execute(
-                    request("/callback", payload), Duration.ofSeconds(2));
+        try (ApacheEventDeliveryTransport transport = transport(testLimits(8_192))) {
+            DeliveryResponse response = execute(transport, payload, Duration.ofSeconds(2));
 
             assertEquals(204, response.statusCode());
         }
@@ -82,9 +80,9 @@ class ApacheEventDeliveryTransportTest {
             exchange.close();
         });
 
-        try (var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
-            DeliveryResponse response = transport.execute(
-                    request("/callback", "{}".getBytes(StandardCharsets.UTF_8)), Duration.ofSeconds(2));
+        try (var transport = transport(testLimits(8_192))) {
+            DeliveryResponse response = execute(
+                    transport, "{}".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(2));
 
             assertEquals(statusCode, response.statusCode());
             assertEquals(expectedRetryTime, response.retryNotBefore());
@@ -122,13 +120,10 @@ class ApacheEventDeliveryTransportTest {
             exchange.close();
         });
 
-        try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8), 1, 1, CLOCK)) {
+        try (ApacheEventDeliveryTransport transport = transport(testLimits(8))) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
-                    () -> transport.execute(
-                            request("/callback", "{}".getBytes(StandardCharsets.UTF_8)),
-                            Duration.ofSeconds(2)));
+                    () -> execute(transport, "{}".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
         }
@@ -142,13 +137,10 @@ class ApacheEventDeliveryTransportTest {
             exchange.close();
         });
 
-        try (ApacheEventDeliveryTransport transport =
-                new ApacheEventDeliveryTransport(testLimits(8_192, 100, 128), 1, 1, CLOCK)) {
+        try (ApacheEventDeliveryTransport transport = transport(testLimits(8_192, 100, 128))) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
-                    () -> transport.execute(
-                            request("/callback", "{}".getBytes(StandardCharsets.UTF_8)),
-                            Duration.ofSeconds(2)));
+                    () -> execute(transport, "{}".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
         }
@@ -156,26 +148,27 @@ class ApacheEventDeliveryTransportTest {
 
     @Test
     void cancelsAStreamingResponseAtTheDeadlineAndDeliversTheNextRequest() throws Exception {
+        server.handleStreamThenQuick("/callback");
         byte[] payload = "{}".getBytes(StandardCharsets.UTF_8);
-        try (var transport = new ApacheEventDeliveryTransport(testLimits(8_192), 1, 1, CLOCK)) {
+        try (var transport = transport(testLimits(8_192))) {
             OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
-                    () -> transport.execute(request("/stream", payload), Duration.ofSeconds(2)));
+                    () -> execute(transport, payload, Duration.ofSeconds(2)));
 
             assertEquals(OutboundHttpFailure.Kind.READ_TIMEOUT, failure.kind());
-            assertEquals(204, transport.execute(request("/quick", payload), Duration.ofSeconds(1)).statusCode());
+            assertEquals(204, execute(transport, payload, Duration.ofSeconds(1)).statusCode());
             assertTrue(server.awaitDisconnected());
         }
     }
 
-    private ApprovedDeliveryRequest request(String path, byte[] payload) {
-        ValidatedDeliveryEndpoint endpoint = new ValidatedDeliveryEndpoint(
-                server.uri("delivery.test", path), "delivery.test");
-        return new ApprovedDeliveryRequest(
-                endpoint,
-                List.of(InetAddress.getLoopbackAddress()),
-                payload,
-                "0123456789abcdef0123456789abcdef",
-                "event-1");
+    private ApacheEventDeliveryTransport transport(EventDeliveryLimits limits) {
+        return new ApacheEventDeliveryTransport(
+                server.uri("delivery.test", "/callback"), "0123456789abcdef0123456789abcdef", limits, 1, 1, CLOCK);
+    }
+
+    private static DeliveryResponse execute(
+            ApacheEventDeliveryTransport transport, byte[] payload, Duration remainingTime)
+            throws OutboundHttpFailure {
+        return transport.execute(List.of(InetAddress.getLoopbackAddress()), payload, "event-1", remainingTime);
     }
 
     private static EventDeliveryLimits testLimits(long maxResponseBytes) {

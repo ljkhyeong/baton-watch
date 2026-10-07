@@ -19,9 +19,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
-import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
@@ -40,7 +38,6 @@ class EventDeliveryConfigurationTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
-            .withConfiguration(AutoConfigurations.of(JacksonAutoConfiguration.class))
             .withUserConfiguration(Settings.class, EventDeliveryConfiguration.class,
                     EventDeliveryScheduler.class, EventDeliveryMaintenanceScheduler.class)
             .withPropertyValues(
@@ -117,7 +114,7 @@ class EventDeliveryConfigurationTest {
     })
     void rejectsInvalidEndpointsWithoutLoggingTheirValues(String endpoint, CapturedOutput output) {
         SpringApplication application = new SpringApplication(
-                Settings.class, EventDeliveryConfiguration.class, JacksonAutoConfiguration.class);
+                Settings.class, EventDeliveryConfiguration.class);
         application.setWebApplicationType(WebApplicationType.NONE);
         application.setRegisterShutdownHook(false);
         application.addInitializers(EventDeliveryConfigurationTest::registerCollaborators);

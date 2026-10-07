@@ -20,7 +20,6 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class EventDeliveryConfiguration {
@@ -44,7 +43,6 @@ class EventDeliveryConfiguration {
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
-            ObjectMapper objectMapper,
             Clock clock) {
         if (properties.bearerToken().equals(watchProperties.apiToken())) {
             throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
@@ -65,7 +63,6 @@ class EventDeliveryConfiguration {
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
                 http.requestQueueCapacity(),
-                objectMapper,
                 clock);
     }
 

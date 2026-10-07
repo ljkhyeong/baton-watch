@@ -10,7 +10,7 @@ public record CheckObservation(
         Duration duration,
         int redirectCount) {
 
-    private static final int MAX_REDIRECT_COUNT = 3;
+    public static final int MAX_REDIRECT_COUNT = 3;
 
     public CheckObservation {
         Objects.requireNonNull(outcome, "outcome");

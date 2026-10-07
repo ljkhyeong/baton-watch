@@ -1,13 +1,12 @@
 package com.personal.baton.watch.adapter.out.external.check;
 
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /** 주소 중 하나라도 공개 글로벌 유니캐스트가 아니면 DNS 응답 전체를 거부한다. */
 public final class GlobalAddressPolicy {
@@ -61,19 +60,15 @@ public final class GlobalAddressPolicy {
             cidr("2001:db8::", 32),
             cidr("2620:4f:8000::", 48));
 
-    public List<InetAddress> approve(List<InetAddress> answer) throws AddressPolicyException {
-        if (answer.isEmpty()) {
-            throw new AddressPolicyException();
+    /**
+     * 응답이 비었거나 공개 글로벌 유니캐스트가 아닌 주소가 하나라도 있으면 전체를 거부한다.
+     * 승인한 주소는 처음 나온 순서대로 중복 없이 반환한다.
+     */
+    public List<InetAddress> approve(List<InetAddress> answer) throws OutboundHttpFailure {
+        if (answer.isEmpty() || !answer.stream().allMatch(this::isGlobal)) {
+            throw new OutboundHttpFailure(OutboundHttpFailure.Kind.DESTINATION_REJECTED);
         }
-
-        Set<InetAddress> unique = new LinkedHashSet<>();
-        for (InetAddress address : answer) {
-            if (!isGlobal(address)) {
-                throw new AddressPolicyException();
-            }
-            unique.add(address);
-        }
-        return List.copyOf(unique);
+        return answer.stream().distinct().toList();
     }
 
     boolean isGlobal(InetAddress address) {
