@@ -1,9 +1,46 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-10-05
+최종 수정일: 2026-10-07
 
 ## 현재 작업
 
+- `b0ae87f`·`5e00d0d`·`71535cb`·`6482fc3`·`adf68e8`에서 직접 구현·호환 코드·과잉 추상화를 Java·Spring API로 정리했다.
+  - 규모: 171개 파일, 순 2,253줄 감소(운영 Java 635줄, 테스트 1,305줄, SQL·ops·빌드 220줄, 문서 93줄).
+  - 후보 59건과 교차 검토 7건을 jar 근거로 반박 검증한 뒤 적용했다.
+  - 도메인·애플리케이션: `TargetUrl` 생성자가 인코딩 문자까지 검사하고, 기존 DB 값 호환 경로를 지웠다.
+    `TimeBoundaryPolicy`와 서비스 생성자의 설정 재검증, `HealthDerivationPolicy`를 지웠다.
+    유지보수 유스케이스 6개는 2개로 합쳤다. 단건 조회 포트는 다건 조회로 통합했다.
+  - 영속성:
+    - `lock_timeout`은 pgJDBC `options`로 모든 런타임 연결에 건다. 비트랜잭션 조회도 1초 뒤 55P03(503)으로 실패한다.
+      `PostgresTransactionOperations`는 외부 트랜잭션 합류 거부만 맡는다.
+    - 백로그 요약 테이블·트리거는 `PENDING` 부분 인덱스 집계로 바꿨다.
+    - 쓰지 않던 `created_at`·`updated_at`·시도 리스 토큰 열과 리스 토큰 고유 인덱스를 지웠다.
+    - 선점의 시각 조회 왕복, 완료 전 결과 조회, 중복 REVOKE를 지웠다.
+  - 외부 통신:
+    - DNS·HTTP 실행기를 `BoundedTaskExecutor`로 합쳤다. DNS 종료 때 실행 중 조회의 호출자도 바로 `INTERNAL_FAILURE`를 받는다.
+    - 실패 예외를 `OutboundHttpFailure`로 통합했다.
+    - 퍼사드와 엔진을 `ApacheUrlChecker`·`ApacheHealthChangeEventSender`로 합쳤다.
+    - 콜백 JSON은 전역 `spring.jackson` 설정과 분리된 `JsonMapper.shared()`로 직렬화한다.
+    - 리다이렉트 상한 설정 `watch.http.max-redirects`는 지우고 `CheckObservation.MAX_REDIRECT_COUNT`(3)로 고정했다.
+    - IP 고정 범위는 Apache 요청 authority에서 정한다. 그래서 `xn--`로 시작하는 호스트가 항상 `INTERNAL_FAILURE`가 되던 잠재 결함도 해소됐다.
+  - 웹:
+    - 본문 16 KiB 제한을 보안 필터에서 `RequestBodyAdvice`로 옮겼다. 그래서 405·406·415와 경로 참조 400이 413보다 먼저 판정된다.
+    - `MonitorApiException`은 `ErrorResponseException`을 상속한다.
+    - `spring-boot-starter-web`을 `spring-boot-starter-webmvc`로 바꿨다.
+  - bootstrap·운영:
+    - JDBC 어댑터·`@Primary` 계측 빈 쌍을 합쳤다.
+    - 쓰지 않던 활성화 필드, 전달 전용 유지보수 주기·배치 키를 지웠다. 전달 정리도 공통 `watch.maintenance-*`를 쓴다.
+    - `baton.watch.maintenance.items` 메트릭과 메트릭 기록 예외 격리를 지웠다. 예외를 던지는 `MeterFilter` 등의 금지 조건은 PRD-0003·ADR-0002에 남겼다.
+    - Compose·yml의 기본값 복제와 Boot 환경 변수 매핑과 겹치던 자리표시자를 지웠다. 환경 변수 이름은 그대로다.
+    - 종료 단계 30초는 고정 속성으로 옮겼다.
+  - 시험:
+    - `loadTest`·`capacityTest`와 런북 2개를 지웠다. 용량 판단은 [스테이징 배포](docs/runbooks/staging-deployment.md)로 옮겼다.
+    - Testcontainers 싱글턴 컨테이너를 쓴다. 테스트 PostgreSQL 이미지는 Dockerfile 한 곳에서 받는다.
+  - 기각: 보안 오류 응답의 MVC 위임(401 계약 변경·경로 노출 위험), `PostgresTransactionOperations` 삭제(Spring 전파 옵션으로 대체 불가),
+    RowMapper 자동 매핑(행마다 드라이버 예외), BOM과 같은 버전 고정 삭제(Dependabot 보안 추적 상실),
+    JdbcTemplate 제한의 Boot 속성 이관(단위 해석 불일치 위험 대비 이득 적음).
+  - V1을 직접 고쳤으므로 이전 V1을 적용한 로컬 볼륨(`watch-postgres-data`)과 시험 DB는 Flyway 체크섬 검증에 실패한다.
+    볼륨을 지우고 다시 만든다. 추가 비용은 없으며 운영 배포는 미실행이다.
 - 정책 시험이 `WATCH_CHECK_ENABLED`를 지우지 않아 개발자 환경 값에 따라 Compose 렌더가 달라지던 문제를 고쳤다.
   DNS 조회도 HTTP 실행기처럼 작업 제출 전에 기한을 계산한다. HANDOFF의 main 병합 이전 기록 57개 항목과 검증 65행은
   [10월 5일 이전 인계 기록](docs/history/handoff-2026-10-05.md)으로 옮겼다. 추가 비용은 없으며 운영 배포는 미실행이다.
@@ -12,7 +49,7 @@
   닫기 방식, 요청별 IP 고정 클라이언트는 그대로다. 상수 상태만 돌려주던 시스템 상태 유스케이스 체인, 진입 클래스의 중복 사전 검사,
   내부 호출 null 검사, 중복 불변식, 테스트 전용 오버로드를 지웠다. 한 번도 동작하지 않은 `renovate.json`을 삭제하고
   Dependabot에 Compose 이미지 점검을 추가했다. Dockerfile은 공통 JRE 단계로 묶었고 해석되지 않는 의존성 검증 항목을 지웠다.
-  Spring `@ConditionalOnBooleanProperty`는 `"true"` 문자열만 비교해 설정 바인딩의 `on`·`yes`·`1`과 어긋나므로 직접 구현한 조건을 유지했다.
+  Spring `@ConditionalOnBooleanProperty`는 `"true"` 문자열만 비교해 문서가 약속한 `on`·`yes`·`1` 해석과 잘못된 값의 시작 실패를 지키지 못하므로 직접 구현한 조건을 유지했다.
   Compose의 `pids_limit`과 `deploy.resources.limits.pids`는 Compose가 함께 요구해 중복이 아니다. 추가 비용은 없으며 운영 배포는 미실행이다.
 - `7c6eeff`에서 운영 데이터가 생기기 전에 Flyway V1~V6을 최종 스키마를 바로 만드는 단일 V1로 통합했다.
   기존 데이터 이행 구문과 이행 경로 시험 3개를 지웠고, 대상 점검에서 항상 0이던 `responseBytes`와
@@ -63,6 +100,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| Java·Spring API 정리 `b0ae87f`~`adf68e8` | 그룹마다 독립 검토 뒤 커밋했다. 최종 상태에서 `./gradlew test processRecoveryTest` 통과. 테스트 수: domain 25, application 51, web 46, 외부 통신 282, 영속성 74, bootstrap 128, ArchUnit 3, 복구 3(실패·건너뜀 0). web·영속성·application·bootstrap은 그룹 D·E에서 같은 입력으로 실행한 결과를 Gradle이 재사용했다. 이전 629개에서 줄어든 것은 호환·중복·프레임워크 반복 시험과 load·capacity 시험을 지웠기 때문이다. `runtimeLoadTest`(25개) 통과. 작업 트리로 빌드한 이미지 4종으로 `staging-database-operation-postgres-test.sh` 통과(권한 증거 `f|t|f|t|f|t|f|t|f|t|f`). `staging-compose-policy-test.sh`와 Compose 렌더 비교 통과(차이는 종료 단계 변수 삭제와 env 파일이 없을 때 값 없는 `WATCH_*`뿐). 오프라인 의존성 해석·`verifyBootJarLicense` 통과. 공급망·cloudflared·gateway 검사는 이미지 기반 변경이 없어 미실행 |
 | 정책 시험 격리·DNS 기한 | `staging-compose-policy-test.sh`를 기본 환경과 `WATCH_CHECK_ENABLED=false` 환경에서 각각 통과, ShellCheck 통과. 외부 통신 모듈 281개 통과, 실패·건너뜀 없음. 다른 모듈·이미지 변경은 없어 반복하지 않음 |
 | 골격·설정 정리 `2485c4f`·`67b8dd4` | 전체 629개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음. domain 22→26·bootstrap 131→136개(매개변수 병합·설정 사례 확대), web 52→48·외부 통신 282→281개(같은 계층 중복 삭제), 나머지 동일. 리다이렉트 미추종은 설정을 임시로 빼면 302 사례가 실패함을 확인. `processRecoveryTest` 3개, `loadTest` 2개, `runtimeLoadTest` 1개 통과. `67b8dd4`로 이미지 5개를 로컬 빌드해 `verify-runtime-images.py`와 `staging-database-operation-postgres-test.sh` 통과. 변경 전후 이미지의 레이블·사용자·진입점·환경·패키지 목록이 같고 Compose 렌더 차이는 네트워크 `driver: bridge`뿐. 의존성 검증은 전체 구성 오프라인 해석으로 통과. Dependabot의 Compose 첫 실행과 CI 이미지 추출 변경은 원격에서 확인 필요 |
 | 마이그레이션 통합 `7c6eeff` | 고정 PostgreSQL 이미지에서 기존 V1~V6 체인과 새 V1의 `pg_dump --schema-only`를 비교해 `response_bytes` 열·CHECK만 다르고 제약 이름·인덱스·리스 CHECK·트리거·함수와 백로그 초기 행이 같음을 확인. 전체 625개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음. 영속성 84→81개(이행 경로 시험 3개 삭제), 나머지 모듈 개수 동일. `processRecoveryTest` 3개, `loadTest -PwatchLoadMonitors=25` 2개, `runtimeLoadTest -PwatchRuntimeLoadMonitors=25` 1개 통과. `7c6eeff`로 PostgreSQL·DB 작업·마이그레이션·런타임 이미지를 로컬 빌드(`--pull` 없음)해 `staging-database-operation-postgres-test.sh` 통과, Flyway V1 적용 증거·역할 권한·런타임 DML·WATCH 기동 확인. ShellCheck 통과. 공급망·cloudflared·gateway 검사는 변경 범위 밖이라 미실행 |
