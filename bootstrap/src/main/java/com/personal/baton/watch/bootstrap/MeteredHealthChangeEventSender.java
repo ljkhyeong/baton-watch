@@ -28,7 +28,6 @@ final class MeteredHealthChangeEventSender implements HealthChangeEventSender {
                     ? EventDeliveryOutcome.INTERNAL_FAILURE
                     : observation.outcome();
             metrics.eventDeliveryFinished(sample, recordedOutcome);
-            metrics.recordEventDeliveryAttempt(recordedOutcome);
         }
     }
 }

@@ -25,17 +25,10 @@ import org.springframework.transaction.support.TransactionOperations;
 class EventDeliveryConfiguration {
 
     @Bean
-    JdbcHealthChangeEventDeliveryAdapter healthChangeEventDeliveryPersistenceAdapter(
-            JdbcClient jdbcClient, TransactionOperations transactions) {
-        return new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
-    }
-
-    @Bean
-    @Primary
-    HealthChangeEventDeliveryPersistencePort meteredHealthChangeEventDeliveryPersistence(
-            JdbcHealthChangeEventDeliveryAdapter persistence,
-            MonitoringMetrics metrics) {
-        return new MeteredHealthChangeEventDeliveryPersistence(persistence, metrics);
+    HealthChangeEventDeliveryPersistencePort healthChangeEventDeliveryPersistence(
+            JdbcClient jdbcClient, TransactionOperations transactions, MonitoringMetrics metrics) {
+        return new MeteredHealthChangeEventDeliveryPersistence(
+                new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions), metrics);
     }
 
     @Bean
@@ -106,9 +99,10 @@ class EventDeliveryConfiguration {
     EventDeliveryMaintenanceUseCase eventDeliveryMaintenanceUseCase(
             HealthChangeEventDeliveryPersistencePort persistence,
             Clock clock,
-            EventDeliveryProperties properties) {
+            EventDeliveryProperties properties,
+            WatchProperties watchProperties) {
         return new EventDeliveryMaintenanceService(
-                persistence, clock, properties.retention(), properties.maintenanceBatchSize());
+                persistence, clock, properties.retention(), watchProperties.maintenanceBatchSize());
     }
 
     static final class EnabledCondition implements Condition {

@@ -12,12 +12,10 @@ spring:
       enum:
         fail-on-numbers-for-enums: true
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/baton_watch}
-    username: ${SPRING_DATASOURCE_USERNAME:baton_watch}
-    password: ${SPRING_DATASOURCE_PASSWORD}
+    url: jdbc:postgresql://localhost:5432/baton_watch
+    username: baton_watch
 watch:
-  api-token: ${WATCH_API_TOKEN}
-  check-enabled: ${WATCH_CHECK_ENABLED:true}
+  # 속성 경로와 환경 변수 이름이 달라 자리표시자로 연결한다.
   database:
     maximum-pool-size: ${WATCH_DB_MAXIMUM_POOL_SIZE:8}
     minimum-idle: ${WATCH_DB_MINIMUM_IDLE:2}
@@ -33,12 +31,12 @@ watch:
     cancel-signal-timeout-seconds: ${WATCH_DB_CANCEL_SIGNAL_TIMEOUT_SECONDS:3}
     tcp-keep-alive: ${WATCH_DB_TCP_KEEP_ALIVE:true}
   persistence:
-    query-timeout: ${WATCH_PERSISTENCE_QUERY_TIMEOUT:5s}
-    transaction-timeout: ${WATCH_PERSISTENCE_TRANSACTION_TIMEOUT:5s}
-    lock-timeout: ${WATCH_PERSISTENCE_LOCK_TIMEOUT:1s}
+    query-timeout: 5s
+    transaction-timeout: 5s
+    lock-timeout: 1s
   poll-interval: 1s
   maintenance-interval: 1m
-  worker-execution-budget: ${WATCH_WORKER_EXECUTION_BUDGET:60s}
+  worker-execution-budget: 60s
   lease-duration: 30s
   check-interval: 60s
   internal-failure-retry-interval: 30s
@@ -57,17 +55,15 @@ watch:
     request-threads: 1
     request-queue-capacity: 1
   event-delivery:
-    enabled: ${WATCH_EVENT_DELIVERY_ENABLED:false}
-    endpoint: ${WATCH_EVENT_DELIVERY_ENDPOINT:}
+    endpoint: ""
+    # 속성 경로와 환경 변수 이름이 달라 자리표시자로 연결한다.
     bearer-token: ${WATCH_EVENT_DELIVERY_TOKEN:}
     poll-interval: 1s
-    maintenance-interval: 1m
     lease-duration: 60s
     initial-retry-delay: 5s
     max-retry-delay: 15m
     retention: 30d
     batch-size: 2
-    maintenance-batch-size: 100
     http:
       connect-timeout: 2s
       response-timeout: 3s

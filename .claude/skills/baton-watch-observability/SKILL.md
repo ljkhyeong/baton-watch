@@ -14,7 +14,7 @@ description: BATON WATCH의 로그·메트릭 계측, 민감 정보가 남는 �
 | --- | --- |
 | 메트릭 | `bootstrap/.../MonitoringMetrics`, `MeteredUrlChecker`, `MeteredHealthChangeEventSender`, `MeteredCheckWorkPersistence`, `MeteredHealthChangeEventDeliveryPersistence` |
 | 고정 로거 | `bootstrap/.../RuntimeSafetyEnvironmentPostProcessor` |
-| 로그 테스트 | `InboundLoggingIntegrationTest`, `ApacheHttpLoggingConfigurationTest`, `ScheduledTaskObservationTest` |
+| 로그 테스트 | `InboundLoggingIntegrationTest`, `RuntimeSafetyEnvironmentPostProcessorTest`, `ScheduledTaskObservationTest` |
 | 경보·시나리오 | `ops/prometheus/*-alerts.yml`과 짝을 이루는 `*-test.yml` |
 | 대시보드·알림 | `ops/grafana/*.json`, `ops/alertmanager/` |
 | 프록시·외부 감시 | `ops/nginx/watch-gateway.conf`, `ops/blackbox/watch-probes.yml` |
@@ -25,7 +25,7 @@ description: BATON WATCH의 로그·메트릭 계측, 민감 정보가 남는 �
 - 레이블에는 결과 분류·프로토콜·작업 종류·상태처럼 값이 제한된 항목만 사용한다. URL·호스트·IP·리소스 참조·이벤트 ID·예외 메시지는 넣지 않는다.
 - 로그에서 URL 사용자 정보·쿼리·프래그먼트를 제거하고 응답 본문·토큰·쿠키·인가 헤더를 남기지 않는다. 요청·시도 식별자로 관련 로그를 찾을 수 있게 한다.
 - 프레임워크·라이브러리 로거가 원문을 남기면 `RuntimeSafetyEnvironmentPostProcessor` 고정 목록에 추가한다. 외부 설정이 상위 범주나 개별 로거를 TRACE로 바꿔도 차단되는지 확인한다.
-- 경보에 쓰는 카운터는 시작 시 0으로 등록해 첫 실패의 증가량이 빠지지 않게 한다. 메트릭 등록 오류가 작업자 실행을 막지 않게 기존 격리를 유지한다.
+- 경보에 쓰는 카운터는 시작 시 0으로 등록해 첫 실패의 증가량이 빠지지 않게 한다. 메트릭 기록 예외가 작업 결과를 바꾸지 않도록 예외를 던지는 `MeterFilter`·등록 실패 리스너와 `baton.watch` 타이머의 `minimum-expected-value`·`maximum-expected-value` 설정을 쓰지 않는다.
 - 필요한 실패 원인만 기존 분류에 맞춰 계측한다. 메트릭 이름·단위·의미가 바뀌면 대시보드·경보 쿼리와 시나리오도 함께 수정한다.
 - 점검 지연과 이벤트 전달 적체는 구분한다. 작업자가 멈춰도 지연 지표가 갱신되는지 확인하고, 경보는 지속되는 영향과 수집 실패·지표 누락을 구분한다.
 - 관리 상태·Prometheus 엔드포인트의 비공개 접근 조건을 유지한다. 외부 알림 수신·Grafana 가져오기는 직접 확인한 범위만 보고한다.

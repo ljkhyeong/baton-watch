@@ -20,18 +20,17 @@ final class EventDeliveryMaintenanceScheduler {
     }
 
     @Scheduled(
-            fixedDelayString = "${watch.event-delivery.maintenance-interval}",
+            fixedDelayString = "${watch.maintenance-interval}",
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void purgeDeliveredEventHistory() {
         int purged = maintenance.purgeDeliveredEvents();
-        metrics.recordPurgedDeliveredEvents(purged);
         if (purged > 0) {
             log.info("상태 변경 이벤트 전달 이력 정리 완료 purged={}", purged);
         }
     }
 
     @Scheduled(
-            fixedDelayString = "${watch.event-delivery.maintenance-interval}",
+            fixedDelayString = "${watch.maintenance-interval}",
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void refreshEventDeliveryBacklog() {
         metrics.updateEventDeliveryBacklog(maintenance.eventDeliveryBacklog());

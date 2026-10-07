@@ -247,8 +247,12 @@ require(
     "WATCH runtime must not retain schema migration authority",
 )
 require(
-    watch_environment.get("SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE") == "30s",
-    "Spring shutdown phase budget changed",
+    "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE" not in watch_environment,
+    "종료 단계 제한은 애플리케이션 안전 설정에서만 관리해야 합니다",
+)
+require(
+    watch_environment.get("WATCH_CHECK_ENABLED") == "true",
+    "환경 파일의 WATCH 설정이 컨테이너 환경으로 전달되어야 합니다",
 )
 require(
     watch_environment.get("WATCH_EVENT_DELIVERY_ENABLED") == "false",

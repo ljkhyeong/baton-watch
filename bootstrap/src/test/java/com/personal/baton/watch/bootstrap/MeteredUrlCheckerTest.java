@@ -10,8 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
-import io.micrometer.core.instrument.Meter;
-import io.micrometer.core.instrument.config.MeterFilter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -79,30 +77,5 @@ class MeteredUrlCheckerTest {
 
         assertNull(observation);
         assertEquals(1.0, count(registry, "baton.watch.check.attempts", "outcome", "internal_failure"));
-    }
-
-    @Test
-    void telemetryFailureCannotChangeASuccessfulCheckResult() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        registry.config().meterFilter(new MeterFilter() {
-            @Override
-            public Meter.Id map(Meter.Id id) {
-                if (id.getName().equals("baton.watch.check.duration")) {
-                    throw new IllegalStateException("registry unavailable");
-                }
-                return id;
-            }
-        });
-        CheckObservation expected = CheckObservation.forHttpStatus(
-                204,
-                Duration.ofMillis(17),
-                0);
-        MeteredUrlChecker checker = new MeteredUrlChecker(
-                ignored -> expected,
-                new MonitoringMetrics(registry));
-
-        CheckObservation actual = checker.check(TARGET);
-
-        assertSame(expected, actual);
     }
 }

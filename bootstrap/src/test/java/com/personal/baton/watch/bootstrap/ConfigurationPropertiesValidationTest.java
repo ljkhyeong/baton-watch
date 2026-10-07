@@ -32,13 +32,13 @@ class ConfigurationPropertiesValidationTest {
         eventDeliveryContext(
                         "watch.event-delivery.batch-size=101",
                         "watch.event-delivery.http.request-queue-capacity=17",
-                        "watch.event-delivery.maintenance-interval=0s",
+                        "watch.event-delivery.lease-duration=0s",
                         "watch.event-delivery.retention=366d")
                 .run(context -> assertInvalidFields(
                         context.getStartupFailure(),
                         "batchSize",
                         "http.requestQueueCapacity",
-                        "maintenanceInterval",
+                        "leaseDuration",
                         "retention"));
     }
 
@@ -61,13 +61,11 @@ class ConfigurationPropertiesValidationTest {
     void rejectsDeliveryPeriodsBelowOperationalMinimums() {
         eventDeliveryContext(
                         "watch.event-delivery.poll-interval=999ms",
-                        "watch.event-delivery.maintenance-interval=59s",
                         "watch.event-delivery.initial-retry-delay=4s",
                         "watch.event-delivery.max-retry-delay=4s")
                 .run(context -> assertInvalidFields(
                         context.getStartupFailure(),
                         "pollInterval",
-                        "maintenanceInterval",
                         "initialRetryDelay",
                         "maxRetryDelay"));
     }

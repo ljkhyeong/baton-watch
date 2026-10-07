@@ -32,7 +32,6 @@ final class MonitoringMetrics {
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
     private static final String DELIVERY_LEASE_RECOVERIES =
             "baton.watch.event.delivery.lease.recoveries";
-    private static final String MAINTENANCE_ITEMS = "baton.watch.maintenance.items";
 
     private final MeterRegistry registry;
     private final AtomicLong inFlightChecks = new AtomicLong();
@@ -63,18 +62,21 @@ final class MonitoringMetrics {
                 databaseClockOffsetMillis,
                 TimeUnit.MILLISECONDS);
         // 첫 실패·리스 회수 전의 0도 수집하도록 경보용 카운터를 미리 등록한다.
-        record(() -> registry.counter(CHECK_FINALIZATIONS, "status", "failure"));
-        record(() -> registry.counter(DELIVERY_FINALIZATIONS, "status", "failure"));
-        record(() -> registry.counter(CHECK_LEASE_RECOVERIES));
-        record(() -> registry.counter(DELIVERY_LEASE_RECOVERIES));
+        registry.counter(CHECK_FINALIZATIONS, "status", "failure");
+        registry.counter(DELIVERY_FINALIZATIONS, "status", "failure");
+        registry.counter(CHECK_LEASE_RECOVERIES);
+        registry.counter(DELIVERY_LEASE_RECOVERIES);
     }
 
     void checkStarted() {
         inFlightChecks.incrementAndGet();
     }
 
-    void checkFinished() {
+    void checkFinished(CheckObservation observation) {
         inFlightChecks.decrementAndGet();
+        String outcome = observation.outcome().name().toLowerCase(Locale.ROOT);
+        registry.counter(CHECK_ATTEMPTS, "outcome", outcome).increment();
+        registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
     }
 
     void updateCheckScheduleDelay(Duration delay) {
@@ -82,31 +84,25 @@ final class MonitoringMetrics {
     }
 
     void recordCheckClaim(ClaimedCheck claimed) {
-        increment(CHECK_CLAIMED, 1);
+        registry.counter(CHECK_CLAIMED).increment();
         if (claimed.recoveredLease()) {
-            increment(CHECK_LEASE_RECOVERIES, 1);
+            registry.counter(CHECK_LEASE_RECOVERIES).increment();
         }
     }
 
     void recordCheckFinalization(CheckFinalizationStatus status) {
-        increment(CHECK_FINALIZATIONS, 1, "status", status.name().toLowerCase(Locale.ROOT));
+        registry.counter(CHECK_FINALIZATIONS, "status", status.name().toLowerCase(Locale.ROOT))
+                .increment();
     }
 
     void recordCheckFinalizationFailure() {
-        increment(CHECK_FINALIZATIONS, 1, "status", "failure");
-    }
-
-    void recordCheckAttempt(CheckObservation observation) {
-        String outcome = observation.outcome().name().toLowerCase(Locale.ROOT);
-        increment(CHECK_ATTEMPTS, 1, "outcome", outcome);
-        record(() ->
-                registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration()));
+        registry.counter(CHECK_FINALIZATIONS, "status", "failure").increment();
     }
 
     void recordEventDeliveryClaim(ClaimedHealthChangeEvent claimed) {
-        increment(DELIVERY_CLAIMED, 1);
+        registry.counter(DELIVERY_CLAIMED).increment();
         if (claimed.recoveredLease()) {
-            increment(DELIVERY_LEASE_RECOVERIES, 1);
+            registry.counter(DELIVERY_LEASE_RECOVERIES).increment();
         }
     }
 
@@ -120,51 +116,23 @@ final class MonitoringMetrics {
             case ALREADY_DELIVERED -> "already_delivered";
             case STALE_CLAIM -> "stale_claim";
         };
-        increment(DELIVERY_FINALIZATIONS, 1, "status", metricStatus);
+        registry.counter(DELIVERY_FINALIZATIONS, "status", metricStatus).increment();
     }
 
     void recordEventDeliveryFinalizationFailure() {
-        increment(DELIVERY_FINALIZATIONS, 1, "status", "failure");
-    }
-
-    void recordEventDeliveryAttempt(EventDeliveryOutcome outcome) {
-        increment(DELIVERY_ATTEMPTS, 1, "outcome", outcome.name().toLowerCase(Locale.ROOT));
+        registry.counter(DELIVERY_FINALIZATIONS, "status", "failure").increment();
     }
 
     Timer.Sample eventDeliveryStarted() {
         inFlightDeliveries.incrementAndGet();
-        try {
-            return Timer.start(registry);
-        } catch (RuntimeException ignored) {
-            inFlightDeliveries.decrementAndGet();
-            return null;
-        }
+        return Timer.start(registry);
     }
 
     void eventDeliveryFinished(Timer.Sample sample, EventDeliveryOutcome outcome) {
-        if (sample == null) {
-            return;
-        }
-        try {
-            record(() -> sample.stop(registry.timer(
-                    DELIVERY_DURATION,
-                    "outcome",
-                    outcome.name().toLowerCase(Locale.ROOT))));
-        } finally {
-            inFlightDeliveries.decrementAndGet();
-        }
-    }
-
-    void recordStaleProjections(int staleProjections) {
-        increment(MAINTENANCE_ITEMS, staleProjections, "operation", "stale_projection");
-    }
-
-    void recordPurgedAttempts(int purgedAttempts) {
-        increment(MAINTENANCE_ITEMS, purgedAttempts, "operation", "attempt_purged");
-    }
-
-    void recordPurgedDeliveredEvents(int purgedEvents) {
-        increment(MAINTENANCE_ITEMS, purgedEvents, "operation", "delivered_event_purged");
+        inFlightDeliveries.decrementAndGet();
+        String metricOutcome = outcome.name().toLowerCase(Locale.ROOT);
+        registry.counter(DELIVERY_ATTEMPTS, "outcome", metricOutcome).increment();
+        sample.stop(registry.timer(DELIVERY_DURATION, "outcome", metricOutcome));
     }
 
     void updateEventDeliveryBacklog(EventDeliveryBacklog backlog) {
@@ -182,19 +150,5 @@ final class MonitoringMetrics {
 
     private void timeGauge(String name, String description, AtomicLong value, TimeUnit unit) {
         TimeGauge.builder(name, value, unit, AtomicLong::get).description(description).register(registry);
-    }
-
-    private void increment(String name, double amount, String... tags) {
-        if (amount > 0) {
-            record(() -> registry.counter(name, tags).increment(amount));
-        }
-    }
-
-    private static void record(Runnable recording) {
-        try {
-            recording.run();
-        } catch (RuntimeException ignored) {
-            // 메트릭 기록 실패가 업무 결과나 재시도 여부를 바꾸어서는 안 된다.
-        }
     }
 }

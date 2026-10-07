@@ -3,6 +3,7 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.MapPropertySource;
@@ -16,9 +17,13 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
         environment.getPropertySources().addFirst(new MapPropertySource(
                 "externalOverrides",
                 Map.ofEntries(
+                        Map.entry("spring.lifecycle.timeout-per-shutdown-phase", "120s"),
                         Map.entry("spring.task.scheduling.shutdown.await-termination", "false"),
                         Map.entry("server.tomcat.max-connections", "4096"),
                         Map.entry("logging.level.org.apache.hc.client5.http.headers", "DEBUG"),
+                        Map.entry("logging.level.org.apache.hc.client5.http.wire", "DEBUG"),
+                        Map.entry("logging.level.org.apache.hc.client5.http.impl", "DEBUG"),
+                        Map.entry("logging.level.org.apache.hc.client5.http.ssl", "DEBUG"),
                         Map.entry(
                                 "logging.level.org.springframework.jdbc.core.StatementCreatorUtils",
                                 "TRACE"),
@@ -31,14 +36,17 @@ class RuntimeSafetyEnvironmentPostProcessorTest {
 
         assertThat(environment.getPropertySources().iterator().next().getName())
                 .isEqualTo(RuntimeSafetyEnvironmentPostProcessor.PROPERTY_SOURCE_NAME);
+        assertThat(environment.getProperty("spring.lifecycle.timeout-per-shutdown-phase"))
+                .isEqualTo("30s");
         assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination"))
                 .isEqualTo("true");
         assertThat(environment.getProperty("spring.task.scheduling.shutdown.await-termination-period"))
                 .isEqualTo("65s");
         assertThat(environment.getProperty("server.tomcat.max-connections"))
                 .isEqualTo("128");
-        assertThat(environment.getProperty("logging.level.org.apache.hc.client5.http.headers"))
-                .isEqualTo("OFF");
+        assertThat(Stream.of("headers", "wire", "impl", "ssl")
+                        .map(name -> environment.getProperty("logging.level.org.apache.hc.client5.http." + name)))
+                .containsOnly("OFF");
         assertThat(environment.getProperty(
                         "logging.level.org.springframework.jdbc.core.StatementCreatorUtils"))
                 .isEqualTo("OFF");

@@ -52,8 +52,7 @@ class MonitoringSchedulingTest {
                     "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                     "watch.poll-interval=1h", "watch.maintenance-interval=1h",
                     "watch.event-delivery.enabled=true",
-                    "watch.event-delivery.poll-interval=1h",
-                    "watch.event-delivery.maintenance-interval=1h");
+                    "watch.event-delivery.poll-interval=1h");
 
     @ParameterizedTest(name = "점검 설정 {0}에서 전달과 유지보수 예약 유지")
     @CsvSource({
@@ -66,7 +65,6 @@ class MonitoringSchedulingTest {
                         .addFirst(new MapPropertySource("checkSetting", Map.of("watch.check-enabled", enabled))));
         configured.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(WatchProperties.class).checkEnabled()).isEqualTo(expected);
             assertThat(context).hasSingleBean(MonitoringMaintenanceScheduler.class)
                     .hasSingleBean(EventDeliveryScheduler.class)
                     .hasSingleBean(EventDeliveryMaintenanceScheduler.class);

@@ -5,12 +5,7 @@ import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.claimedEv
 import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.count;
 import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.timer;
 import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.spy;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -22,7 +17,6 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
-import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
@@ -54,7 +48,6 @@ class MonitoringMetricsTest {
             Map.entry("baton.watch.event.delivery.attempts", Set.of("outcome")),
             Map.entry("baton.watch.event.delivery.duration", Set.of("outcome")),
             Map.entry("baton.watch.event.delivery.finalizations", Set.of("status")),
-            Map.entry("baton.watch.maintenance.items", Set.of("operation")),
             Map.entry("baton.watch.database.clock.offset", Set.of()));
 
     @Test
@@ -83,7 +76,8 @@ class MonitoringMetricsTest {
         metrics.recordCheckClaim(claimedCheck);
         metrics.recordCheckClaim(claimedCheck);
         metrics.recordCheckFinalization(CheckFinalizationStatus.STALE_CLAIM);
-        metrics.recordCheckAttempt(CheckObservation.failure(
+        metrics.checkStarted();
+        metrics.checkFinished(CheckObservation.failure(
                 CheckOutcome.CONNECT_TIMEOUT,
                 Duration.ofMillis(125),
                 0));
@@ -100,7 +94,6 @@ class MonitoringMetricsTest {
                         NOW,
                         NOW.plusSeconds(1)),
                 EventDeliveryFinalizationStatus.APPLIED);
-        metrics.recordEventDeliveryAttempt(EventDeliveryOutcome.CONNECT_TIMEOUT);
         Timer.Sample deliverySample = metrics.eventDeliveryStarted();
         assertEquals(1.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
         metrics.eventDeliveryFinished(deliverySample, EventDeliveryOutcome.CONNECT_TIMEOUT);
@@ -120,28 +113,11 @@ class MonitoringMetricsTest {
         assertEquals(1L, timer(registry, "baton.watch.event.delivery.duration", "outcome", "connect_timeout").count());
 
         metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Duration.ofSeconds(1)));
-        metrics.recordStaleProjections(1);
-        metrics.recordPurgedAttempts(1);
-        metrics.recordPurgedDeliveredEvents(1);
         metrics.updateDatabaseClockOffset(Duration.ofSeconds(1));
         assertOnlyAllowedTags(registry);
 
         metrics.updateCheckScheduleDelay(Duration.ZERO);
         assertEquals(0.0, registry.get("baton.watch.check.schedule.delay").gauge().value());
-    }
-
-    @Test
-    void recordsMonitoringMaintenanceItemsIndependently() {
-        SimpleMeterRegistry registry = new SimpleMeterRegistry();
-        MonitoringMetrics metrics = new MonitoringMetrics(registry);
-
-        metrics.recordStaleProjections(2);
-        metrics.recordPurgedAttempts(3);
-        metrics.recordPurgedDeliveredEvents(4);
-
-        assertEquals(2.0, count(registry, "baton.watch.maintenance.items", "operation", "stale_projection"));
-        assertEquals(3.0, count(registry, "baton.watch.maintenance.items", "operation", "attempt_purged"));
-        assertEquals(4.0, count(registry, "baton.watch.maintenance.items", "operation", "delivered_event_purged"));
     }
 
     @Test
@@ -166,18 +142,6 @@ class MonitoringMetricsTest {
                 () -> assertEquals(17.0, scraped.get("baton_watch_check_schedule_delay_seconds")),
                 () -> assertEquals(91.0, scraped.get("baton_watch_event_delivery_oldest_age_seconds")),
                 () -> assertEquals(-1.5, scraped.get("baton_watch_database_clock_offset_seconds")));
-    }
-
-    @Test
-    void ignoresCounterFailures() {
-        // 게이지 등록은 실제 레지스트리로 두고 카운터 기록만 실패시킨다.
-        MeterRegistry registry = spy(new SimpleMeterRegistry());
-        doThrow(new IllegalStateException("meter registry unavailable"))
-                .when(registry).counter(anyString(), any(String[].class));
-        MonitoringMetrics metrics = new MonitoringMetrics(registry);
-
-        assertDoesNotThrow(() -> metrics.recordCheckClaim(claimedCheck(false)));
-        assertDoesNotThrow(() -> metrics.recordStaleProjections(1));
     }
 
     private static void assertOnlyAllowedTags(SimpleMeterRegistry registry) {

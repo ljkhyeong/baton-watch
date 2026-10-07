@@ -46,12 +46,12 @@ class EventDeliveryConfigurationTest {
                     "watch.event-delivery.bearer-token=a-separate-delivery-token-longer-than-32-characters")
             .withInitializer(EventDeliveryConfigurationTest::registerCollaborators);
 
-    @ParameterizedTest(name = "전달 설정 {0}의 바인딩과 전체 전달 빈 등록 일치")
+    @ParameterizedTest(name = "전달 설정 {0}에 따른 전체 전달 빈 등록")
     @CsvSource({
             "default,false", "true,true", "false,false", "on,true", "yes,true", "1,true",
             "' true ',true", "off,false", "no,false", "0,false", "' false ',false"
     })
-    void createsDeliveryBeansAccordingToBoundSetting(String enabled, boolean expected) {
+    void createsDeliveryBeansAccordingToSetting(String enabled, boolean expected) {
         ApplicationContextRunner configured = withDeliverySetting(enabled);
         if (!expected) {
             configured = configured.withPropertyValues(
@@ -59,7 +59,6 @@ class EventDeliveryConfigurationTest {
         }
         configured.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(EventDeliveryProperties.class).enabled()).isEqualTo(expected);
             assertThat(context).hasSingleBean(EventDeliveryMaintenanceScheduler.class);
             if (expected) {
                 assertThat(context).hasSingleBean(ApacheHealthChangeEventSender.class)

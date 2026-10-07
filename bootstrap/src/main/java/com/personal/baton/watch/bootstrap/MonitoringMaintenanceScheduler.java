@@ -25,7 +25,6 @@ final class MonitoringMaintenanceScheduler {
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void markStaleProjections() {
         int stale = maintenance.markStaleProjectionsUnknown();
-        metrics.recordStaleProjections(stale);
         if (stale > 0) {
             log.info("오래된 모니터 상태 처리 완료 count={}", stale);
         }
@@ -36,7 +35,6 @@ final class MonitoringMaintenanceScheduler {
             scheduler = WorkerSchedulingConfiguration.MAINTENANCE_TASK_SCHEDULER)
     void purgeAttemptHistory() {
         int purged = maintenance.purgeAttemptHistory();
-        metrics.recordPurgedAttempts(purged);
         if (purged > 0) {
             log.info("모니터 점검 이력 정리 완료 count={}", purged);
         }

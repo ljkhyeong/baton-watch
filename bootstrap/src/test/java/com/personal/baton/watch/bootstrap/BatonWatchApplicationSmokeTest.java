@@ -53,8 +53,7 @@ import tools.jackson.databind.ObjectMapper;
             "watch.event-delivery.enabled=true",
             "watch.event-delivery.endpoint=https://callback.invalid/api/v1/internal/resource-health-events",
             "watch.event-delivery.bearer-token=full-context-delivery-token-0123456789abcdef",
-            "watch.event-delivery.poll-interval=1d",
-            "watch.event-delivery.maintenance-interval=1d"
+            "watch.event-delivery.poll-interval=1d"
         })
 @Testcontainers
 @DirtiesContext

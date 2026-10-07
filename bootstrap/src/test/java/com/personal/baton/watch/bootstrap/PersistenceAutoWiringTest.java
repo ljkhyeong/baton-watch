@@ -4,9 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.personal.baton.watch.adapter.out.external.check.ApacheUrlChecker;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
-import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.PostgresTransactionOperations;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
@@ -18,11 +16,14 @@ import java.time.Clock;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcClientAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -34,11 +35,14 @@ class PersistenceAutoWiringTest {
                     JdbcClientAutoConfiguration.class,
                     DataSourceTransactionManagerAutoConfiguration.class,
                     TransactionAutoConfiguration.class))
+            .withInitializer(new ConfigDataApplicationContextInitializer())
             .withUserConfiguration(
+                    Settings.class,
                     PersistenceTransactionConfiguration.class,
                     MonitoringConfiguration.class,
                     EventDeliveryConfiguration.class)
             .withPropertyValues(
+                    "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                     "watch.event-delivery.enabled=false",
                     "watch.persistence.query-timeout=3s",
                     "watch.persistence.transaction-timeout=5s",
@@ -47,15 +51,8 @@ class PersistenceAutoWiringTest {
             .withBean(DataSource.class, () -> mock(DataSource.class))
             .withBean(Clock.class, Clock::systemUTC)
             .withBean(
-                    DatabaseRuntimeProperties.class,
-                    BootstrapTestFixtures::databaseRuntimeProperties)
-            .withBean(
                     MonitoringMetrics.class,
-                    () -> new MonitoringMetrics(new SimpleMeterRegistry()))
-            .withBean(WatchProperties.class, BootstrapTestFixtures::watchProperties)
-            .withBean(
-                    EventDeliveryProperties.class,
-                    BootstrapTestFixtures::disabledEventDeliveryProperties);
+                    () -> new MonitoringMetrics(new SimpleMeterRegistry()));
 
     @Test
     void bootAutoConfiguresJdbcAndTransactionCollaboratorsForEveryPersistenceAdapter() {
@@ -68,15 +65,24 @@ class PersistenceAutoWiringTest {
             assertThat(context).hasSingleBean(MonitorPersistencePort.class);
             assertThat(context.getBean(MonitorPersistencePort.class))
                     .isInstanceOf(JdbcMonitorPersistenceAdapter.class);
+            assertThat(context).hasSingleBean(CheckWorkPersistencePort.class);
             assertThat(context.getBean(CheckWorkPersistencePort.class))
                     .isInstanceOf(MeteredCheckWorkPersistence.class);
+            assertThat(context).hasSingleBean(HealthChangeEventDeliveryPersistencePort.class);
             assertThat(context.getBean(HealthChangeEventDeliveryPersistencePort.class))
                     .isInstanceOf(MeteredHealthChangeEventDeliveryPersistence.class);
-            assertThat(context).hasSingleBean(JdbcCheckWorkPersistenceAdapter.class);
-            assertThat(context).hasSingleBean(JdbcHealthChangeEventDeliveryAdapter.class);
             assertThat(context).hasSingleBean(JdbcDatabaseClockAdapter.class);
             assertThat(context).hasSingleBean(ApacheUrlChecker.class);
             assertThat(context.getBean(UrlChecker.class)).isInstanceOf(MeteredUrlChecker.class);
         });
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties({
+        WatchProperties.class,
+        EventDeliveryProperties.class,
+        DatabaseRuntimeProperties.class
+    })
+    static class Settings {
     }
 }

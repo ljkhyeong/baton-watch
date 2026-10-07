@@ -78,7 +78,6 @@ import tools.jackson.databind.ObjectMapper;
             "watch.event-delivery.endpoint=https://callback.invalid/api/v1/internal/resource-health-events",
             "watch.event-delivery.bearer-token=runtime-load-delivery-token-0123456789abcdef",
             "watch.event-delivery.poll-interval=1s",
-            "watch.event-delivery.maintenance-interval=1m",
             "watch.event-delivery.lease-duration=10s",
             "watch.event-delivery.initial-retry-delay=5s",
             "watch.event-delivery.max-retry-delay=5s",

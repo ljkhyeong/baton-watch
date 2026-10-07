@@ -15,11 +15,9 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("watch.event-delivery")
 public record EventDeliveryProperties(
-        boolean enabled,
         String endpoint,
         String bearerToken,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
-        @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false)
         @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration leaseDuration,
@@ -29,11 +27,9 @@ public record EventDeliveryProperties(
         @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration retention,
         @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
-        @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
 
     static final int MAX_DELIVERY_BATCH_SIZE = 100;
-    static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
 
     URI endpointUri() {
         try {

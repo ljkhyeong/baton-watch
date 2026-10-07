@@ -12,6 +12,7 @@ public final class RuntimeSafetyEnvironmentPostProcessor implements EnvironmentP
     static final String PROPERTY_SOURCE_NAME = "watchRuntimeSafety";
 
     private static final Map<String, Object> FIXED_PROPERTIES = Map.ofEntries(
+            Map.entry("spring.lifecycle.timeout-per-shutdown-phase", "30s"),
             Map.entry("spring.task.scheduling.shutdown.await-termination", "true"),
             Map.entry("spring.task.scheduling.shutdown.await-termination-period", "65s"),
             Map.entry("server.max-http-request-header-size", "8KB"),

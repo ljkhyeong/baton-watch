@@ -34,17 +34,10 @@ public class MonitoringConfiguration {
     }
 
     @Bean
-    JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
-            JdbcClient jdbcClient, TransactionOperations transactions) {
-        return new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
-    }
-
-    @Bean
-    @Primary
-    CheckWorkPersistencePort meteredCheckWorkPersistence(
-            JdbcCheckWorkPersistenceAdapter persistence,
-            MonitoringMetrics metrics) {
-        return new MeteredCheckWorkPersistence(persistence, metrics);
+    CheckWorkPersistencePort checkWorkPersistence(
+            JdbcClient jdbcClient, TransactionOperations transactions, MonitoringMetrics metrics) {
+        return new MeteredCheckWorkPersistence(
+                new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions), metrics);
     }
 
     @Bean
