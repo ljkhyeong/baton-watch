@@ -238,7 +238,9 @@ DB 제약은 필수 상태 코드가 `NULL`인 결과도 거부한다.
   기록한다. 계측은 Micrometer 기본 동작에 맡기며, 메트릭 기록 예외가 점검 결과를
   바꾸지 않도록 예외를 던지는 `MeterFilter`, 등록 실패 시 예외를 던지는 리스너,
   `baton.watch` 타이머의 `minimum-expected-value`·`maximum-expected-value` 설정을
-  쓰지 않는다.
+  쓰지 않는다. HTTP 응답을 받지 못한 확정 실패 6종(`destination_rejected`·`dns_failure`·
+  `connect_timeout`·`read_timeout`·`tls_failure`·`network_failure`)의 시도 카운터는 시작 시 0으로
+  등록해 외부 연결 장애 경보가 첫 증가량을 잃지 않게 한다.
 - `baton.watch.check.inflight` 게이지는 현재 URL 점검을 실행 중인 작업 수를
   기록한다. 성공, 제한된 실패, 예기치 않은 예외와 상관없이 점검 호출이 끝나면
   감소하며 식별자 레이블을 사용하지 않는다.

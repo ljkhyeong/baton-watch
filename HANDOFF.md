@@ -4,11 +4,18 @@
 
 ## 현재 작업
 
+- `ff49f56`에서 WATCH 자체의 DNS·방화벽·NAT 장애로 모든 대상이 함께 실패해도 개별 대상 장애와 구분하는 경보가 없던
+  문제를 보완했다. `WatchCheckEgressFailure`는 같은 인스턴스의 최근 5분 점검에 HTTP 응답을 받은 결과가 없고
+  응답 없는 실패(`destination_rejected`·`dns_failure`·`connect_timeout`·`read_timeout`·`tls_failure`·`network_failure`)가
+  3회 이상이면 2분 뒤 발생한다. 응답을 받은 점검이 하나라도 있으면 제외하고 `internal_failure`는 세지 않는다.
+  응답 없는 실패 6종의 시도 카운터는 첫 증가량을 잃지 않도록 시작 시 0으로 등록한다. 경보는 `DEGRADED`·`BROKEN`
+  전환과 BATON 이벤트를 막지 않는다. [경보 절차](docs/runbooks/monitoring-alerts.md)·PRD-0003·README에 반영했다.
+  추가 의존성·비용은 없으며 수집기·알림 연결과 운영 배포는 미실행이다.
 - `485ac2b`에서 대상 GET과 콜백 POST가 `User-Agent` 없이 나가 정상 링크를 실패로 판정하던 문제를 수정했다.
   2026-10-13 curl 확인에서 Wikipedia·GitHub API·Reddit은 헤더가 없으면 403, 고정 값을 보내면 200을 반환했다.
   `PinnedApacheClientFactory`가 `baton-watch (+https://github.com/ljkhyeong/baton-watch)`를 두 경로에 함께 보낸다.
   브라우저 값·Apache HttpClient·JVM 버전은 쓰지 않고 설정으로 바꾸지 않는다. 쿠키·인증 캐시·압축 해제 비활성화,
-  본문 미소비, IP 고정은 그대로다. 모든 자동 요청에 챌린지를 반환하는 Stack Overflow·npm·Medium은 고정 값에도 403이며
+  본문 미소비, IP 고정은 그대로다. Stack Overflow·npm·Medium은 고정 값에도 403을 반환했으며 봇 차단은
   우회하지 않는다. [PRD-0003](docs/PRD/0003_monitoring-mvp/spec.md)·[PRD-0004](docs/PRD/0004_health-change-event-delivery/spec.md)·
   [ADR-0002](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)·README·외부 통신 스킬에 반영했다.
   추가 의존성·비용은 없으며 운영 배포는 미실행이다.
@@ -108,6 +115,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 전체 무응답 경보 `ff49f56` | 변경 전 첫 점검 전에는 시도 카운터가 없고(`{}`) Prometheus 출력에 `outcome="dns_failure"` 행이 없음을 2개 테스트로 재현. 변경 후 관련 11개·bootstrap 전체 128개·ArchUnit 3개 통과, 실패·건너뜀 없음. 고정 다이제스트의 공식 `promtool` v3.13.1로 전체 규칙·대시보드 쿼리 검사 통과. 새 시나리오 3개는 대기·발생·해제, 적은 실패 제외, 응답 기록 없는 시작·재시작, 수집 실패와 결과 분류 13종을 확인. 임계치·대기 시간·조회 구간 변경, `unless` 제거, 분류 12종 각각 제외의 변이 18개를 모두 잡는 것을 대조군과 함께 확인. 실제 수집기·Alertmanager 수신은 미확인. 외부 통신·영속성은 바꾸지 않아 해당 테스트는 재실행하지 않음 |
 | 고정 User-Agent `485ac2b` | 변경 전 루프백 서버에서 대상 GET·콜백 POST의 `User-Agent`가 없음(`null`)을 2개 테스트로 재현. 변경 후 관련 35개(홉 전송·콜백 전송·TLS 고정)와 외부 통신 모듈 전체 283개 통과, 실패·건너뜀 없음. 헤더가 정확히 1개이고 값이 고정 문자열인지 두 경로에서 확인. 문제 확인은 공개 사이트 17곳에 `User-Agent`·`Accept` 유무 조합별 GET을 한 번씩 보낸 curl 결과다(`Accept`는 결과에 영향 없음). 자동 검증은 루프백 서버만 사용. 다른 모듈은 호출 API가 바뀌지 않아 재실행하지 않음 |
 | Java·Spring API 정리 `b0ae87f`~`adf68e8` | 그룹마다 독립 검토 뒤 커밋했다. 최종 상태에서 `./gradlew test processRecoveryTest` 통과. 테스트 수: domain 25, application 51, web 46, 외부 통신 282, 영속성 74, bootstrap 128, ArchUnit 3, 복구 3(실패·건너뜀 0). web·영속성·application·bootstrap은 그룹 D·E에서 같은 입력으로 실행한 결과를 Gradle이 재사용했다. 이전 629개에서 줄어든 것은 호환·중복·프레임워크 반복 시험과 load·capacity 시험을 지웠기 때문이다. `runtimeLoadTest`(25개) 통과. 작업 트리로 빌드한 이미지 4종으로 `staging-database-operation-postgres-test.sh` 통과(권한 증거 `f|t|f|t|f|t|f|t|f|t|f`). `staging-compose-policy-test.sh`와 Compose 렌더 비교 통과(차이는 종료 단계 변수 삭제와 env 파일이 없을 때 값 없는 `WATCH_*`뿐). 오프라인 의존성 해석·`verifyBootJarLicense` 통과. 공급망·cloudflared·gateway 검사는 이미지 기반 변경이 없어 미실행 |
 | 정책 시험 격리·DNS 기한 | `staging-compose-policy-test.sh`를 기본 환경과 `WATCH_CHECK_ENABLED=false` 환경에서 각각 통과, ShellCheck 통과. 외부 통신 모듈 281개 통과, 실패·건너뜀 없음. 다른 모듈·이미지 변경은 없어 반복하지 않음 |

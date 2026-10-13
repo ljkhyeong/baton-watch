@@ -60,7 +60,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 | Compose 상태 확인 | Spring Boot 기본 liveness와 DB를 포함한 readiness 사용 |
 | 주소 정책 변경 확인 | IANA 주소 레지스트리 체크섬을 매월 비교. 변경 시 허용 정책·경계 테스트 수동 검토 |
 | 실행·복구 테스트 | 도메인·애플리케이션·HTTP·아웃바운드 정책·PostgreSQL 통합, 부하·강제 종료·리스 만료·동일 이벤트 재전달, Spring Boot 전체 런타임 복구 검증 |
-| 운영 도구 테스트 | 작업자 미실행 경보·PromQL·`promtool`, `0600` DB 백업·임시 PostgreSQL 복원, URL·비밀값을 제외한 진단 CLI 검증 |
+| 운영 도구 테스트 | 작업자 미실행·외부 연결 장애 경보·PromQL·`promtool`, `0600` DB 백업·임시 PostgreSQL 복원, URL·비밀값을 제외한 진단 CLI 검증 |
 | GitHub Actions | 의존성 체크섬·라이선스, CodeQL·ShellCheck, JAR·이미지 CycloneDX SBOM, 심각도별 취약점 검사. 검사 실패·미실행 시 CI 실패 처리 |
 
 이미지 검사는 자체 배포 이미지 다섯 개와 공식 NGINX 이미지를 포함합니다. 의존성 변경은
