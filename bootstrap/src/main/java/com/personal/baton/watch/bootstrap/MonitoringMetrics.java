@@ -8,12 +8,15 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklo
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
+import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.TimeGauge;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
+import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
@@ -32,6 +35,14 @@ final class MonitoringMetrics {
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
     private static final String DELIVERY_LEASE_RECOVERIES =
             "baton.watch.event.delivery.lease.recoveries";
+    /** 외부 연결 장애 경보가 합산하는, HTTP 응답을 받지 못한 확정 실패다. */
+    private static final Set<CheckOutcome> NO_RESPONSE_OUTCOMES = EnumSet.of(
+            CheckOutcome.DESTINATION_REJECTED,
+            CheckOutcome.DNS_FAILURE,
+            CheckOutcome.CONNECT_TIMEOUT,
+            CheckOutcome.READ_TIMEOUT,
+            CheckOutcome.TLS_FAILURE,
+            CheckOutcome.NETWORK_FAILURE);
 
     private final MeterRegistry registry;
     private final AtomicLong inFlightChecks = new AtomicLong();
@@ -66,6 +77,7 @@ final class MonitoringMetrics {
         registry.counter(DELIVERY_FINALIZATIONS, "status", "failure");
         registry.counter(CHECK_LEASE_RECOVERIES);
         registry.counter(DELIVERY_LEASE_RECOVERIES);
+        NO_RESPONSE_OUTCOMES.forEach(outcome -> registry.counter(CHECK_ATTEMPTS, "outcome", outcomeTag(outcome)));
     }
 
     void checkStarted() {
@@ -74,7 +86,7 @@ final class MonitoringMetrics {
 
     void checkFinished(CheckObservation observation) {
         inFlightChecks.decrementAndGet();
-        String outcome = observation.outcome().name().toLowerCase(Locale.ROOT);
+        String outcome = outcomeTag(observation.outcome());
         registry.counter(CHECK_ATTEMPTS, "outcome", outcome).increment();
         registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
     }
@@ -142,6 +154,10 @@ final class MonitoringMetrics {
 
     void updateDatabaseClockOffset(Duration offset) {
         databaseClockOffsetMillis.set(offset.toMillis());
+    }
+
+    private static String outcomeTag(CheckOutcome outcome) {
+        return outcome.name().toLowerCase(Locale.ROOT);
     }
 
     private void gauge(String name, String description, AtomicLong value) {

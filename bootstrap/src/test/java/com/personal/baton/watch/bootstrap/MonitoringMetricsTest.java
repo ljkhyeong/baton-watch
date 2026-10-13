@@ -17,6 +17,7 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
@@ -60,6 +61,16 @@ class MonitoringMetricsTest {
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.lease.recoveries")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
+        // 외부 연결 장애 경보가 합산하는 응답 없는 실패만 0으로 두고, 응답을 받은 결과는 첫 기록 때 만든다.
+        Map<String, Double> attempts = registry.find("baton.watch.check.attempts").counters().stream()
+                .collect(Collectors.toMap(counter -> counter.getId().getTag("outcome"), Counter::count));
+        assertEquals(Map.of(
+                "destination_rejected", 0.0,
+                "dns_failure", 0.0,
+                "connect_timeout", 0.0,
+                "read_timeout", 0.0,
+                "tls_failure", 0.0,
+                "network_failure", 0.0), attempts);
     }
 
     @Test
@@ -121,7 +132,7 @@ class MonitoringMetricsTest {
     }
 
     @Test
-    void exportsGaugesUnderTheNamesUsedByAlertRulesAndDashboards() {
+    void exportsMetricsUnderTheNamesUsedByAlertRulesAndDashboards() {
         PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         MonitoringMetrics metrics = new MonitoringMetrics(registry);
 
@@ -141,7 +152,8 @@ class MonitoringMetricsTest {
                 () -> assertEquals(1.0, scraped.get("baton_watch_event_delivery_backlog")),
                 () -> assertEquals(17.0, scraped.get("baton_watch_check_schedule_delay_seconds")),
                 () -> assertEquals(91.0, scraped.get("baton_watch_event_delivery_oldest_age_seconds")),
-                () -> assertEquals(-1.5, scraped.get("baton_watch_database_clock_offset_seconds")));
+                () -> assertEquals(-1.5, scraped.get("baton_watch_database_clock_offset_seconds")),
+                () -> assertEquals(0.0, scraped.get("baton_watch_check_attempts_total{outcome=\"dns_failure\"}")));
     }
 
     private static void assertOnlyAllowedTags(SimpleMeterRegistry registry) {
