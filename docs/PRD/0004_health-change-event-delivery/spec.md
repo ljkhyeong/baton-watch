@@ -3,7 +3,7 @@
 상태: 채택됨
 
 날짜: 2026-08-02
-수정일: 2026-09-12
+수정일: 2026-10-13
 
 구현 상태: 완료됨. 운영 배포는 범위에 포함되지 않음
 
@@ -48,7 +48,9 @@ BATON 주소를 사용하려면 이 정책에 맞는 공개 프록시를 두거�
 
 WATCH는 `Content-Type: application/json`,
 `Authorization: Bearer <configured-service-token>`,
-`Idempotency-Key: <eventId>` 헤더와 함께 `POST`를 보낸다.
+`Idempotency-Key: <eventId>` 헤더와 함께 `POST`를 보낸다. 대상 점검과 같은 고정
+`User-Agent: baton-watch (+https://github.com/ljkhyeong/baton-watch)`도 보낸다. 이 값은 요청 식별용이며
+인증에 사용하지 않는다.
 `Idempotency-Key` 값은 JSON의 `eventId`와 동일한 UUID다. JSON 객체에는 정확히
 다음 필드만 포함한다.
 

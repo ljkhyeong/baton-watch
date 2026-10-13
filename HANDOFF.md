@@ -1,9 +1,17 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-10-07
+최종 수정일: 2026-10-13
 
 ## 현재 작업
 
+- `485ac2b`에서 대상 GET과 콜백 POST가 `User-Agent` 없이 나가 정상 링크를 실패로 판정하던 문제를 수정했다.
+  2026-10-13 curl 확인에서 Wikipedia·GitHub API·Reddit은 헤더가 없으면 403, 고정 값을 보내면 200을 반환했다.
+  `PinnedApacheClientFactory`가 `baton-watch (+https://github.com/ljkhyeong/baton-watch)`를 두 경로에 함께 보낸다.
+  브라우저 값·Apache HttpClient·JVM 버전은 쓰지 않고 설정으로 바꾸지 않는다. 쿠키·인증 캐시·압축 해제 비활성화,
+  본문 미소비, IP 고정은 그대로다. 모든 자동 요청에 챌린지를 반환하는 Stack Overflow·npm·Medium은 고정 값에도 403이며
+  우회하지 않는다. [PRD-0003](docs/PRD/0003_monitoring-mvp/spec.md)·[PRD-0004](docs/PRD/0004_health-change-event-delivery/spec.md)·
+  [ADR-0002](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)·README·외부 통신 스킬에 반영했다.
+  추가 의존성·비용은 없으며 운영 배포는 미실행이다.
 - `b0ae87f`·`5e00d0d`·`71535cb`·`6482fc3`·`adf68e8`에서 직접 구현·호환 코드·과잉 추상화를 Java·Spring API로 정리했다.
   - 규모: 171개 파일, 순 2,253줄 감소(운영 Java 635줄, 테스트 1,305줄, SQL·ops·빌드 220줄, 문서 93줄).
   - 후보 59건과 교차 검토 7건을 jar 근거로 반박 검증한 뒤 적용했다.
@@ -100,6 +108,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| 고정 User-Agent `485ac2b` | 변경 전 루프백 서버에서 대상 GET·콜백 POST의 `User-Agent`가 없음(`null`)을 2개 테스트로 재현. 변경 후 관련 35개(홉 전송·콜백 전송·TLS 고정)와 외부 통신 모듈 전체 283개 통과, 실패·건너뜀 없음. 헤더가 정확히 1개이고 값이 고정 문자열인지 두 경로에서 확인. 문제 확인은 공개 사이트 17곳에 `User-Agent`·`Accept` 유무 조합별 GET을 한 번씩 보낸 curl 결과다(`Accept`는 결과에 영향 없음). 자동 검증은 루프백 서버만 사용. 다른 모듈은 호출 API가 바뀌지 않아 재실행하지 않음 |
 | Java·Spring API 정리 `b0ae87f`~`adf68e8` | 그룹마다 독립 검토 뒤 커밋했다. 최종 상태에서 `./gradlew test processRecoveryTest` 통과. 테스트 수: domain 25, application 51, web 46, 외부 통신 282, 영속성 74, bootstrap 128, ArchUnit 3, 복구 3(실패·건너뜀 0). web·영속성·application·bootstrap은 그룹 D·E에서 같은 입력으로 실행한 결과를 Gradle이 재사용했다. 이전 629개에서 줄어든 것은 호환·중복·프레임워크 반복 시험과 load·capacity 시험을 지웠기 때문이다. `runtimeLoadTest`(25개) 통과. 작업 트리로 빌드한 이미지 4종으로 `staging-database-operation-postgres-test.sh` 통과(권한 증거 `f|t|f|t|f|t|f|t|f|t|f`). `staging-compose-policy-test.sh`와 Compose 렌더 비교 통과(차이는 종료 단계 변수 삭제와 env 파일이 없을 때 값 없는 `WATCH_*`뿐). 오프라인 의존성 해석·`verifyBootJarLicense` 통과. 공급망·cloudflared·gateway 검사는 이미지 기반 변경이 없어 미실행 |
 | 정책 시험 격리·DNS 기한 | `staging-compose-policy-test.sh`를 기본 환경과 `WATCH_CHECK_ENABLED=false` 환경에서 각각 통과, ShellCheck 통과. 외부 통신 모듈 281개 통과, 실패·건너뜀 없음. 다른 모듈·이미지 변경은 없어 반복하지 않음 |
 | 골격·설정 정리 `2485c4f`·`67b8dd4` | 전체 629개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음. domain 22→26·bootstrap 131→136개(매개변수 병합·설정 사례 확대), web 52→48·외부 통신 282→281개(같은 계층 중복 삭제), 나머지 동일. 리다이렉트 미추종은 설정을 임시로 빼면 302 사례가 실패함을 확인. `processRecoveryTest` 3개, `loadTest` 2개, `runtimeLoadTest` 1개 통과. `67b8dd4`로 이미지 5개를 로컬 빌드해 `verify-runtime-images.py`와 `staging-database-operation-postgres-test.sh` 통과. 변경 전후 이미지의 레이블·사용자·진입점·환경·패키지 목록이 같고 Compose 렌더 차이는 네트워크 `driver: bridge`뿐. 의존성 검증은 전체 구성 오프라인 해석으로 통과. Dependabot의 Compose 첫 실행과 CI 이미지 추출 변경은 원격에서 확인 필요 |
@@ -129,7 +138,7 @@ main 병합 이전의 검증 결과는 [이전 인계 기록](docs/history/hando
 
 | 항목 | 마지막 확인과 다음 조건 |
 | --- | --- |
-| NGINX `pcre2` 취약점 | 10월 5일 공식 `1.30.4`·`1.30.5`·`1.31.6` alpine-slim 모두 `pcre2` 10.48-r0이라 CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패한다. Alpine 저장소에는 10.49-r0이 있다. 10월 7일 다시 확인했을 때 Docker Hub의 alpine-slim 태그 마지막 갱신은 9월 23일이었고, `1.30.5`·`1.31.6` 이미지는 9월 22일 빌드 그대로라 상태가 같다. 공식 이미지가 다시 빌드되면 NGINX 다이제스트(현재 `compose.staging-tunnel.yml`)를 갱신하고 같은 검사를 통과시킨 뒤 PR #57을 병합한다. 자체 이미지 빌드·예외 추가는 하지 않기로 했다. `claude/simplify-validation`은 PR #57 브랜치 위에 쌓여 있다. CI는 PR에서만 실행되므로 이 브랜치의 변경은 원격 `verify`를 아직 거치지 않았다 |
+| NGINX `pcre2` 취약점 | 10월 5일 공식 `1.30.4`·`1.30.5`·`1.31.6` alpine-slim 모두 `pcre2` 10.48-r0이라 CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패한다. Alpine 저장소에는 10.49-r0이 있다. 10월 7일 다시 확인했을 때 Docker Hub의 alpine-slim 태그 마지막 갱신은 9월 23일이었고, `1.30.5`·`1.31.6` 이미지는 9월 22일 빌드 그대로라 상태가 같다. 공식 이미지가 다시 빌드되면 NGINX 다이제스트(현재 `compose.staging-tunnel.yml`)를 갱신하고 같은 검사를 통과시킨 뒤 PR #57을 병합한다. 자체 이미지 빌드·예외 추가는 하지 않기로 했다. `claude/simplify-validation`은 PR #57 브랜치 위에, `claude/check-false-positives`는 다시 그 위에 쌓여 있다. CI는 PR에서만 실행되므로 두 브랜치의 변경은 원격 `verify`를 아직 거치지 않았다 |
 | WATCH 원격 병합 | 9월 8일 [필수 CI](https://github.com/ljkhyeong/baton-watch/actions/runs/34228797671) 통과 후 PR #37을 `main`에 병합했다. 병합 커밋은 `e2ad4b0`이며 당시 로컬·원격 main이 일치함을 확인했다 |
 | 공식 cloudflared 후보 | 2026.8.3 공식 이미지에는 필요한 의존성 수정이 없어 공식 소스를 패치 버전의 의존성으로 빌드한다. 필요한 수정이 포함된 공식 이미지가 나오면 같은 공급망 검사를 통과한 뒤 별도 빌드를 제거할 수 있다 |
 | 공식 이미지 패치 확인 | 기존 `MVP 이후 우선순위 정리` 작업에 매일 오전 9시 확인이 설정돼 있음. 새 자동화 추가 전 기존 설정을 조회하며, 같은 후보의 다운로드·검사를 중복 수행하지 않음 |

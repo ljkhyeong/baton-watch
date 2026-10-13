@@ -10,7 +10,7 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 | 점검 대상 등록·조회 | 인증된 `PUT`·`GET /api/v1/resource-monitors/{resourceReference}`. `ACTIVE`·`INACTIVE`를 동기화하고 이전 리비전의 덮어쓰기를 거부 |
 | 여러 대상 조회 | 인증된 `GET /api/v1/resource-monitors?resourceReference=...`. 최대 20개를 한 번에 조회하고 미등록 대상은 별도 반환 |
 | 재점검 요청 | 인증된 `POST /api/v1/resource-monitors/{resourceReference}/check-requests`. 기존 점검을 사용하거나 새 일정을 예약 |
-| URL 점검 | GET 응답 헤더로 연결 상태 판단. 응답 본문은 읽거나 저장하지 않음 |
+| URL 점검 | GET 응답 헤더로 연결 상태 판단. 응답 본문은 읽거나 저장하지 않음. 콜백과 같은 고정 `User-Agent` 사용 |
 | 점검 기록 | 일정, 시도·결과, 현재 상태와 상태 변경 이벤트를 PostgreSQL에 저장. 저장한 시도·결과는 변경하지 않음 |
 | 상태 변경 전달 | 설정된 BATON HTTPS 콜백 하나로 비동기 전달. 같은 이벤트를 다시 보낼 수 있으며 BATON은 이벤트 ID로 중복 처리 방지 |
 | 점검 중지 | 시작 설정으로 해당 인스턴스의 점검 예약 중지. API·이력 정리·이벤트 전달은 유지 |
@@ -329,6 +329,9 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 대상 점검은 GET 상태·헤더를 확인하고 본문을 읽지 않은 채 연결을 닫습니다. 큰 본문이나
 스트리밍 본문 자체는 실패 사유가 아니며, 본문 전체 다운로드·로그인 뒤 접근은 검증하지
 않습니다.
+대상 GET과 콜백 POST는 `User-Agent: baton-watch (+https://github.com/ljkhyeong/baton-watch)`를 보냅니다.
+`User-Agent` 없는 요청을 403으로 거부하는 사이트에서 정상 링크가 실패로 판정되지 않게 합니다. 브라우저를 가장하지
+않으므로 모든 자동 요청에 봇 차단 챌린지를 반환하는 사이트는 계속 `HTTP_CLIENT_ERROR`가 될 수 있습니다.
 콜백 전달의 본문 제한은 유지합니다.
 
 ## BATON 원본 스냅샷으로 독립 복원
