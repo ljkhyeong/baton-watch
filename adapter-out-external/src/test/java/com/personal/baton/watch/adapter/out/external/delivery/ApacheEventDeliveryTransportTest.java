@@ -38,6 +38,7 @@ class ApacheEventDeliveryTransportTest {
         AtomicReference<String> idempotencyKey = new AtomicReference<>();
         AtomicReference<String> acceptEncoding = new AtomicReference<>();
         AtomicReference<String> contentType = new AtomicReference<>();
+        AtomicReference<List<String>> userAgents = new AtomicReference<>();
         AtomicReference<byte[]> receivedBody = new AtomicReference<>();
         server.handle("/callback", exchange -> {
             method.set(exchange.getRequestMethod());
@@ -45,6 +46,7 @@ class ApacheEventDeliveryTransportTest {
             idempotencyKey.set(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
             acceptEncoding.set(exchange.getRequestHeaders().getFirst("Accept-Encoding"));
             contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            userAgents.set(exchange.getRequestHeaders().get("User-Agent"));
             receivedBody.set(exchange.getRequestBody().readAllBytes());
             exchange.sendResponseHeaders(204, -1);
             exchange.close();
@@ -61,6 +63,7 @@ class ApacheEventDeliveryTransportTest {
         assertEquals("event-1", idempotencyKey.get());
         assertEquals("identity", acceptEncoding.get());
         assertTrue(contentType.get().startsWith("application/json"));
+        assertEquals(List.of("baton-watch (+https://github.com/ljkhyeong/baton-watch)"), userAgents.get());
         assertArrayEquals(payload, receivedBody.get());
     }
 

@@ -20,6 +20,11 @@ import org.apache.hc.core5.util.Timeout;
 /** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
 final class PinnedApacheClientFactory {
 
+    /**
+     * 대상 점검과 콜백이 함께 보내는 고정 {@code User-Agent}다. 이 헤더가 없는 요청을 거부하는 사이트의
+     * 거짓 실패를 막으며, 브라우저를 가장하거나 HTTP 클라이언트·JVM 버전을 드러내지 않는다.
+     */
+    static final String USER_AGENT = "baton-watch (+https://github.com/ljkhyeong/baton-watch)";
     private static final Duration MINIMUM_SOCKET_TIMEOUT = Duration.ofMillis(1);
 
     private final SSLContext sslContext;
@@ -76,7 +81,7 @@ final class PinnedApacheClientFactory {
                 .disableAuthCaching()
                 .disableContentCompression()
                 .disableConnectionState()
-                .disableDefaultUserAgent()
+                .setUserAgent(USER_AGENT)
                 .build();
     }
 

@@ -63,6 +63,21 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void identifiesWatchWithOneFixedUserAgent() throws Exception {
+        AtomicReference<List<String>> userAgents = new AtomicReference<>();
+        server.handle("/agent", exchange -> {
+            userAgents.set(exchange.getRequestHeaders().get("User-Agent"));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/agent"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals(List.of("baton-watch (+https://github.com/ljkhyeong/baton-watch)"), userAgents.get());
+    }
+
+    @Test
     void preservesRepeatedSlashesInTheRequestPath() throws Exception {
         AtomicReference<String> path = new AtomicReference<>();
         server.handle("/docs", exchange -> {
