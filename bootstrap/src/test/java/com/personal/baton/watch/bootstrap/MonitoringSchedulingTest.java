@@ -39,7 +39,7 @@ class MonitoringSchedulingTest {
             .withBean(SimpleMeterRegistry.class, SimpleMeterRegistry::new)
             .withUserConfiguration(MonitoringMetrics.class)
             .withBean(RunDueChecksUseCase.class,
-                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0))
+                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0, 0))
             .withBean(RunEventDeliveriesUseCase.class,
                     () -> () -> new EventDeliveryBatchResult(0, 0, 0, 0, 0))
             .withBean(MonitoringMaintenanceUseCase.class, () -> mock(MonitoringMaintenanceUseCase.class))
@@ -78,6 +78,17 @@ class MonitoringSchedulingTest {
                 assertThat(tasks).hasSize(8);
             }
         });
+    }
+
+    @Test
+    void countsChecksRecordedAsSuspectedEgressOutages() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MonitoringScheduler scheduler = new MonitoringScheduler(
+                () -> new DueCheckBatchResult(3, 3, 0, 0, 2), new MonitoringMetrics(registry));
+
+        scheduler.checkDueMonitors();
+
+        assertThat(registry.get("baton.watch.check.egress.suspected").counter().count()).isEqualTo(2.0);
     }
 
     @Test

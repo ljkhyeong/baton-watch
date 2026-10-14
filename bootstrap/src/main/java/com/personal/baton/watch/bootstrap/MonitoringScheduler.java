@@ -18,9 +18,11 @@ public final class MonitoringScheduler {
     private static final Logger log = LoggerFactory.getLogger(MonitoringScheduler.class);
 
     private final RunDueChecksUseCase runDueChecks;
+    private final MonitoringMetrics metrics;
 
-    public MonitoringScheduler(RunDueChecksUseCase runDueChecks) {
+    public MonitoringScheduler(RunDueChecksUseCase runDueChecks, MonitoringMetrics metrics) {
         this.runDueChecks = runDueChecks;
+        this.metrics = metrics;
     }
 
     @Scheduled(
@@ -28,13 +30,15 @@ public final class MonitoringScheduler {
             scheduler = WorkerSchedulingConfiguration.MONITORING_TASK_SCHEDULER)
     void checkDueMonitors() {
         DueCheckBatchResult result = runDueChecks.runDueChecks();
+        metrics.recordEgressSuspectedChecks(result.egressSuspected());
         if (result.claimed() > 0) {
             log.info(
-                    "모니터 점검 배치 완료 claimed={} applied={} replayed={} stale={}",
+                    "모니터 점검 배치 완료 claimed={} applied={} replayed={} stale={} egressSuspected={}",
                     result.claimed(),
                     result.applied(),
                     result.alreadyFinalized(),
-                    result.staleClaims());
+                    result.staleClaims(),
+                    result.egressSuspected());
         }
     }
 

@@ -24,6 +24,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
     private final Duration checkInterval;
     private final Duration internalFailureRetryInterval;
     private final int batchSize;
+    private final EgressOutageGuard egressGuard = new EgressOutageGuard();
 
     public RunDueChecksService(
             CheckWorkPersistencePort persistence,
@@ -48,6 +49,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
+        int egressSuspected = 0;
         while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
             Optional<ClaimedCheck> nextClaim = persistence.claimDueCheck(leaseDuration);
             if (nextClaim.isEmpty()) {
@@ -56,6 +58,12 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             ClaimedCheck claimedCheck = nextClaim.orElseThrow();
             claimed++;
             CheckObservation observation = check(claimedCheck);
+            if (egressGuard.suspectsOutage(claimedCheck.targetUrl(), observation)) {
+                // WATCH 쪽 외부 연결 장애로 보이면 대상 실패로 세지 않고 내부 실패로 기록한다.
+                observation = CheckObservation.failure(
+                        CheckOutcome.INTERNAL_FAILURE, observation.duration(), observation.redirectCount());
+                egressSuspected++;
+            }
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
                     ? claimedCheck.claimedAt()
@@ -76,7 +84,7 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                 case STALE_CLAIM -> staleClaims++;
             }
         }
-        return new DueCheckBatchResult(claimed, applied, alreadyFinalized, staleClaims);
+        return new DueCheckBatchResult(claimed, applied, alreadyFinalized, staleClaims, egressSuspected);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

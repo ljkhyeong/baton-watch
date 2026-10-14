@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -48,7 +49,7 @@ class RunDueChecksServiceTest {
         DueCheckBatchResult result = service.runDueChecks();
 
         assertEquals(List.of("claim", "check", "finalize", "claim"), persistence.calls);
-        assertEquals(new DueCheckBatchResult(1, 1, 0, 0), result);
+        assertEquals(new DueCheckBatchResult(1, 1, 0, 0, 0), result);
         assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
@@ -77,7 +78,7 @@ class RunDueChecksServiceTest {
             assertTrue(Thread.currentThread().isInterrupted());
             assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), persistence.calls);
             int completed = interruptedBeforeStart ? 0 : 1;
-            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0), result);
+            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, 0), result);
         } finally {
             Thread.interrupted();
         }
@@ -96,6 +97,28 @@ class RunDueChecksServiceTest {
         service.runDueChecks();
 
         assertEquals(CheckObservation.internalFailure(), persistence.finalization.observation());
+        assertEquals(NOW.plus(INTERNAL_RETRY), persistence.finalization.nextCheckAt());
+    }
+
+    @Test
+    void recordsSilentFailuresAfterFiveHostsAsInternalFailuresWithoutChangingTheirMeasurements() {
+        ClaimedCheck[] claims = IntStream.rangeClosed(1, 5)
+                .mapToObj(host -> new ClaimedCheck(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        new TargetUrl("https://host-" + host + ".example/health"), NOW, false))
+                .toArray(ClaimedCheck[]::new);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(claims);
+        RunDueChecksService service = service(
+                persistence,
+                target -> CheckObservation.failure(CheckOutcome.DNS_FAILURE, Duration.ofSeconds(5), 0),
+                5);
+
+        DueCheckBatchResult result = service.runDueChecks();
+
+        assertEquals(new DueCheckBatchResult(5, 5, 0, 0, 1), result);
+        assertEquals(
+                CheckObservation.failure(CheckOutcome.INTERNAL_FAILURE, Duration.ofSeconds(5), 0),
+                persistence.finalization.observation());
         assertEquals(NOW.plus(INTERNAL_RETRY), persistence.finalization.nextCheckAt());
     }
 
@@ -130,7 +153,7 @@ class RunDueChecksServiceTest {
         int alreadyFinalized = status == CheckFinalizationStatus.ALREADY_FINALIZED ? 1 : 0;
         int staleClaims = status == CheckFinalizationStatus.STALE_CLAIM ? 1 : 0;
         assertEquals(
-                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims),
+                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims, 0),
                 result);
     }
 

@@ -41,6 +41,7 @@ class MonitoringMetricsTest {
             Map.entry("baton.watch.check.attempts", Set.of("outcome")),
             Map.entry("baton.watch.check.duration", Set.of("outcome")),
             Map.entry("baton.watch.check.finalizations", Set.of("status")),
+            Map.entry("baton.watch.check.egress.suspected", Set.of()),
             Map.entry("baton.watch.event.delivery.inflight", Set.of()),
             Map.entry("baton.watch.event.delivery.backlog", Set.of()),
             Map.entry("baton.watch.event.delivery.oldest.age", Set.of()),
@@ -62,7 +63,8 @@ class MonitoringMetricsTest {
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.lease.recoveries")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")),
-                () -> assertEquals(0.0, count(registry, "baton.watch.api.previous.token.authentications")));
+                () -> assertEquals(0.0, count(registry, "baton.watch.api.previous.token.authentications")),
+                () -> assertEquals(0.0, count(registry, "baton.watch.check.egress.suspected")));
         // 외부 연결 장애 경보가 합산하는 응답 없는 실패만 0으로 두고, 응답을 받은 결과는 첫 기록 때 만든다.
         Map<String, Double> attempts = registry.find("baton.watch.check.attempts").counters().stream()
                 .collect(Collectors.toMap(counter -> counter.getId().getTag("outcome"), Counter::count));
@@ -129,6 +131,9 @@ class MonitoringMetricsTest {
         metrics.updateDatabaseClockOffset(Duration.ofSeconds(1));
         metrics.recordPreviousApiTokenAuthentication();
         assertEquals(1.0, count(registry, "baton.watch.api.previous.token.authentications"));
+        metrics.recordEgressSuspectedChecks(0);
+        metrics.recordEgressSuspectedChecks(2);
+        assertEquals(2.0, count(registry, "baton.watch.check.egress.suspected"));
         assertOnlyAllowedTags(registry);
 
         metrics.updateCheckScheduleDelay(Duration.ZERO);

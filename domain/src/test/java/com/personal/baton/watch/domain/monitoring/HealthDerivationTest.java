@@ -3,6 +3,9 @@ package com.personal.baton.watch.domain.monitoring;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -33,6 +36,21 @@ class HealthDerivationTest {
 
         assertEquals(current, current.after(CheckOutcome.INTERNAL_FAILURE));
         assertEquals(new HealthDerivation(Health.UNKNOWN, 2), current.stale());
+    }
+
+    @Test
+    void separatesOutcomesThatReceivedAnHttpResponse() {
+        assertEquals(
+                EnumSet.of(
+                        CheckOutcome.SUCCESS,
+                        CheckOutcome.HTTP_CLIENT_ERROR,
+                        CheckOutcome.HTTP_SERVER_ERROR,
+                        CheckOutcome.REDIRECT_REJECTED,
+                        CheckOutcome.TOO_MANY_REDIRECTS,
+                        CheckOutcome.RESPONSE_TOO_LARGE),
+                Arrays.stream(CheckOutcome.values())
+                        .filter(CheckOutcome::receivedResponse)
+                        .collect(Collectors.toCollection(() -> EnumSet.noneOf(CheckOutcome.class))));
     }
 
     @ParameterizedTest

@@ -14,9 +14,9 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.TimeGauge;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
-import java.util.EnumSet;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.stereotype.Component;
@@ -37,14 +37,11 @@ final class MonitoringMetrics {
             "baton.watch.event.delivery.lease.recoveries";
     private static final String API_PREVIOUS_TOKEN_AUTHENTICATIONS =
             "baton.watch.api.previous.token.authentications";
+    private static final String CHECK_EGRESS_SUSPECTED = "baton.watch.check.egress.suspected";
     /** 외부 연결 장애 경보가 합산하는, HTTP 응답을 받지 못한 확정 실패다. */
-    private static final Set<CheckOutcome> NO_RESPONSE_OUTCOMES = EnumSet.of(
-            CheckOutcome.DESTINATION_REJECTED,
-            CheckOutcome.DNS_FAILURE,
-            CheckOutcome.CONNECT_TIMEOUT,
-            CheckOutcome.READ_TIMEOUT,
-            CheckOutcome.TLS_FAILURE,
-            CheckOutcome.NETWORK_FAILURE);
+    private static final List<CheckOutcome> NO_RESPONSE_OUTCOMES = Arrays.stream(CheckOutcome.values())
+            .filter(outcome -> outcome.isConclusive() && !outcome.receivedResponse())
+            .toList();
 
     private final MeterRegistry registry;
     private final AtomicLong inFlightChecks = new AtomicLong();
@@ -80,6 +77,7 @@ final class MonitoringMetrics {
         registry.counter(CHECK_LEASE_RECOVERIES);
         registry.counter(DELIVERY_LEASE_RECOVERIES);
         NO_RESPONSE_OUTCOMES.forEach(outcome -> registry.counter(CHECK_ATTEMPTS, "outcome", outcomeTag(outcome)));
+        registry.counter(CHECK_EGRESS_SUSPECTED);
         // 토큰 교체를 마치기 전에 이전 토큰 사용이 멈췄는지 0부터 확인할 수 있게 한다.
         registry.counter(API_PREVIOUS_TOKEN_AUTHENTICATIONS);
     }
@@ -93,6 +91,12 @@ final class MonitoringMetrics {
         String outcome = outcomeTag(observation.outcome());
         registry.counter(CHECK_ATTEMPTS, "outcome", outcome).increment();
         registry.timer(CHECK_DURATION, "outcome", outcome).record(observation.duration());
+    }
+
+    void recordEgressSuspectedChecks(int count) {
+        if (count > 0) {
+            registry.counter(CHECK_EGRESS_SUSPECTED).increment(count);
+        }
     }
 
     void updateCheckScheduleDelay(Duration delay) {
