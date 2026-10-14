@@ -332,19 +332,37 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
 초기화와 마이그레이션 스크립트도 같은 비밀값 문법과 파일 형식을 다시 검증합니다.
 
-WATCH API 토큰이나 터널 토큰은 다음 순서로 교체하세요.
+터널 토큰은 다음 순서로 교체하세요.
 
-1. 같은 `secrets` 디렉터리에 새 일반 파일을 만듭니다. 권한은 WATCH API 토큰에 `0600`,
-   터널 토큰에 `0444`를 적용합니다.
+1. 같은 `secrets` 디렉터리에 권한 `0444`인 새 일반 파일을 만듭니다.
 2. 새 파일을 원래 경로로 원자적으로 교체합니다. 심볼릭 링크를 사용하거나 기존 파일의
    내용을 직접 덮어쓰면 안 됩니다.
-3. 해당 컨테이너를 다시 만듭니다. WATCH는
-   `staging_compose up -d --no-deps --force-recreate watch`, 터널은
-   `staging_compose up -d --no-deps --force-recreate cloudflared`를 실행합니다.
+3. `staging_compose up -d --no-deps --force-recreate cloudflared`로 컨테이너를 다시 만듭니다.
 4. 상태 점검을 다시 실행해 통과하는지 확인합니다.
 
-bind mount가 교체 전 파일의 inode를 계속 참조할 수 있으므로 `restart`만으로는
-새 토큰이 적용되지 않을 수 있습니다.
+WATCH API 토큰은 BATON 요청이 끊기지 않도록 이전 토큰을 잠시 함께 허용하며 교체합니다.
+
+1. 현재 `watch-api-token`을 같은 디렉터리의 `watch-api-previous-token`으로 복사하고 권한을 `0600`으로 둡니다.
+2. 권한 `0600`인 새 토큰 파일을 만든 뒤 `watch-api-token` 경로로 원자적으로 교체합니다.
+3. 환경 파일의 `WATCH_API_PREVIOUS_TOKEN_FILE`에 이전 토큰 파일 경로를 넣고
+   `staging_compose up -d --no-deps --force-recreate --wait watch`로 WATCH를 다시 만듭니다.
+   헬퍼가 `compose.staging-api-token-rotation.yml`을 더하고, 시작 로그에 이전 토큰을 함께 허용한다는 안내가 남습니다.
+4. BATON의 WATCH API 토큰을 새 값으로 바꿔 배포합니다. 문제가 생기면 BATON만 이전 값으로 되돌려도
+   WATCH는 두 토큰을 계속 허용합니다.
+5. BATON 화면의 상태 새로고침처럼 WATCH를 호출하는 동작이 성공한 뒤 아래 카운터가 늘지 않는지 확인합니다.
+6. `WATCH_API_PREVIOUS_TOKEN_FILE`을 비우고 WATCH를 다시 만든 뒤 `watch-api-previous-token` 파일을 삭제하고
+   상태 점검을 다시 실행합니다.
+
+~~~bash
+staging_compose exec --user 10001:10001 -T watch \
+  wget -q -O - http://127.0.0.1:8081/actuator/prometheus \
+  | grep '^baton_watch_api_previous_token_authentications_total '
+~~~
+
+이 카운터는 이전 토큰으로 인증한 요청 수이며 WATCH를 다시 만들면 0부터 다시 셉니다. 4단계 전에는 BATON의
+기존 호출로 늘어나는 것이 정상이고, 4단계 뒤 BATON 호출이 성공한 1분 이상 동안 값이 그대로여야 6단계로
+넘어갑니다. bind mount가 교체 전 파일의 inode를 계속 참조할 수 있으므로 어느 토큰이든 `restart`만으로는
+새 값이 적용되지 않을 수 있습니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -399,6 +417,10 @@ staging_compose() {
   if grep -Eq '^WATCH_EVENT_DELIVERY_ENDPOINT=https://[^[:space:]]+$' \
     "$STAGING_ENV_FILE"; then
     compose_files+=(-f compose.staging-event-delivery.yml)
+  fi
+  if grep -Eq '^WATCH_API_PREVIOUS_TOKEN_FILE=[^[:space:]]+$' \
+    "$STAGING_ENV_FILE"; then
+    compose_files+=(-f compose.staging-api-token-rotation.yml)
   fi
   docker compose \
     --env-file "$STAGING_ENV_FILE" \
@@ -794,7 +816,7 @@ test -s "$AUDIT_DIR/forbidden-values"
   "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 ~~~
 
-이벤트 전달 토큰처럼 이번 배포에서 사용한 비밀 파일이 더 있으면 마지막 인수에
+이벤트 전달 토큰이나 교체 중인 이전 API 토큰처럼 이번 배포에서 사용한 비밀 파일이 더 있으면 마지막 인수에
 추가합니다. 감사 도구는 정확한 비밀값, `Authorization` 헤더, Bearer 자격 증명과
 지정한 금지 값을 검사합니다. 일치한 줄이나 값은 출력하지 않고 범주별 통과/실패만
 반환합니다.

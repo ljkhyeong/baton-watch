@@ -2,7 +2,7 @@
 
 상태: 유지 관리 계약
 
-수정일: 2026-09-12
+수정일: 2026-10-14
 
 ## 시스템 상태
 
@@ -59,7 +59,11 @@ WATCH가 반환한 수동 재점검 429·DB 장애 503의 `Retry-After`는 원�
 
 두 경로 모두 `Authorization: Bearer <token>`이 필요하다. 구성된 토큰은
 RFC 6750 `token68` 문자로 구성되고 패딩 제외 문자가 32자 이상이며 전체 길이는
-200자 이하이다. Spring Security의
+200자 이하이다. 토큰을 교체하는 동안에는 선택 설정 `watch.api-previous-token`
+(`WATCH_API_PREVIOUS_TOKEN`)의 이전 토큰 하나도 같은 방식으로 인증한다. 이전 토큰은 같은 형식이어야 하고
+현재 토큰·콜백 토큰과 달라야 하며, 형식이 틀리거나 같으면 시작에 실패한다. 빈 값은 설정하지 않은 것으로 본다.
+두 토큰의 응답과 401 계약은 같고, 이전 토큰 인증 수는 `baton.watch.api.previous.token.authentications`
+카운터로 확인한다. Spring Security의
 표준 Bearer 리졸버가 이를 파싱한다. PUT은 `resourceReference`와
 `sourceRevision`의 조합으로 멱등성을 보장하므로 별도의 멱등성 키를 받지
 않는다. 참조는 `A-Z`, `a-z`, `0-9`, `.`, `_`, `:` 및 `-`로 구성된

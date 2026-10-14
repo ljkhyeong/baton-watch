@@ -237,6 +237,12 @@ curl http://localhost:8080/api/v1/system/status
 
 `WATCH_API_TOKEN`은 RFC 6750 `token68` 문자 집합을 사용하며 패딩 제외 문자가 32자 이상이고 전체 길이가 200자 이하여야 합니다. 32바이트 16진수 난수 값은 이 조건과 호환됩니다.
 
+토큰을 바꿀 때는 새 값을 `WATCH_API_TOKEN`에, 기존 값을 `WATCH_API_PREVIOUS_TOKEN`에 넣고 WATCH를 재생성합니다.
+그동안 두 토큰을 모두 허용하므로 BATON을 나중에 바꿔도 요청이 401로 끊기지 않습니다. BATON 전환 뒤
+`baton_watch_api_previous_token_authentications_total`이 더 늘지 않으면 `WATCH_API_PREVIOUS_TOKEN`을 비우고
+다시 재생성합니다. 이전 토큰도 같은 형식이어야 하며 현재 토큰·콜백 토큰과 같으면 시작에 실패합니다.
+스테이징은 [배포 절차](docs/runbooks/staging-deployment.md)의 비밀 파일 교체 순서를 따릅니다.
+
 로컬 Compose는 WATCH와 PostgreSQL 18.6을 시작합니다. DB 포트와 WATCH 관리 포트 `8081`은
 외부에 공개하지 않습니다. 관리 서버는 모든 실행 방식에서 `127.0.0.1`에 고정되며,
 컨테이너 내부에 Actuator 상태와 Prometheus 메트릭을 제공합니다. 외부 서비스에 메트릭을 직접 보내지는 않습니다.

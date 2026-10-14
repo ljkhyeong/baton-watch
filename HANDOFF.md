@@ -1,9 +1,17 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-10-13
+최종 수정일: 2026-10-14
 
 ## 현재 작업
 
+- `58a2099`에서 모니터 API 토큰을 바꾸는 동안 BATON 요청이 401로 끊기던 문제를 해결했다. 선택 설정
+  `WATCH_API_PREVIOUS_TOKEN`(`watch.api-previous-token`)의 이전 토큰 하나를 함께 허용하고 두 토큰을 모두 상수 시간으로
+  비교한다. 이전 토큰도 같은 형식이어야 하며 현재 토큰·콜백 토큰과 같으면 시작에 실패하고, 빈 값은 설정하지 않은
+  것으로 본다. 제거 시점은 시작 시 0으로 등록한 `baton.watch.api.previous.token.authentications`로 판단한다.
+  로컬 Compose는 환경 변수를 전달하고, 스테이징은 교체 동안에만 쓰는 `compose.staging-api-token-rotation.yml`과
+  진입 스크립트의 선택 복사로 configtree에 넣는다. PRD-0002·PRD-0003·ADR-0002·README와
+  [스테이징 배포](docs/runbooks/staging-deployment.md)의 교체 순서에 반영했다. 추가 의존성·비용은 없으며 이미지 재빌드,
+  실제 BATON 전환과 운영 배포는 미실행이다.
 - `ff49f56`에서 WATCH 자체의 DNS·방화벽·NAT 장애로 모든 대상이 함께 실패해도 개별 대상 장애와 구분하는 경보가 없던
   문제를 보완했다. `WatchCheckEgressFailure`는 같은 인스턴스의 최근 5분 점검에 HTTP 응답을 받은 결과가 없고
   응답 없는 실패(`destination_rejected`·`dns_failure`·`connect_timeout`·`read_timeout`·`tls_failure`·`network_failure`)가
@@ -115,6 +123,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| API 토큰 교체 `58a2099` | 새 기능이라 변경 전 코드로는 새 테스트가 컴파일되지 않아, 이전 토큰 무시·사용 기록 누락·현재 토큰 기록·현재 토큰 재사용 허용·형식 검사 누락·빈 값 거부·콜백 토큰 재사용 허용의 변이 7개가 각각 테스트를 실패시키는 것을 대조군과 함께 확인. 관련 웹 3개·bootstrap 4개 클래스 80개 통과 뒤 바인딩 시험을 더한 `WatchPropertiesTest` 13개 통과. 웹 전체 47개·bootstrap 전체 135개·ArchUnit 3개 통과, 실패·건너뜀 없음. 전체 `./gradlew test` 618개는 다른 모듈 입력이 같아 재사용. 환경 변수 `WATCH_API_PREVIOUS_TOKEN`과 마지막 줄바꿈이 있는 configtree 파일 `watch.api-previous-token`의 바인딩 확인. `staging-compose-policy-test.sh`를 기본·`WATCH_CHECK_ENABLED=false` 환경에서 통과하고 오버레이 대상을 바꾸면 실패함을 확인. 로컬 `baton-watch:67b8dd4` 이미지에 새 진입 스크립트만 덮어 이전 토큰 없음·있음(0400, UID 10001)·일반 파일 아님(시작 전 실패)을 가짜 토큰으로 확인. 이미지 재빌드·실제 BATON 전환은 미실행 |
 | 전체 무응답 경보 `ff49f56` | 변경 전 첫 점검 전에는 시도 카운터가 없고(`{}`) Prometheus 출력에 `outcome="dns_failure"` 행이 없음을 2개 테스트로 재현. 변경 후 관련 11개·bootstrap 전체 128개·ArchUnit 3개 통과, 실패·건너뜀 없음. 고정 다이제스트의 공식 `promtool` v3.13.1로 전체 규칙·대시보드 쿼리 검사 통과. 새 시나리오 3개는 대기·발생·해제, 적은 실패 제외, 응답 기록 없는 시작·재시작, 수집 실패와 결과 분류 13종을 확인. 임계치·대기 시간·조회 구간 변경, `unless` 제거, 분류 12종 각각 제외의 변이 18개를 모두 잡는 것을 대조군과 함께 확인. 실제 수집기·Alertmanager 수신은 미확인. 외부 통신·영속성은 바꾸지 않아 해당 테스트는 재실행하지 않음 |
 | 고정 User-Agent `485ac2b` | 변경 전 루프백 서버에서 대상 GET·콜백 POST의 `User-Agent`가 없음(`null`)을 2개 테스트로 재현. 변경 후 관련 35개(홉 전송·콜백 전송·TLS 고정)와 외부 통신 모듈 전체 283개 통과, 실패·건너뜀 없음. 헤더가 정확히 1개이고 값이 고정 문자열인지 두 경로에서 확인. 문제 확인은 공개 사이트 17곳에 `User-Agent`·`Accept` 유무 조합별 GET을 한 번씩 보낸 curl 결과다(`Accept`는 결과에 영향 없음). 자동 검증은 루프백 서버만 사용. 다른 모듈은 호출 API가 바뀌지 않아 재실행하지 않음 |
 | Java·Spring API 정리 `b0ae87f`~`adf68e8` | 그룹마다 독립 검토 뒤 커밋했다. 최종 상태에서 `./gradlew test processRecoveryTest` 통과. 테스트 수: domain 25, application 51, web 46, 외부 통신 282, 영속성 74, bootstrap 128, ArchUnit 3, 복구 3(실패·건너뜀 0). web·영속성·application·bootstrap은 그룹 D·E에서 같은 입력으로 실행한 결과를 Gradle이 재사용했다. 이전 629개에서 줄어든 것은 호환·중복·프레임워크 반복 시험과 load·capacity 시험을 지웠기 때문이다. `runtimeLoadTest`(25개) 통과. 작업 트리로 빌드한 이미지 4종으로 `staging-database-operation-postgres-test.sh` 통과(권한 증거 `f|t|f|t|f|t|f|t|f|t|f`). `staging-compose-policy-test.sh`와 Compose 렌더 비교 통과(차이는 종료 단계 변수 삭제와 env 파일이 없을 때 값 없는 `WATCH_*`뿐). 오프라인 의존성 해석·`verifyBootJarLicense` 통과. 공급망·cloudflared·gateway 검사는 이미지 기반 변경이 없어 미실행 |
