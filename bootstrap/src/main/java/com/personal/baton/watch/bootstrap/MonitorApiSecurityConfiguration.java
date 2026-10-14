@@ -4,6 +4,8 @@ import com.personal.baton.watch.adapter.in.web.security.MonitorApiAuthentication
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestRejectedHandler;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationManager;
 import io.micrometer.observation.ObservationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -23,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 class MonitorApiSecurityConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(MonitorApiSecurityConfiguration.class);
     private static final RequestMatcher PUBLIC_SYSTEM_STATUS = new OrRequestMatcher(
             PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/system/status"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.HEAD, "/api/v1/system/status"));
@@ -30,8 +33,15 @@ class MonitorApiSecurityConfiguration {
             PathPatternRequestMatcher.pathPattern("/api/v1/**");
 
     @Bean
-    MonitorBearerTokenAuthenticationManager monitorBearerTokenAuthenticationManager(WatchProperties properties) {
-        return new MonitorBearerTokenAuthenticationManager(properties.apiToken());
+    MonitorBearerTokenAuthenticationManager monitorBearerTokenAuthenticationManager(
+            WatchProperties properties, MonitoringMetrics metrics) {
+        if (properties.apiPreviousToken() != null) {
+            log.info("모니터 API 이전 토큰을 함께 허용합니다. BATON이 새 토큰으로 바뀌면 제거하세요");
+        }
+        return new MonitorBearerTokenAuthenticationManager(
+                properties.apiToken(),
+                properties.apiPreviousToken(),
+                metrics::recordPreviousApiTokenAuthentication);
     }
 
     @Bean

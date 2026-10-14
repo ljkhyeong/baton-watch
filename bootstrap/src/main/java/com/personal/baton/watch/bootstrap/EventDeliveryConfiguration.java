@@ -37,8 +37,9 @@ class EventDeliveryConfiguration {
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
             Clock clock) {
-        if (properties.bearerToken().equals(watchProperties.apiToken())) {
-            throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
+        if (properties.bearerToken().equals(watchProperties.apiToken())
+                || properties.bearerToken().equals(watchProperties.apiPreviousToken())) {
+            throw new IllegalArgumentException("event delivery token must differ from the monitor API tokens");
         }
         EventDeliveryProperties.Http http = properties.http();
         EventDeliveryLimits limits = new EventDeliveryLimits(

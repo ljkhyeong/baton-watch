@@ -37,6 +37,8 @@ services:
       SPRING_DATASOURCE_USERNAME: "${WATCH_DB_USER:-baton_watch}"
       SPRING_DATASOURCE_PASSWORD: "${WATCH_DB_PASSWORD:?WATCH_DB_PASSWORD is required}"
       WATCH_API_TOKEN: "${WATCH_API_TOKEN:?WATCH_API_TOKEN is required}"
+      # 토큰을 교체하는 동안에만 값을 넣고, 비어 있으면 이전 토큰을 허용하지 않는다.
+      WATCH_API_PREVIOUS_TOKEN:
       # 환경 파일·셸 값만 전달하고, 없으면 application.yml 기본값을 사용한다.
       WATCH_CHECK_ENABLED:
       WATCH_DB_MAXIMUM_POOL_SIZE:

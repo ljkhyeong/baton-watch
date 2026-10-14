@@ -49,7 +49,8 @@ class MonitoringMetricsTest {
             Map.entry("baton.watch.event.delivery.attempts", Set.of("outcome")),
             Map.entry("baton.watch.event.delivery.duration", Set.of("outcome")),
             Map.entry("baton.watch.event.delivery.finalizations", Set.of("status")),
-            Map.entry("baton.watch.database.clock.offset", Set.of()));
+            Map.entry("baton.watch.database.clock.offset", Set.of()),
+            Map.entry("baton.watch.api.previous.token.authentications", Set.of()));
 
     @Test
     void exposesZeroFailureAndRecoveryCountersBeforeFirstIncident() {
@@ -60,7 +61,8 @@ class MonitoringMetricsTest {
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.finalizations", "status", "failure")),
                 () -> assertEquals(0.0, count(registry, "baton.watch.check.lease.recoveries")),
-                () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")));
+                () -> assertEquals(0.0, count(registry, "baton.watch.event.delivery.lease.recoveries")),
+                () -> assertEquals(0.0, count(registry, "baton.watch.api.previous.token.authentications")));
         // 외부 연결 장애 경보가 합산하는 응답 없는 실패만 0으로 두고, 응답을 받은 결과는 첫 기록 때 만든다.
         Map<String, Double> attempts = registry.find("baton.watch.check.attempts").counters().stream()
                 .collect(Collectors.toMap(counter -> counter.getId().getTag("outcome"), Counter::count));
@@ -125,6 +127,8 @@ class MonitoringMetricsTest {
 
         metrics.updateEventDeliveryBacklog(new EventDeliveryBacklog(1, Duration.ofSeconds(1)));
         metrics.updateDatabaseClockOffset(Duration.ofSeconds(1));
+        metrics.recordPreviousApiTokenAuthentication();
+        assertEquals(1.0, count(registry, "baton.watch.api.previous.token.authentications"));
         assertOnlyAllowedTags(registry);
 
         metrics.updateCheckScheduleDelay(Duration.ZERO);

@@ -18,6 +18,7 @@ import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -76,6 +77,7 @@ import tools.jackson.databind.ObjectMapper;
 class MonitorApiSecurityIntegrationTest {
 
     private static final String API_TOKEN = "monitor-api-token-0123456789-abcdef";
+    private static final String PREVIOUS_API_TOKEN = "previous-monitor-api-token-0123456789";
     private static final String CONTEXT_PATH = "/watch";
     private static final Instant NOW = Instant.parse("2026-08-02T00:00:00Z");
     // PRD-0002의 인증된 모니터 PUT 본문 한도
@@ -90,13 +92,16 @@ class MonitorApiSecurityIntegrationTest {
 
     private final ObjectMapper objectMapper;
     private final ServletWebServerApplicationContext applicationContext;
+    private final MeterRegistry meterRegistry;
 
     @Autowired
     MonitorApiSecurityIntegrationTest(
             ObjectMapper objectMapper,
-            ServletWebServerApplicationContext applicationContext) {
+            ServletWebServerApplicationContext applicationContext,
+            MeterRegistry meterRegistry) {
         this.objectMapper = objectMapper;
         this.applicationContext = applicationContext;
+        this.meterRegistry = meterRegistry;
     }
 
     @Test
@@ -125,6 +130,19 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(valid.statusCode()).isEqualTo(200);
         assertThat(valid.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
         assertThat(objectMapper.readTree(valid.body()).path("checkStatus").asString()).isEqualTo("INACTIVE");
+    }
+
+    @Test
+    void acceptsThePreviousTokenDuringRotationAndCountsItsUse() throws Exception {
+        String path = "/api/v1/resource-monitors/resource-1";
+        double before = previousTokenAuthentications();
+
+        assertThat(get(path, API_TOKEN).statusCode()).isEqualTo(200);
+        assertThat(previousTokenAuthentications()).isEqualTo(before);
+        assertThat(get(path, PREVIOUS_API_TOKEN).statusCode()).isEqualTo(200);
+        assertThat(previousTokenAuthentications()).isEqualTo(before + 1);
+        assertUnauthorized(get(path, PREVIOUS_API_TOKEN + "-wrong"));
+        assertThat(previousTokenAuthentications()).isEqualTo(before + 1);
     }
 
     @Test
@@ -518,6 +536,10 @@ class MonitorApiSecurityIntegrationTest {
         return httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    private double previousTokenAuthentications() {
+        return meterRegistry.get("baton.watch.api.previous.token.authentications").counter().count();
+    }
+
     private URI uri(String path) {
         return URI.create("http://127.0.0.1:" + serverPort + CONTEXT_PATH + path);
     }
@@ -591,6 +613,7 @@ class MonitorApiSecurityIntegrationTest {
             excludeName = "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration")
     @Import({
         MonitorApiSecurityConfiguration.class,
+        MonitoringMetrics.class,
         MonitorApiExceptionHandler.class,
         MonitorApiRequestBodyLimit.class,
         ResourceMonitorController.class,
@@ -610,7 +633,7 @@ class MonitorApiSecurityIntegrationTest {
 
         @Bean
         WatchProperties watchProperties() {
-            return BootstrapTestFixtures.watchProperties(API_TOKEN);
+            return BootstrapTestFixtures.watchProperties(API_TOKEN, PREVIOUS_API_TOKEN);
         }
 
         @Bean

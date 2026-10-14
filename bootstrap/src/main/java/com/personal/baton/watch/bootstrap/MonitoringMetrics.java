@@ -35,6 +35,8 @@ final class MonitoringMetrics {
     private static final String DELIVERY_FINALIZATIONS = "baton.watch.event.delivery.finalizations";
     private static final String DELIVERY_LEASE_RECOVERIES =
             "baton.watch.event.delivery.lease.recoveries";
+    private static final String API_PREVIOUS_TOKEN_AUTHENTICATIONS =
+            "baton.watch.api.previous.token.authentications";
     /** 외부 연결 장애 경보가 합산하는, HTTP 응답을 받지 못한 확정 실패다. */
     private static final Set<CheckOutcome> NO_RESPONSE_OUTCOMES = EnumSet.of(
             CheckOutcome.DESTINATION_REJECTED,
@@ -78,6 +80,8 @@ final class MonitoringMetrics {
         registry.counter(CHECK_LEASE_RECOVERIES);
         registry.counter(DELIVERY_LEASE_RECOVERIES);
         NO_RESPONSE_OUTCOMES.forEach(outcome -> registry.counter(CHECK_ATTEMPTS, "outcome", outcomeTag(outcome)));
+        // 토큰 교체를 마치기 전에 이전 토큰 사용이 멈췄는지 0부터 확인할 수 있게 한다.
+        registry.counter(API_PREVIOUS_TOKEN_AUTHENTICATIONS);
     }
 
     void checkStarted() {
@@ -154,6 +158,10 @@ final class MonitoringMetrics {
 
     void updateDatabaseClockOffset(Duration offset) {
         databaseClockOffsetMillis.set(offset.toMillis());
+    }
+
+    void recordPreviousApiTokenAuthentication() {
+        registry.counter(API_PREVIOUS_TOKEN_AUTHENTICATIONS).increment();
     }
 
     private static String outcomeTag(CheckOutcome outcome) {

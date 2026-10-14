@@ -21,6 +21,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -35,6 +36,7 @@ import org.springframework.transaction.support.TransactionOperations;
 class EventDeliveryConfigurationTest {
 
     private static final String API_TOKEN = "a-test-token-that-is-longer-than-32-characters";
+    private static final String PREVIOUS_API_TOKEN = "a-previous-token-that-is-longer-than-32-characters";
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
@@ -78,12 +80,22 @@ class EventDeliveryConfigurationTest {
     @ValueSource(strings = {"true", "on"})
     void enabledDeliveryRejectsReusingTheMonitorApiToken(String enabled) {
         withDeliverySetting(enabled).withPropertyValues("watch.event-delivery.bearer-token=" + API_TOKEN)
-                .run(context -> {
-                    assertThat(context.getStartupFailure())
-                            .rootCause()
-                            .isInstanceOf(IllegalArgumentException.class)
-                            .hasMessage("event delivery token must differ from the monitor API token");
-                });
+                .run(EventDeliveryConfigurationTest::assertMonitorApiTokenReuseRejected);
+    }
+
+    @Test
+    void enabledDeliveryRejectsReusingThePreviousMonitorApiToken() {
+        withDeliverySetting("true").withPropertyValues(
+                        "watch.api-previous-token=" + PREVIOUS_API_TOKEN,
+                        "watch.event-delivery.bearer-token=" + PREVIOUS_API_TOKEN)
+                .run(EventDeliveryConfigurationTest::assertMonitorApiTokenReuseRejected);
+    }
+
+    private static void assertMonitorApiTokenReuseRejected(AssertableApplicationContext context) {
+        assertThat(context.getStartupFailure())
+                .rootCause()
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("event delivery token must differ from the monitor API tokens");
     }
 
     @Test

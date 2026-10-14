@@ -16,6 +16,7 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties("watch")
 public record WatchProperties(
         String apiToken,
+        String apiPreviousToken,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
@@ -47,7 +48,17 @@ public record WatchProperties(
             Pattern.compile("[A-Za-z0-9\\-._~+/]{32,}=*");
 
     public WatchProperties {
-        requireToken(apiToken);
+        requireToken("apiToken", apiToken);
+        // 교체 기간에만 이전 토큰을 함께 허용한다. 빈 값은 설정하지 않은 것으로 본다.
+        if (apiPreviousToken != null && apiPreviousToken.isEmpty()) {
+            apiPreviousToken = null;
+        }
+        if (apiPreviousToken != null) {
+            requireToken("apiPreviousToken", apiPreviousToken);
+            if (apiPreviousToken.equals(apiToken)) {
+                throw new IllegalArgumentException("apiPreviousToken must differ from apiToken");
+            }
+        }
         if (staleAfter != null
                 && staleAfter.isPositive()
                 && checkInterval != null
@@ -69,13 +80,13 @@ public record WatchProperties(
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
     }
 
-    private static void requireToken(String token) {
+    private static void requireToken(String name, String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
         if (token == null
                 || token.length() > MAX_API_TOKEN_LENGTH
                 || !BEARER_TOKEN.matcher(token).matches()) {
-            throw new IllegalArgumentException(
-                    "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
+            throw new IllegalArgumentException(name
+                    + " must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
     }
 

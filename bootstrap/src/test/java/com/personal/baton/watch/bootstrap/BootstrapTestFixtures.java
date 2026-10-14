@@ -74,6 +74,12 @@ final class BootstrapTestFixtures {
         return productionProperties("watch", WatchProperties.class, Map.of("watch.api-token", apiToken));
     }
 
+    static WatchProperties watchProperties(String apiToken, String apiPreviousToken) {
+        return productionProperties("watch", WatchProperties.class, Map.of(
+                "watch.api-token", apiToken,
+                "watch.api-previous-token", apiPreviousToken));
+    }
+
     static DatabaseRuntimeProperties databaseRuntimeProperties() {
         return productionProperties("watch.database", DatabaseRuntimeProperties.class, Map.of());
     }
