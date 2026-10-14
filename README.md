@@ -338,6 +338,8 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 대상 GET과 콜백 POST는 `User-Agent: baton-watch (+https://github.com/ljkhyeong/baton-watch)`를 보냅니다.
 `User-Agent` 없는 요청을 403으로 거부하는 사이트에서 정상 링크가 실패로 판정되지 않게 합니다. 브라우저를 가장하지
 않으므로 모든 자동 요청에 봇 차단 챌린지를 반환하는 사이트는 계속 `HTTP_CLIENT_ERROR`가 될 수 있습니다.
+WATCH 쪽 외부 연결이 끊겨 서로 다른 대상 다섯 곳이 모두 응답하지 않으면, 그 뒤의 응답 없는 실패는 대상 실패로
+세지 않고 `INTERNAL_FAILURE`로 기록합니다. 어느 대상이든 응답을 받으면 바로 원래 판단으로 돌아갑니다.
 콜백 전달의 본문 제한은 유지합니다.
 
 ## BATON 원본 스냅샷으로 독립 복원
