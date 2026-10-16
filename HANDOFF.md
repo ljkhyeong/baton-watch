@@ -181,6 +181,9 @@ main 병합 이전의 검증 결과는 [이전 인계 기록](docs/history/hando
 
 ## 구현과 후속 작업
 
+- 봇 차단 응답 분류는 [ADR-0005 제안](docs/ADR/0005_access-blocked-outcome/adr.md)으로 남겼다. BATON이 `lastOutcome`을 enum으로
+  엄격하게 읽어 모르는 값이면 조회 불가로 처리하므로, BATON이 `ACCESS_BLOCKED`를 먼저 받아들인 뒤 WATCH를 바꾼다.
+- 오래 `BROKEN`인 대상의 점검 간격 확대는 10분 만료 규칙과 얽혀 `BROKEN`·`UNKNOWN` 이벤트가 반복될 수 있어 보류했다.
 - 대상 GET은 헤더만 확인하고 본문을 읽지 않는다. 인증된 수동 재점검 API는 기존 일정·리스를 유지하며
   새 예약에 30초 간격을 적용한다.
 - BATON 자료 상태 표시·재점검과 WATCH 독립 복원은 [연동 확인](docs/runbooks/baton-integration-review.md),
