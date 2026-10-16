@@ -84,7 +84,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS cloudflared-build
+FROM golang:1.26.9-alpine3.24@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS cloudflared-build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
 ADD --checksum=sha256:04cd85af52c2c012f08212c878b4c403eadf410865f2356a80f361d475d2fc92 \
@@ -95,7 +95,7 @@ COPY ops/cloudflared/go.mod ops/cloudflared/go.sum ./
 COPY ops/cloudflared/licenses.sha256 ops/cloudflared/copy-licenses.sh ./
 RUN go test -mod=readonly ./cmd/cloudflared/cliutil ./tunnelrpc/... \
     && go build -mod=readonly -trimpath \
-    -ldflags="-X main.Version=2026.8.3-watch.2 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
+    -ldflags="-X main.Version=2026.8.3-watch.3 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
     -o /cloudflared ./cmd/cloudflared \
     && sh /src/copy-licenses.sh
 
