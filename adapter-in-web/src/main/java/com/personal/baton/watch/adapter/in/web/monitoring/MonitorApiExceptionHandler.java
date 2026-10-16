@@ -24,8 +24,6 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(MonitorApiExceptionHandler.class);
-    private static final MonitorApiProblem INVALID_REQUEST =
-            MonitorApiProblem.of("invalid-request", "요청 형식이 올바르지 않습니다", "INVALID_REQUEST");
     private static final MonitorApiProblem ROUTE_NOT_FOUND =
             MonitorApiProblem.of("route-not-found", "요청한 API 경로가 없습니다", "ROUTE_NOT_FOUND");
     private static final MonitorApiProblem METHOD_NOT_ALLOWED =
@@ -36,8 +34,6 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             "unsupported-media-type",
             "지원하지 않는 요청 본문 형식입니다",
             "UNSUPPORTED_MEDIA_TYPE");
-    private static final MonitorApiProblem REQUEST_REJECTED =
-            MonitorApiProblem.of("request-rejected", "허용되지 않는 HTTP 요청입니다", "REQUEST_REJECTED");
     private static final MonitorApiProblem INTERNAL_ERROR =
             MonitorApiProblem.of("internal-error", "요청 처리 중 서버 오류가 발생했습니다", "INTERNAL_ERROR");
     private static final MonitorApiProblem SERVICE_UNAVAILABLE = MonitorApiProblem.of(
@@ -49,10 +45,7 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
         if (exception.retryAfterSeconds() > 0) {
             headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
         }
-        return problem(
-                exception.status(),
-                exception.problem(),
-                headers);
+        return problem(exception.status(), exception.problem(), headers);
     }
 
     @ExceptionHandler(Exception.class)
@@ -88,25 +81,24 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
             HttpHeaders headers,
             HttpStatusCode status,
             WebRequest request) {
+        if (!status.is4xxClientError()) {
+            logFailure(exception);
+        }
         if (request instanceof ServletWebRequest servletRequest
                 && servletRequest.getResponse() != null
                 && servletRequest.getResponse().isCommitted()) {
-            if (!status.is4xxClientError()) {
-                logFailure(exception);
-            }
             return null;
         }
         if (!status.is4xxClientError()) {
-            logFailure(exception);
             return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, headers);
         }
         MonitorApiProblem problem = switch (status.value()) {
-            case 400 -> INVALID_REQUEST;
+            case 400 -> MonitorApiProblem.INVALID_REQUEST;
             case 404 -> ROUTE_NOT_FOUND;
             case 405 -> METHOD_NOT_ALLOWED;
             case 406 -> NOT_ACCEPTABLE;
             case 415 -> UNSUPPORTED_MEDIA_TYPE;
-            default -> REQUEST_REJECTED;
+            default -> MonitorApiProblem.REQUEST_REJECTED;
         };
         return problem(status, problem, headers);
     }

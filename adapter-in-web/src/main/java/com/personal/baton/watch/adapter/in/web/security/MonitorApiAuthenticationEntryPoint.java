@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.security;
 
+import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -24,13 +25,7 @@ public final class MonitorApiAuthenticationEntryPoint implements AuthenticationE
             HttpServletResponse response,
             AuthenticationException authenticationException) throws IOException {
         response.setHeader(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        MonitorApiProblemWriter.write(
-                objectMapper,
-                response,
-                HttpStatus.UNAUTHORIZED,
-                "unauthorized",
-                "유효한 인증 토큰이 필요합니다",
-                "UNAUTHORIZED",
-                false);
+        MonitorApiProblemWriter.write(objectMapper, response, HttpStatus.UNAUTHORIZED,
+                MonitorApiProblem.of("unauthorized", "유효한 인증 토큰이 필요합니다", "UNAUTHORIZED"), false);
     }
 }

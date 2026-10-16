@@ -51,11 +51,7 @@ def checked_exclusions(document, allowed):
         )
 
     # 모든 의존성의 허용 라이선스와 패키지·버전별 예외를 확인한 뒤에만 제외한다.
-    return allowed | {
-        identifier
-        for identifiers in approved_alternatives.values()
-        for identifier in identifiers
-    }
+    return allowed.union(*approved_alternatives.values())
 
 
 def main():

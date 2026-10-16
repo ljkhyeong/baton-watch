@@ -67,6 +67,17 @@ class FeedbackTest(unittest.TestCase):
         self.write("target.md", "대상\n")
         self.assertEqual(self.check("file", "note.md").returncode, 0)
 
+    def test_markdown_links_match_exact_case_like_git_and_linux(self):
+        self.write("docs/PRD/spec.md", "명세\n")
+        cases = {"../docs/prd/spec.md": False, "../Docs/PRD/spec.md": False, "../docs/PRD/Spec.md": False,
+                 "../docs/PRD/spec.md#title": True, "../docs/PRD/": True, "./../docs/PRD/spec.md": True}
+        for link, exists in cases.items():
+            with self.subTest(link=link):
+                self.write("guide/note.md", f"[명세]({link})\n")
+                result = self.check("file", "guide/note.md")
+                error = "" if exists else f"검사 실패: guide/note.md: 로컬 링크 대상을 찾을 수 없습니다: {link}\n"
+                self.assertEqual((result.returncode, result.stderr), (0 if exists else 1, error))
+
     def test_java_file_checks_compile_only_the_relevant_modules(self):
         names = ["domain/src/main/java/New.java", "application/src/test/java/NewTest.java"]
         for name in names:

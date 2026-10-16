@@ -140,7 +140,7 @@ class ApacheHttpHopTransportTest {
         server.start();
 
         try (ApacheHttpHopTransport transport =
-                new ApacheHttpHopTransport(testLimits(4, 8_192), 1, 1)) {
+                new ApacheHttpHopTransport(testLimits(4), 1, 1)) {
             OutboundHttpFailure failure = assertThrows(
                     OutboundHttpFailure.class,
                     () -> transport.execute(target("/headers"), Duration.ofSeconds(2)));
@@ -270,18 +270,17 @@ class ApacheHttpHopTransportTest {
     }
 
     private static CheckerLimits testLimits() {
-        return testLimits(100, 8_192);
+        return testLimits(100);
     }
 
-    private static CheckerLimits testLimits(
-            int maxHeaderCount, int maxHeaderLineLength) {
+    private static CheckerLimits testLimits(int maxHeaderCount) {
         return new CheckerLimits(
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
                 3,
                 maxHeaderCount,
-                maxHeaderLineLength);
+                8_192);
     }
 
     private static void await(CountDownLatch latch) {

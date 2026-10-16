@@ -1,5 +1,7 @@
 package com.personal.baton.watch.bootstrap;
 
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.count;
+import static com.personal.baton.watch.bootstrap.BootstrapTestFixtures.timer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -30,19 +32,9 @@ class MeteredHealthChangeEventSenderTest {
         EventDeliveryObservation observation = sender.send(null);
 
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, observation.outcome());
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.attempts")
-                        .tag("outcome", "dns_failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.attempts", "outcome", "dns_failure"));
         assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
-        assertEquals(
-                1L,
-                registry.get("baton.watch.event.delivery.duration")
-                        .tag("outcome", "dns_failure")
-                        .timer()
-                        .count());
+        assertEquals(1L, timer(registry, "baton.watch.event.delivery.duration", "outcome", "dns_failure").count());
     }
 
     @Test
@@ -60,12 +52,7 @@ class MeteredHealthChangeEventSenderTest {
                 () -> sender.send(null));
 
         assertSame(expected, actual);
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.attempts")
-                        .tag("outcome", "internal_failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.attempts", "outcome", "internal_failure"));
     }
 
     @Test
@@ -78,12 +65,7 @@ class MeteredHealthChangeEventSenderTest {
         EventDeliveryObservation observation = sender.send(null);
 
         assertNull(observation);
-        assertEquals(
-                1.0,
-                registry.get("baton.watch.event.delivery.attempts")
-                        .tag("outcome", "internal_failure")
-                        .counter()
-                        .count());
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.attempts", "outcome", "internal_failure"));
     }
 
     @ParameterizedTest
@@ -124,9 +106,6 @@ class MeteredHealthChangeEventSenderTest {
 
         assertSame(expected, sender.send(null));
         assertEquals(0.0, registry.get("baton.watch.event.delivery.inflight").gauge().value());
-        assertEquals(1.0, registry.get("baton.watch.event.delivery.attempts")
-                .tag("outcome", "delivered")
-                .counter()
-                .count());
+        assertEquals(1.0, count(registry, "baton.watch.event.delivery.attempts", "outcome", "delivered"));
     }
 }

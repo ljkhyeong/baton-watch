@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Instant;
 import java.util.Optional;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -30,19 +29,10 @@ class MonitorProjectionTest {
         assertEquals(expected, projection(state, nextOffset, leaseOffset).checkStatusAt(NOW));
     }
 
-    @Test
-    void rejectsMissingNextCheckTimeForActiveMonitor() {
-        assertThrows(IllegalArgumentException.class, () -> projection(MonitoringState.ACTIVE, null, null));
-    }
-
-    @Test
-    void rejectsNextCheckTimeForInactiveMonitor() {
-        assertThrows(IllegalArgumentException.class, () -> projection(MonitoringState.INACTIVE, 0L, null));
-    }
-
-    @Test
-    void rejectsLeaseForInactiveMonitor() {
-        assertThrows(IllegalArgumentException.class, () -> projection(MonitoringState.INACTIVE, null, 30L));
+    @ParameterizedTest
+    @CsvSource({"ACTIVE, , ", "INACTIVE, 0, ", "INACTIVE, , 30"})
+    void rejectsScheduleAndLeaseThatDoNotMatchTheState(MonitoringState state, Long nextOffset, Long leaseOffset) {
+        assertThrows(IllegalArgumentException.class, () -> projection(state, nextOffset, leaseOffset));
     }
 
     private static MonitorProjection projection(MonitoringState state, Long nextOffset, Long leaseOffset) {

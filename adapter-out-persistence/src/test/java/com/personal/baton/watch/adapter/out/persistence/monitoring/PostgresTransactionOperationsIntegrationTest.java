@@ -11,11 +11,6 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -37,39 +32,25 @@ class PostgresTransactionOperationsIntegrationTest
         JdbcMonitorPersistenceAdapter boundedPersistence = new JdbcMonitorPersistenceAdapter(
                 JdbcClient.create(jdbc),
                 boundedTransactions(Duration.ofSeconds(5), TEST_LOCK_TIMEOUT));
-        CountDownLatch lockAcquired = new CountDownLatch(1);
-        CountDownLatch releaseLock = new CountDownLatch(1);
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        Future<?> lockHolder = null;
+        SynchronizeMonitorCommand update = SynchronizeMonitorCommand.active(
+                new ResourceReference(reference),
+                new SourceRevision(2),
+                new TargetUrl("https://updated.example/path"));
 
-        try {
-            lockHolder = executor.submit(() -> holdMonitorLock(reference, lockAcquired, releaseLock));
-            assertThat(lockAcquired.await(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+        withLockHeld(
+                () -> jdbc.queryForObject(
+                        "SELECT resource_reference FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
+                        String.class,
+                        reference),
+                () -> {
+                    Throwable failure = assertTimeout(Duration.ofSeconds(2), () -> catchThrowable(
+                            () -> boundedPersistence.synchronize(update, BASE_TIME.plusSeconds(1))));
 
-            Throwable failure = assertTimeout(Duration.ofSeconds(2), () -> catchThrowable(
-                    () -> boundedPersistence.synchronize(
-                            SynchronizeMonitorCommand.active(
-                                    new ResourceReference(reference),
-                                    new SourceRevision(2),
-                                    new TargetUrl("https://updated.example/path")),
-                            BASE_TIME.plusSeconds(1))));
+                    assertSqlState(failure, "55P03");
+                    assertThat(projection(reference).sourceRevision().value()).isEqualTo(1);
+                });
 
-            assertSqlState(failure, "55P03");
-            assertThat(projection(reference).sourceRevision().value()).isEqualTo(1);
-        } finally {
-            releaseLock.countDown();
-            if (lockHolder != null) {
-                lockHolder.get(CONCURRENCY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            }
-            shutdownAndAwait(executor);
-        }
-
-        assertThat(boundedPersistence.synchronize(
-                        SynchronizeMonitorCommand.active(
-                                new ResourceReference(reference),
-                                new SourceRevision(2),
-                                new TargetUrl("https://updated.example/path")),
-                        BASE_TIME.plusSeconds(1))
+        assertThat(boundedPersistence.synchronize(update, BASE_TIME.plusSeconds(1))
                 .projection()
                 .sourceRevision()
                 .value())
@@ -131,8 +112,7 @@ class PostgresTransactionOperationsIntegrationTest
     void rejectsAnOuterTransactionBeforePersistenceWorkStarts() {
         TransactionOperations transactions = boundedTransactions(
                 Duration.ofSeconds(5), TEST_LOCK_TIMEOUT);
-        TransactionTemplate outer = new TransactionTemplate(
-                new DataSourceTransactionManager(testDataSource));
+        TransactionTemplate outer = transactionTemplate();
         AtomicBoolean persistenceWorkStarted = new AtomicBoolean();
 
         Throwable failure = catchThrowable(() -> outer.executeWithoutResult(status ->
@@ -146,33 +126,9 @@ class PostgresTransactionOperationsIntegrationTest
 
     private TransactionOperations boundedTransactions(
             Duration transactionTimeout, Duration lockTimeout) {
-        TransactionTemplate delegate = new TransactionTemplate(
-                new DataSourceTransactionManager(testDataSource));
+        TransactionTemplate delegate = transactionTemplate();
         delegate.setTimeout(Math.toIntExact(transactionTimeout.toSeconds()));
         return new PostgresTransactionOperations(jdbc, delegate, lockTimeout);
-    }
-
-    private void holdMonitorLock(
-            String reference, CountDownLatch lockAcquired, CountDownLatch releaseLock) {
-        TransactionTemplate holder = new TransactionTemplate(
-                new DataSourceTransactionManager(testDataSource));
-        holder.executeWithoutResult(status -> {
-            new JdbcTemplate(testDataSource).queryForObject(
-                    "SELECT resource_reference FROM watch_monitor WHERE resource_reference = ? FOR UPDATE",
-                    String.class,
-                    reference);
-            lockAcquired.countDown();
-            await(releaseLock);
-        });
-    }
-
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while holding database test lock", exception);
-        }
     }
 
 }

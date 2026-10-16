@@ -17,8 +17,8 @@ LABEL org.opencontainers.image.title="BATON WATCH PostgreSQL" \
       org.opencontainers.image.revision="${OCI_REVISION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apk add --no-cache \
-        "libcrypto3=3.5.8-r0" \
-        "libssl3=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libssl3=3.5.9-r0" \
         "libuuid=2.42.3-r1" \
         "su-exec=0.3-r0" \
     && rm /usr/local/bin/gosu \
@@ -40,7 +40,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "70", "70", "/opt/watch/staging-database-operation.sh", "configure-runtime-role"]
 
-FROM flyway/flyway:13.4.0-alpine@sha256:66c0278f4398dd46b84d4108919a015b6ca03657a3d44ff2b349ad0602ace956 AS flyway-source
+FROM flyway/flyway:13.8.1-alpine@sha256:ca3c8eddac25811f84c9767c56a0610ce23cd4e61f59bb05778a78db42347b39 AS flyway-source
 RUN find /flyway/drivers -mindepth 1 -maxdepth 1 ! -name 'postgresql-*.jar' -exec rm -rf {} + \
     && find /flyway/lib/flyway -maxdepth 1 -type f -name 'flyway-database-*.jar' ! -name 'flyway-database-postgresql-*.jar' -delete \
     && rm -f \
@@ -66,10 +66,10 @@ LABEL org.opencontainers.image.title="BATON WATCH 마이그레이션" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN apk add --no-cache \
         "bash=5.3.9-r1" \
-        "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.4-r0" \
-        "libssl3=3.5.8-r0" \
-        "openssl=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libexpat=2.8.5-r0" \
+        "libssl3=3.5.9-r0" \
+        "openssl=3.5.9-r0" \
         "p11-kit=0.26.2-r0" \
         "p11-kit-trust=0.26.2-r0" \
         "sqlite-libs=3.53.4-r0" \
@@ -84,7 +84,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "65532", "65532", "/opt/watch/staging-database-operation.sh", "migrate"]
 
-FROM golang:1.26.6-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS cloudflared-build
+FROM golang:1.26.9-alpine3.24@sha256:3082400e369fa24d5fc60bca20edab3f6d604e0c5a690ec66b295eff4dd87ade AS cloudflared-build
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 WORKDIR /src
 ADD --checksum=sha256:04cd85af52c2c012f08212c878b4c403eadf410865f2356a80f361d475d2fc92 \
@@ -95,7 +95,7 @@ COPY ops/cloudflared/go.mod ops/cloudflared/go.sum ./
 COPY ops/cloudflared/licenses.sha256 ops/cloudflared/copy-licenses.sh ./
 RUN go test -mod=readonly ./cmd/cloudflared/cliutil ./tunnelrpc/... \
     && go build -mod=readonly -trimpath \
-    -ldflags="-X main.Version=2026.8.3-watch.2 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
+    -ldflags="-X main.Version=2026.8.3-watch.3 -X main.BuildType=baton-watch -X github.com/cloudflare/cloudflared/metrics.Runtime=virtual" \
     -o /cloudflared ./cmd/cloudflared \
     && sh /src/copy-licenses.sh
 
@@ -130,9 +130,9 @@ LABEL org.opencontainers.image.title="BATON WATCH" \
       org.opencontainers.image.licenses="Apache-2.0"
 RUN command -v wget >/dev/null \
     && apk add --no-cache \
-        "libcrypto3=3.5.8-r0" \
-        "libexpat=2.8.4-r0" \
-        "libssl3=3.5.8-r0" \
+        "libcrypto3=3.5.9-r0" \
+        "libexpat=2.8.5-r0" \
+        "libssl3=3.5.9-r0" \
         "su-exec=0.3-r0"
 COPY --chmod=0444 LICENSE /usr/share/licenses/baton-watch/LICENSE
 RUN chmod 0555 /usr/share/licenses /usr/share/licenses/baton-watch \

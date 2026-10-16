@@ -5,7 +5,7 @@ description: BATON WATCH의 SQL, Flyway 마이그레이션, 리스 경합, 결�
 
 # BATON WATCH 영속성
 
-점검 저장은 [PRD-0003](../../../docs/prd/0003_monitoring-mvp/spec.md)·[ADR-0002](../../../docs/adr/0002_monitoring-mvp-storage-and-execution/adr.md), 전달 저장은 [PRD-0004](../../../docs/prd/0004_health-change-event-delivery/spec.md)·[ADR-0003](../../../docs/adr/0003_health-change-event-delivery/adr.md)의 관련 부분을 확인한다.
+점검 저장은 [PRD-0003](../../../docs/PRD/0003_monitoring-mvp/spec.md)·[ADR-0002](../../../docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md), 전달 저장은 [PRD-0004](../../../docs/PRD/0004_health-change-event-delivery/spec.md)·[ADR-0003](../../../docs/ADR/0003_health-change-event-delivery/adr.md)의 관련 부분을 확인한다.
 
 - 적용된 마이그레이션은 수정하지 않고 새 파일을 추가한다. SQL과 매핑의 null 허용 여부·인덱스·고유 제약을 맞춘다.
 - 시도·결과 이력은 변경하지 않는다. 현재 상태와 이벤트의 불변 페이로드, 가변 전달 상태·리스·시도 횟수를 구분한다.

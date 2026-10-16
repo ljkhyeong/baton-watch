@@ -68,13 +68,18 @@ request() {
         "$@"
 }
 
-if ! status_result="$(request "$public_base_url/api/v1/system/status")"; then
-    fail "공개 상태 요청이 실패했습니다"
-fi
-read -r status_code redirect_count <<<"$status_result"
-if [[ "$status_code" != "200" || "$redirect_count" != "0" ]]; then
-    fail "공개 상태 요청은 리다이렉트 없이 HTTP 200이어야 합니다"
-fi
+# 사용법: expect_status <예상 상태> <요청 실패 문구> <상태 불일치 문구> <URL> [curl 인자...]
+expect_status() {
+    local expected="$1" request_failure="$2" status_failure="$3" result status_code redirect_count
+    shift 3
+    result="$(request "$@")" || fail "$request_failure"
+    read -r status_code redirect_count <<<"$result"
+    [[ "$status_code" == "$expected" && "$redirect_count" == "0" ]] || fail "$status_failure"
+}
+
+expect_status 200 "공개 상태 요청이 실패했습니다" \
+    "공개 상태 요청은 리다이렉트 없이 HTTP 200이어야 합니다" \
+    "$public_base_url/api/v1/system/status"
 if [[ "$(grep -Eic '^CF-Ray:' "$response_headers" || true)" != "1" ]] \
         || ! grep -Eiq '^CF-Ray:[[:space:]]*[^[:space:]]+' "$response_headers"; then
     fail "공개 상태 응답의 CF-Ray 헤더가 없거나 올바르지 않습니다"
@@ -87,29 +92,15 @@ if ! python3 "$SCRIPT_DIR/check-watch-status.py" "$response_body"; then
     fail "공개 상태 응답이 baton-watch의 UP 상태 JSON이 아닙니다"
 fi
 
-if ! unauthorized_result="$(request \
-        "$public_base_url/api/v1/resource-monitors/staging-auth-smoke" \
-        --request PUT \
-        --header 'Content-Type: application/json' \
-        --data-binary '{')"; then
-    fail "미인증 모니터 요청이 실패했습니다"
-fi
-read -r unauthorized_status unauthorized_redirects <<<"$unauthorized_result"
-if [[ "$unauthorized_status" != "401" || "$unauthorized_redirects" != "0" ]]; then
-    fail "미인증 모니터 요청은 리다이렉트 없이 HTTP 401이어야 합니다"
-fi
+expect_status 401 "미인증 모니터 요청이 실패했습니다" \
+    "미인증 모니터 요청은 리다이렉트 없이 HTTP 401이어야 합니다" \
+    "$public_base_url/api/v1/resource-monitors/staging-auth-smoke" \
+    --request PUT \
+    --header 'Content-Type: application/json' \
+    --data-binary '{'
 
-if ! catch_all_result="$(request "$public_base_url/api/v1/ingress-deny-smoke")"; then
-    fail "인그레스 기타 경로 요청이 실패했습니다"
-fi
-read -r catch_all_status catch_all_redirects <<<"$catch_all_result"
-if [[ "$catch_all_status" != "404" || "$catch_all_redirects" != "0" ]]; then
-    fail "인그레스 기타 경로는 리다이렉트 없이 HTTP 404여야 합니다"
-fi
+expect_status 404 "인그레스 기타 경로 요청이 실패했습니다" \
+    "인그레스 기타 경로는 리다이렉트 없이 HTTP 404여야 합니다" \
+    "$public_base_url/api/v1/ingress-deny-smoke"
 
-unset \
-    public_base_url \
-    status_result status_code redirect_count \
-    unauthorized_result unauthorized_status unauthorized_redirects \
-    catch_all_result catch_all_status catch_all_redirects
 printf '%s 공개 상태·캐시·인증·기타 경로 검사가 통과했습니다\n' "$PREFIX"

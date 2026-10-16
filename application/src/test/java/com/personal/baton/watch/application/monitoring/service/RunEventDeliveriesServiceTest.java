@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class RunEventDeliveriesServiceTest {
@@ -123,29 +124,22 @@ class RunEventDeliveriesServiceTest {
         assertEquals(httpStatus, persistence.finalization.observation().httpStatusCode());
     }
 
-    @Test
-    void reportsIdempotentAndStaleFinalizationsSeparatelyFromTransportOutcome() {
+    @ParameterizedTest
+    @EnumSource(
+            value = EventDeliveryFinalizationStatus.class,
+            names = {"ALREADY_DELIVERED", "STALE_CLAIM"})
+    void reportsIdempotentAndStaleFinalizationsSeparatelyFromTransportOutcome(EventDeliveryFinalizationStatus status) {
         RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
-        persistence.status = EventDeliveryFinalizationStatus.ALREADY_DELIVERED;
+        persistence.status = status;
 
         EventDeliveryBatchResult result = service(
                         persistence, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.CONNECT_TIMEOUT))
                 .runEventDeliveries();
 
-        assertEquals(1, result.alreadyDelivered());
+        assertEquals(status == EventDeliveryFinalizationStatus.ALREADY_DELIVERED ? 1 : 0, result.alreadyDelivered());
+        assertEquals(status == EventDeliveryFinalizationStatus.STALE_CLAIM ? 1 : 0, result.staleClaims());
         assertEquals(0, result.retryScheduled());
         assertEquals(EventDeliveryOutcome.CONNECT_TIMEOUT, persistence.finalization.observation().outcome());
-
-        RecordingPersistence stalePersistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
-        stalePersistence.status = EventDeliveryFinalizationStatus.STALE_CLAIM;
-
-        EventDeliveryBatchResult staleResult = service(
-                        stalePersistence,
-                        event -> EventDeliveryObservation.failure(EventDeliveryOutcome.CONNECT_TIMEOUT))
-                .runEventDeliveries();
-
-        assertEquals(1, staleResult.staleClaims());
-        assertEquals(0, staleResult.retryScheduled());
     }
 
     @Test

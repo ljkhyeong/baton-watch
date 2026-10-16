@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import org.springframework.jdbc.core.simple.JdbcClient;
 
 /** 현재 모니터 행에 대한 공유 SQL 프로젝션과 매핑이다. */
 final class MonitoringJdbcRows {
@@ -50,6 +51,13 @@ final class MonitoringJdbcRows {
                 resultSet.getObject("lease_token", UUID.class),
                 resultSet.getObject("lease_attempt_id", UUID.class),
                 instant(resultSet, "lease_expires_at"));
+    }
+
+    static JdbcClient.MappedQuerySpec<MonitorRow> lockMonitor(JdbcClient jdbc, String resourceReference) {
+        return jdbc.sql("SELECT " + MONITOR_COLUMNS
+                        + " FROM watch_monitor WHERE resource_reference = ? FOR UPDATE")
+                .param(resourceReference)
+                .query(MonitoringJdbcRows::mapMonitor);
     }
 
     static Instant instant(ResultSet resultSet, String column) throws SQLException {

@@ -9,6 +9,7 @@ import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
+import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Clock;
@@ -41,16 +42,12 @@ class RunDueChecksServiceTest {
     void claimsThenChecksThenFinalizesOutsideTheClaimOperation() {
         List<String> calls = new ArrayList<>();
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(calls);
-        RunDueChecksService service = new RunDueChecksService(
+        RunDueChecksService service = service(
                 persistence,
                 target -> {
                     calls.add("check");
                     return CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0);
                 },
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
                 5);
 
         DueCheckBatchResult result = service.runDueChecks();
@@ -67,17 +64,13 @@ class RunDueChecksServiceTest {
     void preservesInterruptionAndStopsClaimingMoreChecks(boolean interruptedBeforeStart) {
         List<String> calls = new ArrayList<>();
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(calls);
-        RunDueChecksService service = new RunDueChecksService(
+        RunDueChecksService service = service(
                 persistence,
                 target -> {
                     calls.add("check");
                     Thread.currentThread().interrupt();
                     return CheckObservation.internalFailure();
                 },
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
                 2);
 
         try {
@@ -99,15 +92,11 @@ class RunDueChecksServiceTest {
     @Test
     void convertsUnexpectedCheckerRuntimeErrorsToSafeInternalFailures() {
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
-        RunDueChecksService service = new RunDueChecksService(
+        RunDueChecksService service = service(
                 persistence,
                 target -> {
                     throw new IllegalStateException("secret exception detail");
                 },
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
                 1);
 
         service.runDueChecks();
@@ -126,14 +115,7 @@ class RunDueChecksServiceTest {
                 CLAIM.targetUrl(),
                 databaseClaimedAt,
                 false));
-        RunDueChecksService service = new RunDueChecksService(
-                persistence,
-                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
-                1);
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
 
         service.runDueChecks();
 
@@ -148,14 +130,7 @@ class RunDueChecksServiceTest {
     void reportsNonAppliedFinalizationsByTheirPersistenceStatus(CheckFinalizationStatus status) {
         RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
         persistence.status = status;
-        RunDueChecksService service = new RunDueChecksService(
-                persistence,
-                target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0),
-                Clock.fixed(NOW, ZoneOffset.UTC),
-                LEASE,
-                INTERVAL,
-                INTERNAL_RETRY,
-                1);
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
 
         DueCheckBatchResult result = service.runDueChecks();
 
@@ -164,6 +139,12 @@ class RunDueChecksServiceTest {
         assertEquals(
                 new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims),
                 result);
+    }
+
+    private static RunDueChecksService service(
+            RecordingWorkPersistence persistence, UrlChecker checker, int batchSize) {
+        return new RunDueChecksService(
+                persistence, checker, Clock.fixed(NOW, ZoneOffset.UTC), LEASE, INTERVAL, INTERNAL_RETRY, batchSize);
     }
 
     private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {

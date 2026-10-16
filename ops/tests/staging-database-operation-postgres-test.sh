@@ -445,18 +445,8 @@ if [[ "$secret_permission_evidence" != "10001:10001:500|10001:10001:400|10001:10
     fail "WATCH 복사 비밀의 소유권 또는 접근 권한이 올바르지 않습니다"
 fi
 
-status_response="$(
-    staging_compose exec -T watch \
-        wget -q -O - http://127.0.0.1:8080/api/v1/system/status
-)"
-if ! printf '%s' "$status_response" | python3 -c '
-import json
-import sys
-
-response = json.load(sys.stdin)
-if response.get("service") != "baton-watch" or response.get("status") != "UP":
-    raise SystemExit(1)
-'; then
+if ! staging_compose exec -T watch wget -q -O - http://127.0.0.1:8080/api/v1/system/status \
+        | python3 "$REPOSITORY_ROOT/ops/check-watch-status.py" /dev/stdin; then
     fail "WATCH 런타임 상태 응답이 올바르지 않습니다"
 fi
 

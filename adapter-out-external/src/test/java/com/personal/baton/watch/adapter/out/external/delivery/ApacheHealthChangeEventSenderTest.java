@@ -5,9 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
 import java.time.Clock;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.databind.ObjectMapper;
 
 class ApacheHealthChangeEventSenderTest {
@@ -36,26 +37,17 @@ class ApacheHealthChangeEventSenderTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+",
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/",
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ",
-        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAé"
-    })
-    void rejectsBearerTokensOutsideTheUrlSafeSyntax(String token) {
+    @MethodSource("rejectedBearerTokens")
+    void rejectsBearerTokensOutsideTheUrlSafeSyntaxOrLength(String token) {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> sender(URI.create("https://events.example.com/callback"), token));
     }
 
-    @Test
-    void rejectsBearerTokensAboveTheMaximumLength() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> sender(
-                        URI.create("https://events.example.com/callback"),
-                        "A".repeat(201)));
+    private static Stream<String> rejectedBearerTokens() {
+        String prefix = "A".repeat(31);
+        return Stream.of(
+                prefix, prefix + "+", prefix + "/", prefix + " ", prefix + "é", "A".repeat(201));
     }
 
     @Test

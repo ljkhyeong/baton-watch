@@ -5,7 +5,7 @@ description: BATON WATCH의 아웃바운드 HTTP, 작업자·종료 처리, 런�
 
 # BATON WATCH 운영
 
-대상 점검은 [PRD-0003](../../../docs/prd/0003_monitoring-mvp/spec.md), 콜백은 [PRD-0004](../../../docs/prd/0004_health-change-event-delivery/spec.md), Compose·배포는 [스테이징 절차](../../../docs/runbooks/staging-deployment.md)의 관련 부분을 확인한다.
+대상 점검은 [PRD-0003](../../../docs/PRD/0003_monitoring-mvp/spec.md), 콜백은 [PRD-0004](../../../docs/PRD/0004_health-change-event-delivery/spec.md), Compose·배포는 [스테이징 절차](../../../docs/runbooks/staging-deployment.md)의 관련 부분을 확인한다.
 
 - 검증한 IP에 연결하면서 원래 HTTP `Host`와 TLS 인증서 검증을 유지한다. 대상 리다이렉트 횟수와 연결·읽기·전체 시간, 대상별 부하 제한을 보존한다.
 - 콜백은 공개 HTTPS 기본 포트로 고정하고 모니터 API와 별도 Bearer 토큰을 사용한다. 비밀값을 Git·이미지·Compose 기본값·로그·URL에 넣지 않는다.

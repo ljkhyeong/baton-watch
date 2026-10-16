@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.security;
 
+import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -73,14 +74,8 @@ public final class MonitorApiRequestBodyLimitFilter extends OncePerRequestFilter
     }
 
     private void reject(HttpServletResponse response) throws IOException {
-        MonitorApiProblemWriter.write(
-                objectMapper,
-                response,
-                HttpStatus.CONTENT_TOO_LARGE,
-                "payload-too-large",
-                "요청 본문이 허용 크기를 초과했습니다",
-                "PAYLOAD_TOO_LARGE",
-                true);
+        MonitorApiProblemWriter.write(objectMapper, response, HttpStatus.CONTENT_TOO_LARGE,
+                MonitorApiProblem.of("payload-too-large", "요청 본문이 허용 크기를 초과했습니다", "PAYLOAD_TOO_LARGE"), true);
     }
 
     private static final class CachedBodyRequest extends HttpServletRequestWrapper {

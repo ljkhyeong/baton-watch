@@ -19,6 +19,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
+fail() {
+    printf '[staging-database-operation-test] %s\n' "$1" >&2
+    exit 1
+}
+
+# 파일에 지정한 값이 하나라도 있으면 실패한다.
+assert_not_contains() {
+    local file="$1"
+    local message="$2"
+    local value
+    shift 2
+    for value in "$@"; do
+        if grep -Fq "$value" "$file"; then
+            fail "$message"
+        fi
+    done
+}
+
 mkdir -p "$TEMP_DIR/bin"
 printf '%s\n' "$OWNER_SECRET" > "$TEMP_DIR/owner-password"
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
@@ -72,7 +90,7 @@ run_operation() {
     WATCH_DB_OWNER_PASSWORD_FILE="$TEMP_DIR/owner-password" \
     WATCH_DB_RUNTIME_PASSWORD_FILE="$TEMP_DIR/runtime-password" \
     WATCH_DB_NEW_PASSWORD_FILE="$TEMP_DIR/new-password" \
-    WATCH_DB_RUNTIME_USER=baton_watch_runtime \
+    WATCH_DB_RUNTIME_USER="${runtime_user:-baton_watch_runtime}" \
     PGHOST=postgres \
     PGPORT=5432 \
     PGDATABASE=baton_watch \
@@ -87,58 +105,32 @@ assert_rejects_runtime_secret_file() {
 
     if run_operation configure-runtime-role "$TEMP_DIR/${case_name}.sql" \
             > "$output" 2>&1; then
-        printf '[staging-database-operation-test] 잘못된 %s 비밀 파일을 허용했습니다\n' \
-            "$case_name" >&2
-        exit 1
+        fail "잘못된 ${case_name} 비밀 파일을 허용했습니다"
     fi
-    if grep -Fq "$secret_fragment" "$output"; then
-        printf '[staging-database-operation-test] %s 실패 출력이 비밀값을 노출했습니다\n' \
-            "$case_name" >&2
-        exit 1
-    fi
+    assert_not_contains "$output" "${case_name} 실패 출력이 비밀값을 노출했습니다" "$secret_fragment"
 }
 
 role_output="$TEMP_DIR/role-output"
 run_operation configure-runtime-role "$TEMP_DIR/role.sql" > "$role_output" 2>&1
-if grep -Fq 'PASSWORD' "$TEMP_DIR/role.sql" || grep -Fq "$RUNTIME_SECRET" "$TEMP_DIR/role.sql"; then
-    printf '[staging-database-operation-test] 역할 SQL 파일에 런타임 비밀번호가 포함됐습니다\n' >&2
-    exit 1
-fi
+assert_not_contains "$TEMP_DIR/role.sql" '역할 SQL 파일에 런타임 비밀번호가 포함됐습니다' \
+    'PASSWORD' "$RUNTIME_SECRET"
 grep -Fq '\password baton_watch_runtime' "$TEMP_DIR/role.sql.password-command"
-if grep -Fq "$OWNER_SECRET" "$role_output" || grep -Fq "$RUNTIME_SECRET" "$role_output"; then
-    printf '[staging-database-operation-test] 역할 초기화가 비밀값을 출력했습니다\n' >&2
-    exit 1
-fi
+assert_not_contains "$role_output" '역할 초기화가 비밀값을 출력했습니다' "$OWNER_SECRET" "$RUNTIME_SECRET"
 
-if PATH="$TEMP_DIR/bin:$PATH" \
-        WATCH_TEST_CAPTURE="$TEMP_DIR/same-role.sql" \
-        WATCH_DB_OWNER_PASSWORD_FILE="$TEMP_DIR/owner-password" \
-        WATCH_DB_RUNTIME_PASSWORD_FILE="$TEMP_DIR/runtime-password" \
-        WATCH_DB_RUNTIME_USER=baton_watch_owner \
-        PGHOST=postgres PGPORT=5432 PGDATABASE=baton_watch PGUSER=baton_watch_owner \
-        "$REPOSITORY_ROOT/ops/staging-database-operation.sh" configure-runtime-role \
+if runtime_user=baton_watch_owner run_operation configure-runtime-role "$TEMP_DIR/same-role.sql" \
         > "$TEMP_DIR/same-role-output" 2>&1; then
-    printf '[staging-database-operation-test] 소유자와 같은 런타임 역할을 허용했습니다\n' >&2
-    exit 1
+    fail '소유자와 같은 런타임 역할을 허용했습니다'
 fi
 
-if PATH="$TEMP_DIR/bin:$PATH" \
-        WATCH_TEST_CAPTURE="$TEMP_DIR/reserved-role.sql" \
-        WATCH_DB_OWNER_PASSWORD_FILE="$TEMP_DIR/owner-password" \
-        WATCH_DB_RUNTIME_PASSWORD_FILE="$TEMP_DIR/runtime-password" \
-        WATCH_DB_RUNTIME_USER=pg_read_all_data \
-        PGHOST=postgres PGPORT=5432 PGDATABASE=baton_watch PGUSER=baton_watch_owner \
-        "$REPOSITORY_ROOT/ops/staging-database-operation.sh" configure-runtime-role \
+if runtime_user=pg_read_all_data run_operation configure-runtime-role "$TEMP_DIR/reserved-role.sql" \
         > "$TEMP_DIR/reserved-role-output" 2>&1; then
-    printf '[staging-database-operation-test] PostgreSQL 예약 역할을 런타임 역할로 허용했습니다\n' >&2
-    exit 1
+    fail 'PostgreSQL 예약 역할을 런타임 역할로 허용했습니다'
 fi
 
 cp "$TEMP_DIR/owner-password" "$TEMP_DIR/runtime-password"
 if run_operation configure-runtime-role "$TEMP_DIR/same-secret.sql" \
         > "$TEMP_DIR/same-secret-output" 2>&1; then
-    printf '[staging-database-operation-test] 소유자와 같은 런타임 비밀값을 허용했습니다\n' >&2
-    exit 1
+    fail '소유자와 같은 런타임 비밀값을 허용했습니다'
 fi
 printf '%s\n' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
 
@@ -149,21 +141,15 @@ grep -Fq 'flyway.user=baton_watch_owner' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.locations=filesystem:/flyway/sql,filesystem:/flyway/callbacks' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.placeholders.runtimeRole=baton_watch_runtime' "$TEMP_DIR/flyway.conf"
 grep -Fq 'flyway.cleanDisabled=true' "$TEMP_DIR/flyway.conf"
-if grep -Fq "$OWNER_SECRET" "$migration_output"; then
-    printf '[staging-database-operation-test] 마이그레이션이 비밀값을 출력했습니다\n' >&2
-    exit 1
-fi
+assert_not_contains "$migration_output" '마이그레이션이 비밀값을 출력했습니다' "$OWNER_SECRET"
 
 for forbidden_secret in "$RUNTIME_SECRET" "$OWNER_SECRET"; do
     printf '%s\n' "$forbidden_secret" > "$TEMP_DIR/new-password"
     if run_operation rotate-runtime-password "$TEMP_DIR/forbidden-new-secret" >"$TEMP_DIR/forbidden-new-secret-output" 2>&1; then
-        printf '[staging-database-operation-test] 기존 역할과 같은 새 비밀번호를 허용했습니다\n' >&2
-        exit 1
+        fail '기존 역할과 같은 새 비밀번호를 허용했습니다'
     fi
-    if grep -Fq "$forbidden_secret" "$TEMP_DIR/forbidden-new-secret-output"; then
-        printf '[staging-database-operation-test] 거부된 새 비밀번호가 실패 출력에 포함됐습니다\n' >&2
-        exit 1
-    fi
+    assert_not_contains "$TEMP_DIR/forbidden-new-secret-output" \
+        '거부된 새 비밀번호가 실패 출력에 포함됐습니다' "$forbidden_secret"
 done
 unset forbidden_secret
 printf '%s\n' "$NEW_SECRET" > "$TEMP_DIR/new-password"
@@ -171,26 +157,18 @@ printf '%s\n' "$NEW_SECRET" > "$TEMP_DIR/new-password"
 runtime_rotation_output="$TEMP_DIR/runtime-rotation-output"
 run_operation rotate-runtime-password "$TEMP_DIR/runtime-rotation" > "$runtime_rotation_output" 2>&1
 grep -Fq '\password baton_watch_runtime' "$TEMP_DIR/runtime-rotation.password-command"
-if grep -Fq "$OWNER_SECRET" "$runtime_rotation_output" || grep -Fq "$RUNTIME_SECRET" "$runtime_rotation_output" || grep -Fq "$NEW_SECRET" "$runtime_rotation_output"; then
-    printf '[staging-database-operation-test] 런타임 비밀번호 교체가 비밀값을 출력했습니다\n' >&2
-    exit 1
-fi
-if grep -Fq "$NEW_SECRET" "$TEMP_DIR/runtime-rotation.commands"; then
-    printf '[staging-database-operation-test] 런타임 새 비밀번호가 명령 문자열에 포함됐습니다\n' >&2
-    exit 1
-fi
+assert_not_contains "$runtime_rotation_output" '런타임 비밀번호 교체가 비밀값을 출력했습니다' \
+    "$OWNER_SECRET" "$RUNTIME_SECRET" "$NEW_SECRET"
+assert_not_contains "$TEMP_DIR/runtime-rotation.commands" \
+    '런타임 새 비밀번호가 명령 문자열에 포함됐습니다' "$NEW_SECRET"
 
 owner_rotation_output="$TEMP_DIR/owner-rotation-output"
 run_operation rotate-owner-password "$TEMP_DIR/owner-rotation" > "$owner_rotation_output" 2>&1
 grep -Fq '\password baton_watch_owner' "$TEMP_DIR/owner-rotation.password-command"
-if grep -Fq "$OWNER_SECRET" "$owner_rotation_output" || grep -Fq "$RUNTIME_SECRET" "$owner_rotation_output" || grep -Fq "$NEW_SECRET" "$owner_rotation_output"; then
-    printf '[staging-database-operation-test] 소유자 비밀번호 교체가 비밀값을 출력했습니다\n' >&2
-    exit 1
-fi
-if grep -Fq "$NEW_SECRET" "$TEMP_DIR/owner-rotation.commands"; then
-    printf '[staging-database-operation-test] 소유자 새 비밀번호가 명령 문자열에 포함됐습니다\n' >&2
-    exit 1
-fi
+assert_not_contains "$owner_rotation_output" '소유자 비밀번호 교체가 비밀값을 출력했습니다' \
+    "$OWNER_SECRET" "$RUNTIME_SECRET" "$NEW_SECRET"
+assert_not_contains "$TEMP_DIR/owner-rotation.commands" \
+    '소유자 새 비밀번호가 명령 문자열에 포함됐습니다' "$NEW_SECRET"
 
 printf '%s' "$RUNTIME_SECRET" > "$TEMP_DIR/runtime-password"
 assert_rejects_runtime_secret_file "마지막-줄바꿈-없음" "$RUNTIME_SECRET"

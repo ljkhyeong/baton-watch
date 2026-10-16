@@ -101,35 +101,18 @@ require_report() {
     fi
 }
 
-scan_rootfs() {
+# 사용법: scan_vulnerabilities <보고서> <입력 볼륨> <Trivy 명령> <검사 대상 인자...>
+scan_vulnerabilities() {
+    report="$1"
+    input_volume="$2"
+    subcommand="$3"
+    shift 3
     docker run --rm \
         --user "$CONTAINER_USER" \
         --volume "$WORK_OUTPUT_DIR:/reports" \
-        --volume "$JAR_DIR:/inputs:ro" \
+        --volume "$input_volume" \
         --volume "$CACHE_DIR:/trivy-cache" \
-        "$TRIVY_IMAGE" rootfs \
-        --cache-dir /trivy-cache \
-        --format cyclonedx \
-        --output /reports/baton-watch.cdx.json \
-        --scanners vuln \
-        --severity HIGH,CRITICAL \
-        --ignore-unfixed \
-        --exit-code 1 \
-        --skip-version-check \
-        --no-progress \
-        /inputs || return $?
-    require_report baton-watch.cdx.json
-}
-
-scan_image_archive() {
-    archive="$1"
-    report="$2"
-    docker run --rm \
-        --user "$CONTAINER_USER" \
-        --volume "$WORK_OUTPUT_DIR:/reports" \
-        --volume "$archive:/inputs/image.tar:ro" \
-        --volume "$CACHE_DIR:/trivy-cache" \
-        "$TRIVY_IMAGE" image \
+        "$TRIVY_IMAGE" "$subcommand" \
         --cache-dir /trivy-cache \
         --format cyclonedx \
         --output "/reports/$report" \
@@ -139,8 +122,12 @@ scan_image_archive() {
         --exit-code 1 \
         --skip-version-check \
         --no-progress \
-        --input /inputs/image.tar || return $?
+        "$@" || return $?
     require_report "$report"
+}
+
+scan_image_archive() {
+    scan_vulnerabilities "$2" "$1:/inputs/image.tar:ro" image --input /inputs/image.tar
 }
 
 scan_failed=false
@@ -153,7 +140,7 @@ run_scan() {
     fi
 }
 
-run_scan "부트 JAR 취약점" scan_rootfs
+run_scan "부트 JAR 취약점" scan_vulnerabilities baton-watch.cdx.json "$JAR_DIR:/inputs:ro" rootfs /inputs
 run_scan "데이터베이스 작업 이미지 취약점" scan_image_archive "$DATABASE_OPERATIONS_ARCHIVE" database-operations.cdx.json
 run_scan "마이그레이션 이미지 취약점" scan_image_archive "$MIGRATIONS_ARCHIVE" migrations.cdx.json
 run_scan "WATCH 이미지 취약점" scan_image_archive "$RUNTIME_ARCHIVE" runtime.cdx.json

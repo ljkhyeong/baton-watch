@@ -3,8 +3,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.personal.baton.watch.application.monitoring.model.CheckObservation;
-import java.time.Duration;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,11 +20,7 @@ class JdbcResultIntegrityIntegrationTest extends MonitoringPersistenceIntegratio
     void storeSuccessfulCheck() {
         synchronize(REFERENCE, 1, "https://example.com/", BASE_TIME);
         var claim = claimOne();
-        checkWorkPersistence.finalizeCheck(finalization(
-                claim,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
-                claim.claimedAt(),
-                claim.claimedAt().plus(INTERVAL)));
+        finalizeAt(claim, claim.claimedAt());
     }
 
     @ParameterizedTest
@@ -98,10 +92,7 @@ class JdbcResultIntegrityIntegrationTest extends MonitoringPersistenceIntegratio
     }
 
     private void prepareVersionFive() {
-        var versionFive = Flyway.configure().dataSource(testDataSource)
-                .cleanDisabled(false).target("5").load();
-        versionFive.clean();
-        versionFive.migrate();
+        migrateCleanTo("5");
         storeSuccessfulCheck();
     }
 }

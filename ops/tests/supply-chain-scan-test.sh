@@ -91,22 +91,25 @@ SH
 chmod 0700 "$TEMP_DIR/bin/python3"
 REAL_PYTHON3="$(command -v python3)"
 readonly REAL_PYTHON3
+readonly SCAN_REPORTS=(
+    baton-watch.cdx.json database-operations.cdx.json migrations.cdx.json
+    runtime.cdx.json postgres.cdx.json gateway.cdx.json cloudflared.cdx.json
+)
 
-PATH="$TEMP_DIR/bin:$PATH" \
-WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/docker-calls" \
-WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
-    "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
-    "$REPORTS_DIR" \
-    "$TEMP_DIR/baton-watch.jar" \
-    "$TEMP_DIR/database-operations.tar" \
-    "$TEMP_DIR/migrations.tar" \
-    "$TEMP_DIR/runtime.tar" \
-    postgres:test gateway:test cloudflared:test >/dev/null
+# 사용법: run_scan <보고서 디렉터리> <docker 호출 기록> [마이그레이션 이미지 아카이브]
+run_scan() {
+    PATH="$TEMP_DIR/bin:$PATH" \
+    WATCH_TEST_DOCKER_CALLS="$2" \
+    WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
+        "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
+        "$1" "$TEMP_DIR/baton-watch.jar" \
+        "$TEMP_DIR/database-operations.tar" "${3:-$TEMP_DIR/migrations.tar}" \
+        "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test
+}
 
-for report in \
-    baton-watch.cdx.json database-operations.cdx.json migrations.cdx.json \
-    runtime.cdx.json postgres.cdx.json gateway.cdx.json cloudflared.cdx.json \
-    baton-watch.jar SHA256SUMS; do
+run_scan "$REPORTS_DIR" "$TEMP_DIR/docker-calls" >/dev/null
+
+for report in "${SCAN_REPORTS[@]}" baton-watch.jar SHA256SUMS; do
     if [ ! -s "$REPORTS_DIR/$report" ]; then
         fail "필수 산출물이 없습니다: $report"
     fi
@@ -130,35 +133,19 @@ fi
 if ! grep -Fq -- '--ignored-licenses Apache-2.0' "$TEMP_DIR/docker-calls"; then
     fail "검증된 라이선스 제외 목록을 Trivy에 전달하지 않았습니다"
 fi
-if PATH="$TEMP_DIR/bin:$PATH" \
-    WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/docker-calls" \
-    WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
-    "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
-    "$REPORTS_DIR" "$TEMP_DIR/baton-watch.jar" \
-    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
-    "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test \
-    >"$TEMP_DIR/retry-output" 2>&1; then
+if run_scan "$REPORTS_DIR" "$TEMP_DIR/docker-calls" >"$TEMP_DIR/retry-output" 2>&1; then
     fail "기존 검사 보고서를 덮어썼습니다"
 fi
 
 failure_reports="$TEMP_DIR/failure-reports"
-if PATH="$TEMP_DIR/bin:$PATH" \
-    WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/failure-docker-calls" \
-    WATCH_TEST_FAIL_REPORT="migrations.cdx.json" \
-    WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
-    "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
-    "$failure_reports" "$TEMP_DIR/baton-watch.jar" \
-    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
-    "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test \
-    >"$TEMP_DIR/failure-output" 2>&1; then
+if WATCH_TEST_FAIL_REPORT="migrations.cdx.json" run_scan \
+        "$failure_reports" "$TEMP_DIR/failure-docker-calls" >"$TEMP_DIR/failure-output" 2>&1; then
     fail "취약점 검사 실패를 허용했습니다"
 fi
 if [ ! -s "$failure_reports/migrations.cdx.json" ] || [ -e "$failure_reports/SHA256SUMS" ]; then
     fail "실패 보고서를 보존하지 않았거나 완료 체크섬을 잘못 생성했습니다"
 fi
-for report in \
-    baton-watch.cdx.json database-operations.cdx.json migrations.cdx.json \
-    runtime.cdx.json postgres.cdx.json gateway.cdx.json cloudflared.cdx.json; do
+for report in "${SCAN_REPORTS[@]}"; do
     if [ ! -s "$failure_reports/$report" ]; then
         fail "앞선 취약점 실패 뒤의 보고서가 없습니다: $report"
     fi
@@ -168,14 +155,8 @@ if [ "$(grep -c '^run --rm ' "$TEMP_DIR/failure-docker-calls")" -ne 8 ]; then
 fi
 
 missing_archive_reports="$TEMP_DIR/missing-archive-reports"
-if PATH="$TEMP_DIR/bin:$PATH" \
-    WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/missing-archive-docker-calls" \
-    WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
-    "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
-    "$missing_archive_reports" "$TEMP_DIR/baton-watch.jar" \
-    "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/missing.tar" \
-    "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test \
-    >"$TEMP_DIR/missing-archive-output" 2>&1; then
+if run_scan "$missing_archive_reports" "$TEMP_DIR/missing-archive-docker-calls" "$TEMP_DIR/missing.tar" \
+        >"$TEMP_DIR/missing-archive-output" 2>&1; then
     fail "없는 배포 이미지 아카이브를 허용했습니다"
 fi
 if [ -e "$missing_archive_reports" ]; then
@@ -191,16 +172,9 @@ for incomplete in missing empty; do
     else
         empty_report="baton-watch.cdx.json"
     fi
-    if PATH="$TEMP_DIR/bin:$PATH" \
-        WATCH_TEST_DOCKER_CALLS="$TEMP_DIR/$incomplete-report-docker-calls" \
-        WATCH_TEST_MISSING_REPORT="$missing_report" \
-        WATCH_TEST_EMPTY_REPORT="$empty_report" \
-        WATCH_TEST_REAL_PYTHON3="$REAL_PYTHON3" \
-        "$REPOSITORY_ROOT/ops/scan-supply-chain.sh" \
-        "$incomplete_reports" "$TEMP_DIR/baton-watch.jar" \
-        "$TEMP_DIR/database-operations.tar" "$TEMP_DIR/migrations.tar" \
-        "$TEMP_DIR/runtime.tar" postgres:test gateway:test cloudflared:test \
-        >"$TEMP_DIR/$incomplete-report-output.log" 2>&1; then
+    if WATCH_TEST_MISSING_REPORT="$missing_report" WATCH_TEST_EMPTY_REPORT="$empty_report" run_scan \
+            "$incomplete_reports" "$TEMP_DIR/$incomplete-report-docker-calls" \
+            >"$TEMP_DIR/$incomplete-report-output.log" 2>&1; then
         fail "검사 명령이 성공해도 보고서가 없거나 비면 실패해야 합니다: $incomplete"
     fi
     if [ -e "$incomplete_reports/SHA256SUMS" ] || [ -e "$incomplete_reports/baton-watch.jar" ]; then

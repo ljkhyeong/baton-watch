@@ -1,5 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.security;
 
+import com.personal.baton.watch.adapter.in.web.MonitorApiProblem;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -23,12 +24,6 @@ public final class MonitorApiRequestRejectedHandler implements RequestRejectedHa
             HttpServletResponse response,
             RequestRejectedException requestRejectedException) throws IOException {
         MonitorApiProblemWriter.write(
-                objectMapper,
-                response,
-                HttpStatus.BAD_REQUEST,
-                "request-rejected",
-                "허용되지 않는 HTTP 요청입니다",
-                "REQUEST_REJECTED",
-                true);
+                objectMapper, response, HttpStatus.BAD_REQUEST, MonitorApiProblem.REQUEST_REJECTED, true);
     }
 }

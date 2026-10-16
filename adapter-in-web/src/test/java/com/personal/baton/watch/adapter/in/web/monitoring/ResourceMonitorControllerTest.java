@@ -244,39 +244,26 @@ class ResourceMonitorControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_TARGET_URL"));
     }
 
-    @Test
-    void reportsStaleRevisionsAsConflicts() throws Exception {
-        synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.STALE_REVISION, projection());
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+        "STALE_REVISION | {\"sourceRevision\":41,\"monitoringState\":\"INACTIVE\"}"
+                + " | stale-source-revision | STALE_SOURCE_REVISION",
+        "REVISION_CONFLICT | {\"sourceRevision\":42,\"monitoringState\":\"ACTIVE\","
+                + "\"targetUrl\":\"https://example.com/health?secret=hidden\"}"
+                + " | source-revision-conflict | SOURCE_REVISION_CONFLICT"
+    })
+    void reportsStaleOrDifferentSameRevisionsAsConflicts(
+            SynchronizationStatus result, String body, String slug, String code) throws Exception {
+        synchronizeMonitor = command -> new SynchronizationResult(result, projection());
         rebuildMockMvc();
 
         mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"sourceRevision":41,"monitoringState":"INACTIVE"}
-                                """))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("STALE_SOURCE_REVISION"));
-    }
-
-    @Test
-    void reportsSameRevisionWithDifferentDataAsAConflict() throws Exception {
-        synchronizeMonitor = command -> new SynchronizationResult(SynchronizationStatus.REVISION_CONFLICT, projection());
-        rebuildMockMvc();
-
-        mockMvc.perform(put("/api/v1/resource-monitors/resource-1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "sourceRevision": 42,
-                                  "monitoringState": "ACTIVE",
-                                  "targetUrl": "https://example.com/health?secret=hidden"
-                                }
-                                """))
+                        .content(body))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
-                .andExpect(jsonPath("$.type")
-                        .value("urn:baton-watch:problem:source-revision-conflict"))
-                .andExpect(jsonPath("$.code").value("SOURCE_REVISION_CONFLICT"))
+                .andExpect(jsonPath("$.type").value("urn:baton-watch:problem:" + slug))
+                .andExpect(jsonPath("$.code").value(code))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("secret=hidden"))));
     }
