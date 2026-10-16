@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- `d91cc9e`에서 NGINX 갱신 뒤 PR #57의 공급망 검사가 cloudflared 바이너리의 새 HIGH 취약점 3건으로 다시 실패한 문제를 수정했다.
+  Go 표준 라이브러리 1.26.6과 `x/net` 0.58.0의 CVE-2026-78667·CVE-2026-78669·CVE-2026-97031이다. 별도 빌드의 Go 이미지를
+  같은 계열 1.26.9로, `x/net`을 0.60.0으로 올리고 Go 도구가 함께 요구한 `x/crypto`·`x/sync`·`x/sys`·`x/term`·`x/text`를 반영했다.
+  표시 버전은 `2026.8.3-watch.3`이다. 공식 소스·테스트 범위·라이선스 원문은 그대로이며 [빌드 입력](ops/cloudflared/README.md)에 반영했다.
+  추가 비용은 없으며 운영 배포는 미실행이다.
 - `dff37b0`에서 공식 NGINX 이미지의 `pcre2` CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패하던 문제를 해결했다.
   10월 15일 다시 빌드된 공식 `1.30.6-alpine-slim`이 `pcre2` 10.49-r0과 OpenSSL 3.5.9-r0을 포함해, 정한 대로 자체 빌드·예외 없이
   `compose.staging-tunnel.yml`의 다이제스트만 같은 stable 계열로 갱신했다. NGINX 설정은 바꾸지 않았다.
@@ -104,6 +109,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| cloudflared Go·x/net `d91cc9e` | PR #57 CI 보고서에서 cloudflared만 HIGH 3종이 나오고 나머지 산출물 6개는 0건임을 확인. 같은 Trivy 0.74.0·기준으로 기존 로컬 cloudflared 이미지에서 같은 3종(4건)을 재현하고, 수정한 Dockerfile로 빌드한 이미지는 0건임을 확인. Docker 빌드 안의 CLI·터널 RPC 테스트와 모듈 LICENSE·PATENTS 체크섬 대조 통과, 표시 버전 `2026.8.3-watch.3`·사용자 `65532:65532`·라이선스 경로 확인. 로컬 arm64 이미지로 검사했으며 amd64와 전체 공급망 검사는 PR CI로 확인 |
 | NGINX 1.30.6 `dff37b0` | 같은 Trivy 0.74.0 고정 이미지·기준(`HIGH`·`CRITICAL`, 수정판 있음)과 10월 16일 DB로 기존 `1.30.4`의 CVE-2026-103111 1건을 재현하고 `1.30.6`은 0건임을 확인. 이미지 안의 `pcre2` 10.49-r0·`libssl3` 3.5.9-r0 확인. `staging-compose-policy-test.sh`와 실제 NGINX·Blackbox를 쓰는 `gateway-test.py` 2개 통과. 로컬 arm64 이미지로 검사했으며 amd64 이미지와 전체 공급망 검사는 PR CI로 확인 |
 | Java·Spring API 정리 `b0ae87f`~`adf68e8` | 그룹마다 독립 검토 뒤 커밋했다. 최종 상태에서 `./gradlew test processRecoveryTest` 통과. 테스트 수: domain 25, application 51, web 46, 외부 통신 282, 영속성 74, bootstrap 128, ArchUnit 3, 복구 3(실패·건너뜀 0). web·영속성·application·bootstrap은 그룹 D·E에서 같은 입력으로 실행한 결과를 Gradle이 재사용했다. 이전 629개에서 줄어든 것은 호환·중복·프레임워크 반복 시험과 load·capacity 시험을 지웠기 때문이다. `runtimeLoadTest`(25개) 통과. 작업 트리로 빌드한 이미지 4종으로 `staging-database-operation-postgres-test.sh` 통과(권한 증거 `f|t|f|t|f|t|f|t|f|t|f`). `staging-compose-policy-test.sh`와 Compose 렌더 비교 통과(차이는 종료 단계 변수 삭제와 env 파일이 없을 때 값 없는 `WATCH_*`뿐). 오프라인 의존성 해석·`verifyBootJarLicense` 통과. 공급망·cloudflared·gateway 검사는 이미지 기반 변경이 없어 미실행 |
 | 정책 시험 격리·DNS 기한 | `staging-compose-policy-test.sh`를 기본 환경과 `WATCH_CHECK_ENABLED=false` 환경에서 각각 통과, ShellCheck 통과. 외부 통신 모듈 281개 통과, 실패·건너뜀 없음. 다른 모듈·이미지 변경은 없어 반복하지 않음 |
