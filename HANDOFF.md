@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- `d91cc9e`에서 NGINX 갱신 뒤 PR #57의 공급망 검사가 cloudflared 바이너리의 새 HIGH 취약점 3건으로 다시 실패한 문제를 수정했다.
+  Go 표준 라이브러리 1.26.6과 `x/net` 0.58.0의 CVE-2026-78667·CVE-2026-78669·CVE-2026-97031이다. 별도 빌드의 Go 이미지를
+  같은 계열 1.26.9로, `x/net`을 0.60.0으로 올리고 Go 도구가 함께 요구한 `x/crypto`·`x/sync`·`x/sys`·`x/term`·`x/text`를 반영했다.
+  표시 버전은 `2026.8.3-watch.3`이다. 공식 소스·테스트 범위·라이선스 원문은 그대로이며 [빌드 입력](ops/cloudflared/README.md)에 반영했다.
+  추가 비용은 없으며 운영 배포는 미실행이다.
 - `dff37b0`에서 공식 NGINX 이미지의 `pcre2` CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패하던 문제를 해결했다.
   10월 15일 다시 빌드된 공식 `1.30.6-alpine-slim`이 `pcre2` 10.49-r0과 OpenSSL 3.5.9-r0을 포함해, 정한 대로 자체 빌드·예외 없이
   `compose.staging-tunnel.yml`의 다이제스트만 같은 stable 계열로 갱신했다. NGINX 설정은 바꾸지 않았다.
@@ -272,6 +277,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| cloudflared Go·x/net `d91cc9e` | PR #57 CI 보고서에서 cloudflared만 HIGH 3종이 나오고 나머지 산출물 6개는 0건임을 확인. 같은 Trivy 0.74.0·기준으로 기존 로컬 cloudflared 이미지에서 같은 3종(4건)을 재현하고, 수정한 Dockerfile로 빌드한 이미지는 0건임을 확인. Docker 빌드 안의 CLI·터널 RPC 테스트와 모듈 LICENSE·PATENTS 체크섬 대조 통과, 표시 버전 `2026.8.3-watch.3`·사용자 `65532:65532`·라이선스 경로 확인. 로컬 arm64 이미지로 검사했으며 amd64와 전체 공급망 검사는 PR CI로 확인 |
 | NGINX 1.30.6 `dff37b0` | 같은 Trivy 0.74.0 고정 이미지·기준(`HIGH`·`CRITICAL`, 수정판 있음)과 10월 16일 DB로 기존 `1.30.4`의 CVE-2026-103111 1건을 재현하고 `1.30.6`은 0건임을 확인. 이미지 안의 `pcre2` 10.49-r0·`libssl3` 3.5.9-r0 확인. `staging-compose-policy-test.sh`와 실제 NGINX·Blackbox를 쓰는 `gateway-test.py` 2개 통과. 로컬 arm64 이미지로 검사했으며 amd64 이미지와 전체 공급망 검사는 PR CI로 확인 |
 | Jackson·Flyway 취약점 `fe04a66` | 변경 전 CI 보고서에서 부트 JAR·WATCH·마이그레이션 이미지의 Jackson CVE 5건과 NGINX `pcre2` 1건 확인. 변경 후 체크섬 갱신과 함께 전체 622개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음, `verifyBootJarLicense` 통과. 로컬 arm64 5개 이미지 빌드, OCI·라이선스 검사, 실제 PostgreSQL DB 작업 검증(Flyway 13.8.1의 V1~V6) 통과. 같은 Trivy 0.74.0·기준으로 부트 JAR와 자체 이미지 4개 0건, NGINX만 1건 남음 확인. cloudflared는 변경이 없어 CI 결과(0건)를 사용 |
 | Alpine 고정 버전 `0473d8e` | 변경 전 amd64 PostgreSQL 기반 이미지에서 3.5.8-r0 설치가 CI와 같은 종료 코드 8로 실패하는 것 재현. 변경 후 amd64에서 세 단계의 고정 패키지 설치 성공. 로컬 arm64에서 CI와 같은 5개 대상 빌드, 이미지 내 3.5.9-r0·2.8.5-r0 설치, `verify-runtime-images.py` 라이선스·OCI 검사와 실제 PostgreSQL DB 작업 검증 통과. Java·SQL 변경이 없어 Gradle 테스트는 반복하지 않았고, Trivy 공급망 검사는 CI 결과로 확인 |
