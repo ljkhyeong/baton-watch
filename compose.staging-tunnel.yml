@@ -1,6 +1,6 @@
 services:
   watch-gateway:
-    image: nginx:1.30.4-alpine-slim@sha256:77da26c31397bf6694b4bf93275f5b40b0b120ba1b8f114264b603e592c561d6
+    image: nginx:1.30.6-alpine-slim@sha256:3028fc1419f99b95c1c69f844bbaf49dc1b881750c51b497fc721ac4f02a14e6
     # 인그레스 서비스에 읽기 전용 루트·권한 제거·로그 제한을 같은 값으로 적용한다.
     <<: &hardened-edge-service
       read_only: true
