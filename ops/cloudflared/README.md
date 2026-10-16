@@ -6,15 +6,17 @@ Dockerfile에 고정한다. 애플리케이션 소스는 수정하지 않고 다
 
 | 입력 | 사용 버전 |
 | --- | --- |
-| Go | 1.26.6 |
-| golang.org/x/crypto | 0.55.0 |
+| Go | 1.26.9 |
+| golang.org/x/crypto | 0.57.0 |
 | google.golang.org/grpc | 1.83.2 |
-| golang.org/x/net | 0.58.0 |
+| golang.org/x/net | 0.60.0 |
 
-표시 버전은 `2026.8.3-watch.2`다. gRPC 1.83.2는
+표시 버전은 `2026.8.3-watch.3`이다. gRPC 1.83.2는
 [CVE-2026-84445](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj)의
-수정 버전이며 `x/net` 0.58.0을 요구한다. 이 취약점은 xDS gRPC 서버에서 특정 요청으로
-프로세스가 종료되는 문제다. WATCH의 실제 노출 여부와 별개로 해당 의존성을 갱신한다.
+수정 버전이며 `x/net` 0.58.0 이상을 요구한다. 이 취약점은 xDS gRPC 서버에서 특정 요청으로
+프로세스가 종료되는 문제다. Go 1.26.9와 `x/net` 0.60.0은 표준 라이브러리·`x/net`의 HIGH 취약점
+CVE-2026-78667·CVE-2026-78669·CVE-2026-97031의 수정 버전이다. `x/net` 0.60.0이 요구하는 `x/crypto`·`x/sync`·
+`x/sys`·`x/term`·`x/text`와 `go 1.26.0`도 Go 도구가 함께 올렸다. WATCH의 실제 노출 여부와 별개로 해당 의존성을 갱신한다.
 
 `go.mod`·`go.sum`은 함께 갱신한 전이 의존성과 체크섬도 고정한다. 빌드는
 `-mod=readonly`로 실행하며 CLI·터널 RPC 테스트를 먼저 통과해야 한다.

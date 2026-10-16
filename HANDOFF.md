@@ -4,6 +4,11 @@
 
 ## 현재 작업
 
+- `d91cc9e`에서 NGINX 갱신 뒤 PR #57의 공급망 검사가 cloudflared 바이너리의 새 HIGH 취약점 3건으로 다시 실패한 문제를 수정했다.
+  Go 표준 라이브러리 1.26.6과 `x/net` 0.58.0의 CVE-2026-78667·CVE-2026-78669·CVE-2026-97031이다. 별도 빌드의 Go 이미지를
+  같은 계열 1.26.9로, `x/net`을 0.60.0으로 올리고 Go 도구가 함께 요구한 `x/crypto`·`x/sync`·`x/sys`·`x/term`·`x/text`를 반영했다.
+  표시 버전은 `2026.8.3-watch.3`이다. 공식 소스·테스트 범위·라이선스 원문은 그대로이며 [빌드 입력](ops/cloudflared/README.md)에 반영했다.
+  추가 비용은 없으며 운영 배포는 미실행이다.
 - `dff37b0`에서 공식 NGINX 이미지의 `pcre2` CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패하던 문제를 해결했다.
   10월 15일 다시 빌드된 공식 `1.30.6-alpine-slim`이 `pcre2` 10.49-r0과 OpenSSL 3.5.9-r0을 포함해, 정한 대로 자체 빌드·예외 없이
   `compose.staging-tunnel.yml`의 다이제스트만 같은 stable 계열로 갱신했다. NGINX 설정은 바꾸지 않았다.
@@ -135,6 +140,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| cloudflared Go·x/net `d91cc9e` | PR #57 CI 보고서에서 cloudflared만 HIGH 3종이 나오고 나머지 산출물 6개는 0건임을 확인. 같은 Trivy 0.74.0·기준으로 기존 로컬 cloudflared 이미지에서 같은 3종(4건)을 재현하고, 수정한 Dockerfile로 빌드한 이미지는 0건임을 확인. Docker 빌드 안의 CLI·터널 RPC 테스트와 모듈 LICENSE·PATENTS 체크섬 대조 통과, 표시 버전 `2026.8.3-watch.3`·사용자 `65532:65532`·라이선스 경로 확인. 로컬 arm64 이미지로 검사했으며 amd64와 전체 공급망 검사는 PR CI로 확인 |
 | NGINX 1.30.6 `dff37b0` | 같은 Trivy 0.74.0 고정 이미지·기준(`HIGH`·`CRITICAL`, 수정판 있음)과 10월 16일 DB로 기존 `1.30.4`의 CVE-2026-103111 1건을 재현하고 `1.30.6`은 0건임을 확인. 이미지 안의 `pcre2` 10.49-r0·`libssl3` 3.5.9-r0 확인. `staging-compose-policy-test.sh`와 실제 NGINX·Blackbox를 쓰는 `gateway-test.py` 2개 통과. 로컬 arm64 이미지로 검사했으며 amd64 이미지와 전체 공급망 검사는 PR CI로 확인 |
 | 외부 연결 장애 판정 `b1975ed` | 판정 기준 수, 응답 시 해제, 리다이렉트 뒤 실패, 호스트 대소문자, 내부 실패 제외, 서비스의 내부 실패 변환·측정값 보존, 스케줄러의 메트릭 기록을 각각 되돌린 변이 8개가 모두 테스트를 실패시키는 것을 대조군과 함께 확인. 관련 38개(도메인 9·애플리케이션 11·bootstrap 18) 통과. 도메인 변경으로 전체 `./gradlew test` 624개를 새로 실행해 통과(domain 26, application 55, web 47, 외부 통신 283, 실제 PostgreSQL 영속성 74, bootstrap 136, ArchUnit 3), 실패·건너뜀 없음. 다섯 호스트가 실패하면 다섯 번째가 `INTERNAL_FAILURE`·30초 재시도·원래 소요 시간으로 확정되는 것을 서비스 시험으로 확인. 복구·부하 시험은 단일 대상이나 모의 점검기를 써서 판정 조건에 닿지 않아 재실행하지 않음 |
 | API 토큰 교체 `58a2099` | 새 기능이라 변경 전 코드로는 새 테스트가 컴파일되지 않아, 이전 토큰 무시·사용 기록 누락·현재 토큰 기록·현재 토큰 재사용 허용·형식 검사 누락·빈 값 거부·콜백 토큰 재사용 허용의 변이 7개가 각각 테스트를 실패시키는 것을 대조군과 함께 확인. 관련 웹 3개·bootstrap 4개 클래스 80개 통과 뒤 바인딩 시험을 더한 `WatchPropertiesTest` 13개 통과. 웹 전체 47개·bootstrap 전체 135개·ArchUnit 3개 통과, 실패·건너뜀 없음. 전체 `./gradlew test` 618개는 다른 모듈 입력이 같아 재사용. 환경 변수 `WATCH_API_PREVIOUS_TOKEN`과 마지막 줄바꿈이 있는 configtree 파일 `watch.api-previous-token`의 바인딩 확인. `staging-compose-policy-test.sh`를 기본·`WATCH_CHECK_ENABLED=false` 환경에서 통과하고 오버레이 대상을 바꾸면 실패함을 확인. 로컬 `baton-watch:67b8dd4` 이미지에 새 진입 스크립트만 덮어 이전 토큰 없음·있음(0400, UID 10001)·일반 파일 아님(시작 전 실패)을 가짜 토큰으로 확인. 이미지 재빌드·실제 BATON 전환은 미실행 |
