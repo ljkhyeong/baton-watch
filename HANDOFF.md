@@ -1,9 +1,13 @@
 # BATON WATCH 인계
 
-최종 수정일: 2026-10-05
+최종 수정일: 2026-10-16
 
 ## 현재 작업
 
+- `dff37b0`에서 공식 NGINX 이미지의 `pcre2` CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패하던 문제를 해결했다.
+  10월 15일 다시 빌드된 공식 `1.30.6-alpine-slim`이 `pcre2` 10.49-r0과 OpenSSL 3.5.9-r0을 포함해, 정한 대로 자체 빌드·예외 없이
+  `compose.staging-tunnel.yml`의 다이제스트만 같은 stable 계열로 갱신했다. NGINX 설정은 바꾸지 않았다.
+  추가 비용은 없으며 운영 배포는 미실행이다.
 - `fe04a66`에서 Trivy DB에 새로 반영된 Jackson CVE 5건(HIGH)으로 공급망 검사가 실패하는 문제를 수정했다.
   부트 JAR는 Spring Boot BOM의 `jackson-bom.version`을 3.1.7로 덮어쓰고 체크섬을 추가했다.
   마이그레이션 이미지는 Jackson 2.22.3·3.1.7을 포함한 공식 Flyway 13.8.1 다이제스트로 올렸으며,
@@ -268,6 +272,7 @@
 
 | 대상 | 결과와 재사용 범위 |
 | --- | --- |
+| NGINX 1.30.6 `dff37b0` | 같은 Trivy 0.74.0 고정 이미지·기준(`HIGH`·`CRITICAL`, 수정판 있음)과 10월 16일 DB로 기존 `1.30.4`의 CVE-2026-103111 1건을 재현하고 `1.30.6`은 0건임을 확인. 이미지 안의 `pcre2` 10.49-r0·`libssl3` 3.5.9-r0 확인. `staging-compose-policy-test.sh`와 실제 NGINX·Blackbox를 쓰는 `gateway-test.py` 2개 통과. 로컬 arm64 이미지로 검사했으며 amd64 이미지와 전체 공급망 검사는 PR CI로 확인 |
 | Jackson·Flyway 취약점 `fe04a66` | 변경 전 CI 보고서에서 부트 JAR·WATCH·마이그레이션 이미지의 Jackson CVE 5건과 NGINX `pcre2` 1건 확인. 변경 후 체크섬 갱신과 함께 전체 622개(ArchUnit 3개·실제 PostgreSQL 포함) 새로 실행·통과, 실패·건너뜀 없음, `verifyBootJarLicense` 통과. 로컬 arm64 5개 이미지 빌드, OCI·라이선스 검사, 실제 PostgreSQL DB 작업 검증(Flyway 13.8.1의 V1~V6) 통과. 같은 Trivy 0.74.0·기준으로 부트 JAR와 자체 이미지 4개 0건, NGINX만 1건 남음 확인. cloudflared는 변경이 없어 CI 결과(0건)를 사용 |
 | Alpine 고정 버전 `0473d8e` | 변경 전 amd64 PostgreSQL 기반 이미지에서 3.5.8-r0 설치가 CI와 같은 종료 코드 8로 실패하는 것 재현. 변경 후 amd64에서 세 단계의 고정 패키지 설치 성공. 로컬 arm64에서 CI와 같은 5개 대상 빌드, 이미지 내 3.5.9-r0·2.8.5-r0 설치, `verify-runtime-images.py` 라이선스·OCI 검사와 실제 PostgreSQL DB 작업 검증 통과. Java·SQL 변경이 없어 Gradle 테스트는 반복하지 않았고, Trivy 공급망 검사는 CI 결과로 확인 |
 | Markdown 링크 대소문자 `285bc26`·`e09d5ee` | 변경 전 디렉터리·파일 이름의 대소문자만 다른 링크 3개가 macOS에서 통과하는 오류 재현. 변경 후 파일 검사 도구 전체 10개 통과. 대소문자 불일치 거부와 정확한 경로의 `..`·`./`·디렉터리·앵커 링크 허용 확인. 추적 Markdown 전체를 새 검사로 확인해 HANDOFF 링크 2개 외 불일치 0개. 오류 문구 전체 비교로 파일 이름 중복 3건 재현 후 제거, 전체 10개 재통과와 XML 구문 오류 거부 유지 확인. 임시 Git 저장소의 합성 파일만 사용했으며 애플리케이션·DB·이미지 변경이 없어 해당 검사는 반복하지 않음 |
@@ -553,7 +558,7 @@ DB 결과 정합성 검증 로그는 `.gradle/agent-validation/20260908T01191084
 
 | 항목 | 마지막 확인과 다음 조건 |
 | --- | --- |
-| NGINX `pcre2` 취약점 | 10월 5일 공식 `1.30.4`·`1.30.5`·`1.31.6` alpine-slim 모두 `pcre2` 10.48-r0이라 CVE-2026-103111(HIGH)로 `verify` 공급망 검사가 실패한다. Alpine 저장소에는 10.49-r0이 있다. 공식 이미지가 다시 빌드되면 NGINX 다이제스트(현재 `compose.staging-tunnel.yml`)를 갱신하고 같은 검사를 통과시킨 뒤 PR #57을 병합한다. 자체 이미지 빌드·예외 추가는 하지 않기로 했다 |
+| NGINX `pcre2` 취약점 | 10월 16일 해결. 10월 15일 빌드된 공식 `1.30.6-alpine-slim`이 `pcre2` 10.49-r0을 포함해 `dff37b0`에서 다이제스트를 갱신했다. PR #57의 원격 `verify` 통과를 확인한 뒤 병합한다 |
 | WATCH 원격 병합 | 9월 8일 [필수 CI](https://github.com/ljkhyeong/baton-watch/actions/runs/34228797671) 통과 후 PR #37을 `main`에 병합했다. 병합 커밋은 `e2ad4b0`이며 당시 로컬·원격 main이 일치함을 확인했다 |
 | 공식 cloudflared 후보 | 2026.8.3 공식 이미지에는 필요한 의존성 수정이 없어 공식 소스를 패치 버전의 의존성으로 빌드한다. 필요한 수정이 포함된 공식 이미지가 나오면 같은 공급망 검사를 통과한 뒤 별도 빌드를 제거할 수 있다 |
 | 공식 이미지 패치 확인 | 기존 `MVP 이후 우선순위 정리` 작업에 매일 오전 9시 확인이 설정돼 있음. 새 자동화 추가 전 기존 설정을 조회하며, 같은 후보의 다운로드·검사를 중복 수행하지 않음 |
