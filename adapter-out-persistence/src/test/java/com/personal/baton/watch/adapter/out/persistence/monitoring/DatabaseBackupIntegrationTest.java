@@ -50,7 +50,17 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
     }
 
     @Test
+    void rejectsABackupWithoutMonitors() throws Exception {
+        Path archive = temporary.resolve("empty.dump");
+        assertThat(runTool("create", POSTGRES.getContainerId(), archive.toString()).status()).isZero();
+        var empty = runTool("verify", archive.toString());
+        assertThat(empty.status()).isNotZero();
+        assertThat(empty.output()).contains("복원 데이터 확인 실패");
+    }
+
+    @Test
     void rejectsRestoredDatabaseWithAFailedMigration() throws Exception {
+        synchronize("backup-fixture", 1, "https://backup.example/", BASE_TIME);
         jdbc.update("UPDATE flyway_schema_history SET success = FALSE");
         Path archive = temporary.resolve("inconsistent.dump");
         assertThat(runTool("create", POSTGRES.getContainerId(), archive.toString()).status()).isZero();

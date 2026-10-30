@@ -4,6 +4,10 @@ BEGIN
         OR EXISTS (SELECT 1 FROM flyway_schema_history WHERE NOT success) THEN
         RAISE EXCEPTION '복원된 마이그레이션 이력을 확인할 수 없습니다';
     END IF;
+    -- 최초 빈 배포는 백업 대상이 아니므로 모니터가 없으면 잘못된 원본을 백업한 것으로 본다.
+    IF NOT EXISTS (SELECT 1 FROM watch_monitor) THEN
+        RAISE EXCEPTION '복원된 모니터가 없습니다';
+    END IF;
 END
 $watch$;
 

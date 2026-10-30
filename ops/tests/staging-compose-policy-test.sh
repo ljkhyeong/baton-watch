@@ -71,6 +71,9 @@ render_config() {
             config --format json >"$output_file"
 }
 
+WATCH_DB_PASSWORD=compose-policy-test WATCH_API_TOKEN=compose-policy-test \
+    docker compose --project-directory "$REPOSITORY_ROOT" --file "$REPOSITORY_ROOT/compose.yml" config --quiet
+
 render_config \
     "$BASE_CONFIG" \
     --file "$REPOSITORY_ROOT/compose.staging.yml"
@@ -90,7 +93,7 @@ render_config \
     --file "$REPOSITORY_ROOT/compose.staging-event-delivery.yml" \
     --file "$REPOSITORY_ROOT/compose.staging-api-token-rotation.yml"
 
-python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$EVENT_DELIVERY_CONFIG" "$API_TOKEN_ROTATION_CONFIG" <<'PY'
+python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$EVENT_DELIVERY_CONFIG" "$API_TOKEN_ROTATION_CONFIG" "$REPOSITORY_ROOT" <<'PY'
 import json
 import re
 import sys
@@ -350,6 +353,13 @@ require(
     | {("watch-api-previous-token", "watch.api-previous-token")},
     "API token rotation overlay must add only the previous token file secret",
 )
+watch_entrypoint = (Path(sys.argv[5]) / "ops/run-as-watch-user.sh").read_text(encoding="utf-8")
+for _, target in secret_targets(api_token_rotation_watch):
+    # 비밀 파일이 없으면 시작 스크립트가 조용히 건너뛰므로 대상 경로가 어긋나면 값이 빠진다.
+    require(
+        f"=/run/secrets/{target}\n" in watch_entrypoint,
+        f"WATCH entrypoint does not copy the {target} secret",
+    )
 require(
     secret_targets(cloudflared)
     == {("cloudflare-tunnel-token", "cloudflare-tunnel-token")},
@@ -497,7 +507,7 @@ require(
 )
 require(
     postgres["healthcheck"].get("test")
-    == ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'],
+    == ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'],
     "PostgreSQL healthcheck changed",
 )
 require(

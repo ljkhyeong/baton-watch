@@ -82,6 +82,12 @@ case "$config" in
         : >"$body_file"
         printf '%s %s' "${FAKE_UNAUTHORIZED_STATUS:-401}" "${FAKE_UNAUTHORIZED_REDIRECTS:-0}"
         ;;
+    'url = "https://watch.staging.example.com/api/v1/resource-monitors?resourceReference=staging-auth-smoke"')
+        printf 'batch\n' >>"$FAKE_CURL_CALLS"
+        : >"$header_file"
+        : >"$body_file"
+        printf '%s %s' "${FAKE_BATCH_STATUS:-401}" "${FAKE_BATCH_REDIRECTS:-0}"
+        ;;
     'url = "https://watch.staging.example.com/api/v1/ingress-deny-smoke"')
         printf 'catch-all\n' >>"$FAKE_CURL_CALLS"
         : >"$header_file"
@@ -131,11 +137,11 @@ assert_failure() {
 }
 
 run_smoke >/dev/null
-assert_calls $'status\nunauthorized\ncatch-all'
+assert_calls $'status\nunauthorized\nbatch\ncatch-all'
 run_smoke FAKE_STATUS_BODY='{"service":"baton-watch","status":"UP"}' >/dev/null
-assert_calls $'status\nunauthorized\ncatch-all'
+assert_calls $'status\nunauthorized\nbatch\ncatch-all'
 run_smoke FAKE_STATUS_HEADERS=$'HTTP/2 200\r\nCF-Ray: test-ray-ICN\r\nCF-Cache-Status: BYPASS\r\n\r\n' >/dev/null
-assert_calls $'status\nunauthorized\ncatch-all'
+assert_calls $'status\nunauthorized\nbatch\ncatch-all'
 
 assert_failure "status" FAKE_STATUS_CODE=301 FAKE_STATUS_REDIRECTS=0
 assert_failure "status" FAKE_STATUS_BODY='not-json'
@@ -153,7 +159,8 @@ done
 assert_failure "status" FAKE_STATUS_HEADERS=$'HTTP/2 200\r\nCF-Ray: test-ray-ICN\r\n\r\n'
 assert_failure "status" FAKE_STATUS_HEADERS=$'HTTP/2 200\r\nCF-Cache-Status: DYNAMIC\r\n\r\n'
 assert_failure $'status\nunauthorized' FAKE_UNAUTHORIZED_STATUS=400
-assert_failure $'status\nunauthorized\ncatch-all' FAKE_CATCH_ALL_STATUS=401
+assert_failure $'status\nunauthorized\nbatch' FAKE_BATCH_STATUS=404
+assert_failure $'status\nunauthorized\nbatch\ncatch-all' FAKE_CATCH_ALL_STATUS=401
 assert_failure "" WATCH_PUBLIC_BASE_URL='https://2130706433'
 
-printf '[staging-public-smoke-test] 20개 사례와 curl 요청 계약이 통과했습니다\n'
+printf '[staging-public-smoke-test] 21개 사례와 curl 요청 계약이 통과했습니다\n'

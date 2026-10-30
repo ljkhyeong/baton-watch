@@ -95,7 +95,7 @@ run_operation() {
     PGPORT=5432 \
     PGDATABASE=baton_watch \
     PGUSER=baton_watch_owner \
-        "$REPOSITORY_ROOT/ops/staging-database-operation.sh" "$operation"
+        "$REPOSITORY_ROOT/ops/staging-database-operation.sh" "$operation" </dev/null
 }
 
 assert_rejects_runtime_secret_file() {

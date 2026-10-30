@@ -222,6 +222,11 @@ if [[ "$runtime_search_path" != "pg_catalog,public" ]]; then
     fail "런타임 역할의 search_path가 올바르지 않습니다"
 fi
 
+staging_compose run --rm --no-deps -T database-role-init
+if ! printf 'SELECT count(*) FROM public.watch_monitor;\n' | runtime_psql >/dev/null; then
+    fail "역할 초기화 재실행이 실행 중 런타임 역할의 테이블 권한을 회수했습니다"
+fi
+
 printf '%s\n' \
     "CREATE TABLE public.watch_default_privilege_probe (id BIGINT);" \
     "CREATE SEQUENCE public.watch_default_privilege_probe_sequence;" \
@@ -373,6 +378,8 @@ assert_runtime_rejects \
     "UPDATE public.watch_health_change_event SET changed_at = changed_at WHERE event_id = '00000000-0000-0000-0000-000000000001';"
 
 printf '%s\n' \
+    "SELECT attempt_id FROM public.watch_attempt" \
+    "WHERE attempt_id = '00000000-0000-0000-0000-000000000010' FOR UPDATE SKIP LOCKED;" \
     "DELETE FROM public.watch_health_change_event" \
     "WHERE event_id = '00000000-0000-0000-0000-000000000020';" \
     "DELETE FROM public.watch_attempt" \
