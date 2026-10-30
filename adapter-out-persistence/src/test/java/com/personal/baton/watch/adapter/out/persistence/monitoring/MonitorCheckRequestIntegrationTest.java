@@ -68,6 +68,18 @@ class MonitorCheckRequestIntegrationTest extends MonitoringPersistenceIntegratio
                 .containsExactlyInAnyOrder(Status.SCHEDULED, Status.ALREADY_SCHEDULED);
     }
 
+    @Test
+    void anEarlierRequestThatLocksLastJoinsTheScheduleInsteadOfBeingRateLimited() {
+        synchronize(REFERENCE.value(), 7, "https://example.com/", BASE_TIME);
+        postpone();
+        assertThat(requestAt(BASE_TIME.plusMillis(1)).status()).isEqualTo(Status.SCHEDULED);
+
+        var joined = requestAt(BASE_TIME);
+
+        assertThat(joined.status()).isEqualTo(Status.ALREADY_SCHEDULED);
+        assertThat(joined.nextCheckAt()).isEqualTo(BASE_TIME.plusMillis(1));
+    }
+
     private MonitorCheckRequestResult requestAt(Instant now) {
         return new RequestMonitorCheckService(monitorPersistence, Clock.fixed(now, ZoneOffset.UTC))
                 .requestCheck(REFERENCE);

@@ -69,12 +69,17 @@ public final class JdbcMonitorPersistenceAdapter implements MonitorPersistencePo
             if (monitor == null) {
                 return new MonitorCheckRequestResult(Status.NOT_FOUND, null, 0);
             }
-            return switch (toProjection(monitor).checkStatusAt(requestedAt)) {
+            // 요청 시각은 잠금 전에 정해지므로 먼저 커밋한 요청보다 이를 수 있다. 그 요청의 일정에 합류시킨다.
+            Instant lastRequestedAt = monitor.lastCheckRequestedAt();
+            Instant observedAt = lastRequestedAt != null && lastRequestedAt.isAfter(requestedAt)
+                    ? lastRequestedAt
+                    : requestedAt;
+            return switch (toProjection(monitor).checkStatusAt(observedAt)) {
                 case INACTIVE -> new MonitorCheckRequestResult(Status.INACTIVE, null, 0);
                 case IN_PROGRESS -> new MonitorCheckRequestResult(Status.IN_PROGRESS, null, 0);
                 case QUEUED -> new MonitorCheckRequestResult(Status.ALREADY_SCHEDULED, monitor.nextCheckAt(), 0);
                 case SCHEDULED -> advanceSchedule(
-                        resourceReference, monitor.lastCheckRequestedAt(), requestedAt, minimumInterval);
+                        resourceReference, lastRequestedAt, requestedAt, minimumInterval);
             };
         });
     }
