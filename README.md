@@ -11,7 +11,7 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 | 여러 대상 조회 | 인증된 `GET /api/v1/resource-monitors?resourceReference=...`. 최대 20개를 한 번에 조회하고 미등록 대상은 별도 반환 |
 | 재점검 요청 | 인증된 `POST /api/v1/resource-monitors/{resourceReference}/check-requests`. 기존 점검을 사용하거나 새 일정을 예약 |
 | URL 점검 | GET 응답 헤더로 연결 상태 판단. 응답 본문은 읽거나 저장하지 않음. 콜백과 같은 고정 `User-Agent` 사용 |
-| 외부 연결 장애 구분 | 서로 다른 대상 다섯 곳이 모두 응답하지 않으면 이후 응답 없는 실패를 내부 실패로 기록해 `BROKEN` 전파를 막고 경보로 알림 |
+| 외부 연결 장애 구분 | 서로 다른 호스트가 응답 없이 실패하면 다섯 번째 호스트의 실패부터 내부 실패로 기록해 `BROKEN` 전파를 막고 경보로 알림. 호스트가 네 곳 이하면 대상 실패로 판단 |
 | 점검 기록 | 일정, 시도·결과, 현재 상태와 상태 변경 이벤트를 PostgreSQL에 저장. 저장한 시도·결과는 변경하지 않음 |
 | 상태 변경 전달 | 설정된 BATON HTTPS 콜백 하나로 비동기 전달. 같은 이벤트를 다시 보낼 수 있으며 BATON은 이벤트 ID로 중복 처리 방지 |
 | 점검 중지 | 시작 설정으로 해당 인스턴스의 점검 예약 중지. API·이력 정리·이벤트 전달은 유지 |
@@ -28,12 +28,12 @@ BATON WATCH는 BATON에 등록된 자료 URL의 연결 상태를 비동기로 �
 
 | 항목 | 제한·처리 |
 | --- | --- |
-| 모니터 `PUT` 본문 | 인증 후 JSON 16 KiB 제한. 초과 시 `413 PAYLOAD_TOO_LARGE` |
+| 모니터 `PUT` 본문 | 인증 후 JSON 16 KiB 제한. 초과 시 `413 PAYLOAD_TOO_LARGE`. 폼·multipart 본문은 읽지 않음 |
 | 수동 재점검 | 리소스별 새 예약 간격 30초. 이미 대기·실행 중이면 기존 점검 사용 |
 | Tomcat 헤더 | 요청·응답 각각 8 KiB |
 | Tomcat 연결 | 최대 128개, 수락 대기 최대 32개 |
 | Tomcat 스레드·큐 | 워커 최대 32개·최소 유휴 4개, 대기열 최대 64개 |
-| 배치 | 허용 실행 시간 60초. 시작 시 JDBC·트랜잭션·행 잠금·HTTP 제한을 합산해 검증 |
+| 배치 | 허용 실행 시간 60초. 시작 시 DB 연결 대기·트랜잭션·HTTP 제한을 합산해 검증. 종료 신호를 받으면 다음 항목을 점유하지 않고 실행 중 항목만 완료 |
 | 아웃바운드 요청 | DNS 해석 결과 검증·고정, SSRF 방어, 시간·헤더 제한, 리다이렉트 정책 적용 |
 | 요청 취소 | 이미 중단된 호출은 DNS·HTTP 작업 제출 전 거부. 실행 중에는 전체 시간 초과·호출자 중단·실행기 종료 시 HTTP 요청 취소. 실행기 종료 시 DNS·HTTP 호출자는 남은 기한을 기다리지 않고 반환 |
 | 결과 보존 | 유효 기간이 지난 점검 상태를 `UNKNOWN`으로 변경. 시도·결과는 보존 기간 제한, 이벤트는 전달 완료된 건만 삭제 |
@@ -42,7 +42,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 모니터 API는 일시적 DB 장애에 `503 SERVICE_UNAVAILABLE`과 `Retry-After: 5`를 반환합니다.
 호출자는 최소 5초 뒤 재시도하며, 이 값이 복구 완료를 보장하지는 않습니다.
 점검기의 자원 설정에도 상한을 적용합니다. 잘못된 유니코드 URL은 등록·리다이렉트 전에 거부하며,
-경로·쿼리의 정상 한글·이모지는 유지합니다. 대상 점검은 리다이렉트마다 주소를 다시 검증하고,
+경로·쿼리의 정상 한글·이모지는 저장 값을 유지하고 요청 때 UTF-8 퍼센트 인코딩합니다. 대상 점검은 리다이렉트마다 주소를 다시 검증하고,
 이벤트 전달은 리다이렉트를 따라가지 않습니다. 이벤트 본문은 변경하지 않으며,
 재시도 간격은 지수 백오프로 늘리되 설정된 상한을 넘지 않습니다.
 콜백의 429·503 응답에 유효한 `Retry-After`가 있으면 그 시각까지 재시도를 늦춥니다.
@@ -65,7 +65,7 @@ Tomcat 제한은 Spring Boot 환경 후처리기가 외부 설정보다 우선�
 | 운영 도구 테스트 | 작업자 미실행·외부 연결 장애 경보·PromQL·`promtool`, `0600` DB 백업·임시 PostgreSQL 복원, URL·비밀값을 제외한 진단 CLI 검증 |
 | GitHub Actions | 의존성 체크섬·라이선스, CodeQL·ShellCheck, JAR·이미지 CycloneDX SBOM, 심각도별 취약점 검사. 검사 실패·미실행 시 CI 실패 처리 |
 
-이미지 검사는 자체 배포 이미지 다섯 개와 공식 NGINX 이미지를 포함합니다. 의존성 변경은
+이미지 검사는 자체 배포 이미지 네 개와 공식 NGINX·cloudflared 이미지를 포함합니다. 의존성 변경은
 허용 라이선스도 검토합니다. 자세한 실행 명령과 범위는 아래 빌드·검증 절차를 따릅니다.
 
 ### 운영에 필요한 별도 작업
@@ -125,6 +125,7 @@ Java·빌드 변경은 ArchUnit으로 계층 방향과 어댑터 간 직접 의�
 | --- | --- | --- | --- |
 | JDBC 구문 제한 | `WATCH_PERSISTENCE_QUERY_TIMEOUT` | 5s | 1~30초, 정수 초 단위 |
 | JDBC 트랜잭션 제한 | `WATCH_PERSISTENCE_TRANSACTION_TIMEOUT` | 5s | 1~30초, 정수 초 단위 |
+| 행 잠금 대기 제한 | `WATCH_PERSISTENCE_LOCK_TIMEOUT` | 1s | 양의 정수 ms 단위, 트랜잭션 제한보다 짧게 |
 | HikariCP 최대 연결 수 | `WATCH_DB_MAXIMUM_POOL_SIZE` | 8 | 1~32 |
 | 최소 유휴 연결 수 | `WATCH_DB_MINIMUM_IDLE` | 2 | 0~32, 최대 연결 수 이하 |
 | 연결 대기 제한 | `WATCH_DB_CONNECTION_TIMEOUT_MILLIS` | 3000ms | 250~30000ms |
@@ -193,14 +194,13 @@ readiness에는 DB를 포함하고 liveness에는 포함하지 않습니다. Doc
 주기를 바꾸면 [조회 구간과 시작 유예](docs/runbooks/monitoring-alerts.md)도 검토해야 합니다.
 
 전체 Gradle 검증은 실행 가능한 부트 JAR의 `META-INF/LICENSE`가 저장소 `LICENSE`와
-정확히 일치하는지도 확인합니다. Dockerfile의 PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH
+정확히 일치하는지도 확인합니다. Dockerfile의 PostgreSQL·데이터베이스 작업·마이그레이션·WATCH
 이미지는 같은 라이선스를 `/usr/share/licenses/baton-watch/LICENSE`에 포함하고
 `Apache-2.0` OCI 라이선스 레이블을 사용합니다. `검증` 워크플로는 [이미지 검증 도구](ops/verify-runtime-images.py)로
-레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 다섯 개와
-Compose에 고정된 NGINX 이미지의 CycloneDX SBOM 일곱 개를
+레이블과 라이선스를 확인합니다. Trivy는 독립 부트 JAR, 자체 이미지 네 개와
+Compose에 고정된 공식 NGINX·cloudflared 이미지의 CycloneDX SBOM 일곱 개를
 생성하고 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다. 공식 이미지의
-원래 라이선스는 유지됩니다. PostgreSQL의 OS 패키지와 cloudflared의 Go 의존성은
-수정 버전으로 빌드합니다. [cloudflared 빌드 입력](ops/cloudflared/README.md)은 공식 소스와 변경한 의존성을 기록합니다.
+원래 라이선스는 유지됩니다. 기반 이미지에 수정 버전이 아직 없는 PostgreSQL의 OS 패키지만 고정해 빌드합니다.
 CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 사용하므로 배포
 호스트에서 다시 빌드한 플랫폼별 이미지도 검증용으로 보관한 이미지 아카이브를 동일한
 기준으로 검사합니다. 한 산출물에서 취약점이 발견되어도 나머지 취약점·라이선스
@@ -219,7 +219,7 @@ CI와 배포 절차는 [공용 공급망 검사](ops/scan-supply-chain.sh)를 �
 완료됐다고 판단하지 않습니다. 날짜별 결과는 [9월 5일](docs/history/handoff-2026-09-05.md)·[10월 5일](docs/history/handoff-2026-10-05.md)·[10월 16일](docs/history/handoff-2026-10-16.md) 이전 인계 기록에 보관합니다.
 
 Gradle·GitHub Actions·Dockerfile·Compose 이미지는 주간 Dependabot 점검을 사용하며 자동 병합하지 않습니다.
-Alpine 고정 패키지와 Trivy·Prometheus 검사용 이미지는 자동 갱신 대상이 아니므로
+Alpine 고정 패키지와 Trivy·Prometheus·Alertmanager 검사용 이미지는 자동 갱신 대상이 아니므로
 [배포 절차](docs/runbooks/staging-deployment.md)에 따라 직접 확인합니다.
 
 주소 정책 스냅샷을 수동으로 확인하려면 다음 명령을 실행합니다. 원본 체크섬이
@@ -242,7 +242,7 @@ curl http://localhost:8080/api/v1/system/status
 토큰을 바꿀 때는 새 값을 `WATCH_API_TOKEN`에, 기존 값을 `WATCH_API_PREVIOUS_TOKEN`에 넣고 WATCH를 재생성합니다.
 그동안 두 토큰을 모두 허용하므로 BATON을 나중에 바꿔도 요청이 401로 끊기지 않습니다. BATON 전환 뒤
 `baton_watch_api_previous_token_authentications_total`이 더 늘지 않으면 `WATCH_API_PREVIOUS_TOKEN`을 비우고
-다시 재생성합니다. 이전 토큰도 같은 형식이어야 하며 현재 토큰·콜백 토큰과 같으면 시작에 실패합니다.
+다시 재생성합니다. 이전 토큰도 같은 형식이어야 하며 현재 토큰과 같거나, 이벤트 전달이 켜져 있을 때 콜백 토큰과 같으면 시작에 실패합니다.
 스테이징은 [배포 절차](docs/runbooks/staging-deployment.md)의 비밀 파일 교체 순서를 따릅니다.
 
 로컬 Compose는 WATCH와 PostgreSQL 18.6을 시작합니다. DB 포트와 WATCH 관리 포트 `8081`은
@@ -252,12 +252,11 @@ curl http://localhost:8080/api/v1/system/status
 [이벤트 전달용 추가 Compose 설정](compose.staging-event-delivery.yml)은 BATON 콜백 사전 검사가 끝난 경우에만 전달을 활성화하고 토큰을 `configtree` 비밀 파일로 주입합니다. 이 설정을 추가하지 않으면 기본 스테이징은 이벤트 전달을 수행하지 않습니다.
 
 스테이징에서는 DB 소유자와 WATCH 실행 계정을 분리합니다. 역할 초기화와 Flyway 마이그레이션이
-끝난 뒤 WATCH를 시작합니다. 사용하는 이미지 5개는 같은 Git SHA로 태그합니다.
+끝난 뒤 WATCH를 시작합니다. 자체 이미지 4개는 같은 Git SHA로 태그하고, 터널은 Compose에 다이제스트를 고정한 공식 `cloudflare/cloudflared` 이미지를 사용합니다.
 
 - `baton-watch-postgres`: PostgreSQL
 - `baton-watch-database-operations`: DB 계정·권한 관리
 - `baton-watch-migrations`: 마이그레이션
-- `baton-watch-cloudflared`: Cloudflare Tunnel
 - `baton-watch`: 애플리케이션
 
 [배포 절차](docs/runbooks/staging-deployment.md)에 따라 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관합니다.
@@ -293,12 +292,12 @@ WATCH_EVENT_DELIVERY_TOKEN=replace-with-a-separate-32-character-token
 BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은지 확인해야 합니다.
 중복 처리를 막기 위해 `2xx` 응답 전에 처리한 `eventId`를 DB에 기록합니다.
 본문 형식과 재시도 규칙은 [이벤트 전달 계약](docs/PRD/0004_health-change-event-delivery/spec.md)을 참고하세요.
-콜백 Bearer 토큰은 모니터 API 토큰과 달라야 하고 `[A-Za-z0-9._~-]` 문자 32~200개로 구성합니다.
+콜백 Bearer 토큰은 모니터 API의 현재·이전 토큰과 달라야 하고 `[A-Za-z0-9._~-]` 문자 32~200개로 구성합니다.
 
 ## 라이선스
 
 이 프로젝트는 [Apache License 2.0](LICENSE) 조건으로 사용할 수 있습니다.
-라이선스 전문은 소스 저장소뿐 아니라 실행 가능한 부트 JAR과 자체 배포 이미지 5개에도
+라이선스 전문은 소스 저장소뿐 아니라 실행 가능한 부트 JAR과 자체 배포 이미지 4개에도
 포함됩니다. 보안 문제는 공개 이슈 대신 [보안 정책](SECURITY.md)의 비공개 제보
 절차를 사용하세요.
 
@@ -312,6 +311,7 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 - [MVP 저장소 및 실행 ADR](docs/ADR/0002_monitoring-mvp-storage-and-execution/adr.md)
 - [직접 HTTPS 이벤트 전달 ADR](docs/ADR/0003_health-change-event-delivery/adr.md)
 - [NGINX 요청 속도 제한 ADR](docs/ADR/0004_ingress-rate-limit/adr.md)
+- [봇 차단 응답 분류 ADR(제안)](docs/ADR/0005_access-blocked-outcome/adr.md)
 - [Cloudflare Tunnel 스테이징 배포 런북](docs/runbooks/staging-deployment.md) — 배포 파일 제공과 실제 가동·인증·외부 접속 검증은 구분합니다.
 - [공개 스테이징 전달 검증 런북](docs/runbooks/public-staging-event-delivery.md)
 - [BATON 연동 확인과 복구 조건](docs/runbooks/baton-integration-review.md)
@@ -321,6 +321,7 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 - [기존 메트릭 경보 규칙과 적용 조건](docs/runbooks/monitoring-alerts.md)
 - [NGINX 요청 속도 제한과 공개 검증](docs/runbooks/request-rate-limit.md)
 - [인바운드 HTTP 점검·경보 적용 조건](docs/runbooks/ingress-monitoring.md)
+- [Grafana 공개 상태 확인](docs/runbooks/grafana-public-check.md)
 - [점검 중지·재개와 읽기 전용 장애 진단](docs/runbooks/check-control-and-diagnostics.md)
 - [보안 정책](SECURITY.md)
 - [현재 인계 문서](HANDOFF.md)
@@ -340,8 +341,9 @@ BATON은 Bearer 토큰을 인증하고 `Idempotency-Key`와 `eventId`가 같은�
 대상 GET과 콜백 POST는 `User-Agent: baton-watch (+https://github.com/ljkhyeong/baton-watch)`를 보냅니다.
 `User-Agent` 없는 요청을 403으로 거부하는 사이트에서 정상 링크가 실패로 판정되지 않게 합니다. 브라우저를 가장하지
 않으므로 모든 자동 요청에 봇 차단 챌린지를 반환하는 사이트는 계속 `HTTP_CLIENT_ERROR`가 될 수 있습니다.
-WATCH 쪽 외부 연결이 끊겨 서로 다른 대상 다섯 곳이 모두 응답하지 않으면, 그 뒤의 응답 없는 실패는 대상 실패로
+WATCH 쪽 외부 연결이 끊겨 서로 다른 호스트가 응답 없이 실패하면, 다섯 번째 호스트의 실패부터 대상 실패로
 세지 않고 `INTERNAL_FAILURE`로 기록합니다. 어느 대상이든 응답을 받으면 바로 원래 판단으로 돌아갑니다.
+호스트가 네 곳 이하면 판정에 닿지 않아 대상 실패로 계속 셉니다.
 콜백 전달의 본문 제한은 유지합니다.
 
 ## BATON 원본 스냅샷으로 독립 복원

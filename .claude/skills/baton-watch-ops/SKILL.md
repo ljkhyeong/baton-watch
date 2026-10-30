@@ -13,7 +13,8 @@ Compose·배포는 [스테이징 절차](../../../docs/runbooks/staging-deployme
 
 | 역할 | 위치 |
 | --- | --- |
-| 작업자·유지 관리 | `bootstrap/.../MonitoringScheduler`, `EventDeliveryScheduler`, `*MaintenanceScheduler`, `WorkerSchedulingConfiguration` |
+| 작업자·유지 관리 | `bootstrap/.../MonitoringScheduler`, `EventDeliveryScheduler`, `*MaintenanceScheduler`, `WorkerSchedulingConfiguration`, `WorkerShutdownSignal` |
+| 외부 연결 장애 판정 | `application/.../service/EgressOutageGuard` |
 | 실행 예산·종료 대기 | `bootstrap/.../WorkerExecutionBudget` |
 | 설정·안전 기본값 | `WatchProperties`, `EventDeliveryProperties`, `PersistenceProperties`, `DatabaseRuntimeProperties`, `RuntimeSafetyEnvironmentPostProcessor`, `bootstrap/src/main/resources/application.yml` |
 | 컨테이너 | `Dockerfile`, `compose.yml`, `compose.staging*.yml`, `.env.example`, `ops/staging.env.example` |
@@ -22,7 +23,7 @@ Compose·배포는 [스테이징 절차](../../../docs/runbooks/staging-deployme
 
 ## 규칙
 
-- 종료 시 새 점유를 중단하고 실행 중 작업을 제한 시간 안에 마친다. 배치 허용 실행 시간은 종료 대기보다 짧게 유지해 중단된 작업을 만료 리스로 복구할 수 있게 한다. 배치·큐·동시성·리스와 종료 대기의 관계를 바꾸면 `WorkerExecutionBudgetTest`를 함께 고친다.
+- 종료 시 `WorkerShutdownSignal`로 세 스케줄러를 함께 닫아 새 점유를 중단하고 실행 중 작업을 제한 시간 안에 마친다. 인터럽트로 외부 호출을 끊지 않는다. 배치 허용 실행 시간은 종료 대기보다 짧게 유지해 중단된 작업을 만료 리스로 복구할 수 있게 한다. 배치·큐·동시성·리스와 종료 대기의 관계를 바꾸면 `WorkerExecutionBudgetTest`를 함께 고친다.
 - 설정 상한과 안전 기본값은 비활성화할 수 없다. 새 설정은 시작 시 검증하고, 오류 메시지·로그에 비밀값·URL 원문을 넣지 않는다. README 설정 설명과 예시 env 파일을 함께 맞춘다.
 - 콜백은 모니터 API와 별도 Bearer 토큰을 사용한다. 비밀값을 Git·이미지·Compose 기본값·로그·URL·명령 인자에 넣지 않고 환경 변수나 비밀 파일로 전달한다.
 - 이미지 다이제스트 고정, 비공개 앱·DB·관리 포트, 상태 확인, 비루트·최소 권한과 롤백 절차를 유지한다.
