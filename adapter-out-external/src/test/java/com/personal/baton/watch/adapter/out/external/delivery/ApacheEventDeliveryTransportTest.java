@@ -67,6 +67,24 @@ class ApacheEventDeliveryTransportTest {
         assertArrayEquals(payload, receivedBody.get());
     }
 
+    @Test
+    void percentEncodesANonAsciiEndpointPath() throws Exception {
+        AtomicReference<String> requestTarget = new AtomicReference<>();
+        server.handle("/", exchange -> {
+            requestTarget.set(exchange.getRequestURI().toString());
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheEventDeliveryTransport(
+                server.uri("delivery.test", "/콜백"), "0123456789abcdef0123456789abcdef",
+                testLimits(8_192), 1, 1, CLOCK)) {
+            execute(transport, "{}".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(2));
+        }
+        assertEquals("/%EC%BD%9C%EB%B0%B1", requestTarget.get());
+    }
+
     @ParameterizedTest
     @MethodSource("retryAfterResponses")
     void readsRetryAfterWithoutWaitingOrRetryingInTheClient(

@@ -40,7 +40,7 @@ final class ApacheEventDeliveryTransport implements DeliveryTransport {
             int threadCount,
             int queueCapacity,
             Clock clock) {
-        this.endpoint = Objects.requireNonNull(endpoint, "endpoint");
+        this.endpoint = URI.create(Objects.requireNonNull(endpoint, "endpoint").toASCIIString());
         this.authorization = "Bearer " + Objects.requireNonNull(bearerToken, "bearerToken");
         this.limits = Objects.requireNonNull(limits, "limits");
         this.clock = Objects.requireNonNull(clock, "clock");

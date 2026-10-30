@@ -93,6 +93,64 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void percentEncodesNonAsciiPathAndQueryOnTheRequestLine() throws Exception {
+        AtomicReference<String> requestTarget = new AtomicReference<>();
+        server.handle("/", exchange -> {
+            requestTarget.set(exchange.getRequestURI().toString());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/문서?검색=한글"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals("/%EB%AC%B8%EC%84%9C?%EA%B2%80%EC%83%89=%ED%95%9C%EA%B8%80", requestTarget.get());
+    }
+
+    @Test
+    void keepsExistingPercentEncodingOnTheRequestLine() throws Exception {
+        AtomicReference<String> requestTarget = new AtomicReference<>();
+        server.handle("/", exchange -> {
+            requestTarget.set(exchange.getRequestURI().toString());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/a%20b/%EB%AC%B8?q=%2F"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals("/a%20b/%EB%AC%B8?q=%2F", requestTarget.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/문서/뷰?검색=한글", "/ascii?q=1"})
+    void restoresALocationSentAsRawUtf8Bytes(String location) throws Exception {
+        server.handle("/moved", exchange -> {
+            exchange.getResponseHeaders().add(
+                    "Location", new String(location.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1));
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(List.of(location), transport.execute(target("/moved"), Duration.ofSeconds(2)).locations());
+        }
+    }
+
+    @Test
+    void leavesALocationThatIsNotValidUtf8ForTheRedirectPolicyToJudge() throws Exception {
+        server.handle("/moved", exchange -> {
+            exchange.getResponseHeaders().add("Location", "/caf\u00e9");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(List.of("/caf\u00e9"), transport.execute(target("/moved"), Duration.ofSeconds(2)).locations());
+        }
+    }
+
+    @Test
     void pinsAHostThatStartsWithAPunycodeLabel() throws Exception {
         AtomicReference<String> host = new AtomicReference<>();
         server.handle("/idn", exchange -> {
@@ -140,14 +198,17 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void acceptsExactlyTheConfiguredResponseHeaderCount() throws Exception {
+        handleWithHeaderCount("/headers", 4);
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(4), 1, 1)) {
+            assertEquals(204, transport.execute(target("/headers"), Duration.ofSeconds(2)).statusCode());
+        }
+    }
+
+    @Test
     void mapsExcessiveResponseHeaderCountToResponseTooLarge() throws Exception {
-        server.handle("/headers", exchange -> {
-            for (int index = 0; index < 16; index++) {
-                exchange.getResponseHeaders().add("X-Test-" + index, "value");
-            }
-            exchange.sendResponseHeaders(204, -1);
-            exchange.close();
-        });
+        handleWithHeaderCount("/headers", 5);
 
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(4), 1, 1)) {
@@ -157,6 +218,17 @@ class ApacheHttpHopTransportTest {
 
             assertEquals(OutboundHttpFailure.Kind.RESPONSE_TOO_LARGE, failure.kind());
         }
+    }
+
+    /** 시험 서버가 {@code Date} 헤더 하나를 더하므로 나머지만 직접 추가한다. */
+    private void handleWithHeaderCount(String path, int headerCount) {
+        server.handle(path, exchange -> {
+            for (int index = 1; index < headerCount; index++) {
+                exchange.getResponseHeaders().add("X-Test-" + index, "value");
+            }
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
     }
 
     @ParameterizedTest

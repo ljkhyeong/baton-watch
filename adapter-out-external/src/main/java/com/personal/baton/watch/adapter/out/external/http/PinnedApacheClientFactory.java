@@ -45,7 +45,8 @@ final class PinnedApacheClientFactory {
         Timeout connectTimeout = socketTimeout(limits.connectTimeout(), remainingTime);
         Timeout responseTimeout = socketTimeout(limits.responseTimeout(), remainingTime);
         Http1Config http1Config = Http1Config.custom()
-                .setMaxHeaderCount(limits.maxHeaderCount())
+                // Apache는 상한과 같은 개수에서 거부하므로 설정한 개수까지 받도록 하나를 더한다.
+                .setMaxHeaderCount(limits.maxHeaderCount() + 1)
                 .setMaxLineLength(limits.maxHeaderLineLength())
                 .build();
         ManagedHttpClientConnectionFactory connectionFactory =
