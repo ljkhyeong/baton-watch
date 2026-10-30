@@ -1,7 +1,7 @@
 # 운영 볼륨·호스트 포트·외부 네트워크를 사용하지 않는 폐기 가능한 복원 시험 환경이다.
 services:
   postgres:
-    image: postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
     network_mode: none
     environment:
       POSTGRES_DB: baton_watch
@@ -14,7 +14,7 @@ services:
       - /var/run/postgresql:rw,nosuid,nodev,size=16m
       - /tmp:rw,noexec,nosuid,nodev,size=16m
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "watch_restore", "-d", "baton_watch"]
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "watch_restore", "-d", "baton_watch"]
       interval: 1s
       timeout: 3s
       retries: 30

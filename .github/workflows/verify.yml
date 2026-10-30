@@ -59,7 +59,7 @@ jobs:
         run: docker version
 
       - name: 셸 스크립트 정적 검사
-        run: shellcheck ops/*.sh ops/tests/*.sh ops/cloudflared/*.sh
+        run: shellcheck ops/*.sh ops/tests/*.sh
 
       - name: BATON 스냅샷 독립 복원 도구 검사
         run: python3 ops/tests/baton-snapshot-recovery-test.py
@@ -180,7 +180,6 @@ jobs:
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target postgres --tag "baton-watch-postgres:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target database-operations --tag "baton-watch-database-operations:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target migrations --tag "baton-watch-migrations:${GITHUB_SHA}" .
-          docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target cloudflared --tag "baton-watch-cloudflared:${GITHUB_SHA}" .
           docker build --build-arg "OCI_REVISION=${GITHUB_SHA}" --target runtime --tag "baton-watch:${GITHUB_SHA}" .
 
       - name: 런타임 이미지 라이선스와 OCI 메타데이터 검증
@@ -218,6 +217,7 @@ jobs:
           )"
           read -r postgres_image gateway_image cloudflared_image <<<"${images}"
           docker pull "${gateway_image}"
+          docker pull "${cloudflared_image}"
           image_archive_dir="build/image-evidence/${GITHUB_SHA}"
           ./ops/scan-supply-chain.sh \
             build/supply-chain \

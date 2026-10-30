@@ -221,15 +221,19 @@ require(
     migrate["environment"].get("WATCH_DB_RUNTIME_USER") == "baton_watch_runtime",
     "migration callback must target the runtime database role",
 )
-for service, kind in ((postgres, "postgres"), (cloudflared, "cloudflared")):
-    require(
-        service.get("image") == f"baton-watch-{kind}:0000000000000000000000000000000000000001",
-        f"{kind} 이미지는 검증된 전체 Git SHA 태그여야 합니다",
-    )
-    require(
-        service.get("build") is None and service.get("pull_policy") == "never",
-        f"{kind}는 미리 빌드해 검증한 로컬 이미지를 사용해야 합니다",
-    )
+require(
+    postgres.get("image") == "baton-watch-postgres:0000000000000000000000000000000000000001",
+    "postgres 이미지는 검증된 전체 Git SHA 태그여야 합니다",
+)
+require(
+    postgres.get("build") is None and postgres.get("pull_policy") == "never",
+    "postgres는 미리 빌드해 검증한 로컬 이미지를 사용해야 합니다",
+)
+assert_digest_pinned(cloudflared.get("image", ""), "cloudflare/cloudflared", "cloudflared")
+require(
+    cloudflared.get("entrypoint") == ["cloudflared", "--no-autoupdate"],
+    "cloudflared must keep automatic updates disabled",
+)
 require(
     cloudflared.get("user") == "65532:65532",
     "cloudflared must retain its fixed non-root user",

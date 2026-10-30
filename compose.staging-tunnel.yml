@@ -50,10 +50,11 @@ services:
           pids: 32
 
   cloudflared:
-    image: "baton-watch-cloudflared:${WATCH_IMAGE_REVISION:?WATCH_IMAGE_REVISION must be the full Git SHA}"
-    pull_policy: never
+    image: cloudflare/cloudflared:2026.10.6@sha256:004d843fa5fdc3103983fd580ee19fab4a8fa98add31f87249c1659e848c98e0
     <<: *hardened-edge-service
     user: "65532:65532"
+    # 이미지 기본 진입점에는 없는 자동 갱신 차단을 명령행으로 고정한다.
+    entrypoint: ["cloudflared", "--no-autoupdate"]
     command:
       - tunnel
       - --loglevel

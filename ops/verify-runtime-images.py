@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 from tempfile import TemporaryDirectory
 
@@ -16,7 +17,6 @@ images = {
     f"baton-watch-migrations:{revision}": "BATON WATCH 마이그레이션",
     f"baton-watch:{revision}": "BATON WATCH",
     f"baton-watch-postgres:{revision}": "BATON WATCH PostgreSQL",
-    f"baton-watch-cloudflared:{revision}": "BATON WATCH cloudflared",
 }
 common_labels = {
     "org.opencontainers.image.source": "https://github.com/ljkhyeong/baton-watch",
@@ -45,8 +45,6 @@ for image, title in images.items():
             raise SystemExit(
                 f"WATCH 이미지 기본 사용자가 올바르지 않습니다: {runtime_user}"
             )
-    if image.startswith("baton-watch-cloudflared:") and inspected["Config"].get("User") != "65532:65532":
-        raise SystemExit("cloudflared 이미지 기본 사용자가 올바르지 않습니다")
 
     container = subprocess.check_output(["docker", "create", image], text=True).strip()
     try:
@@ -60,9 +58,18 @@ for image, title in images.items():
     finally:
         subprocess.run(["docker", "rm", "--volumes", container], check=True, stdout=subprocess.DEVNULL)
 
+# 공식 cloudflared는 자체 레이블이 없으므로 Compose가 고정한 이미지의 사용자와 실행만 확인한다.
+tunnel_compose = (repository / "compose.staging-tunnel.yml").read_text(encoding="utf-8")
+cloudflared_image = re.search(r"^    image: (cloudflare/cloudflared:\S+)$", tunnel_compose, re.MULTILINE).group(1)
+subprocess.run(["docker", "pull", "--quiet", cloudflared_image], check=True, stdout=subprocess.DEVNULL)
+cloudflared_user = subprocess.check_output(
+    ["docker", "image", "inspect", "--format", "{{.Config.User}}", cloudflared_image], text=True
+).strip()
+if cloudflared_user != "65532:65532":
+    raise SystemExit("cloudflared 이미지 기본 사용자가 올바르지 않습니다")
 for arguments in (["version"], ["tunnel", "run", "--help"]):
     subprocess.run([
         "docker", "run", "--rm", "--read-only", "--network", "none",
-        f"baton-watch-cloudflared:{revision}", *arguments,
+        "--entrypoint", "cloudflared", cloudflared_image, "--no-autoupdate", *arguments,
     ], check=True, stdout=subprocess.DEVNULL)
-print("이미지 5개의 OCI 리비전·라이선스와 cloudflared 실행 확인 통과")
+print("이미지 4개의 OCI 리비전·라이선스와 고정한 cloudflared 실행 확인 통과")
