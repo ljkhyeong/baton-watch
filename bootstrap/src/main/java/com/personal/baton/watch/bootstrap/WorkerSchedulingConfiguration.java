@@ -2,6 +2,7 @@ package com.personal.baton.watch.bootstrap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.task.ThreadPoolTaskSchedulerBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +24,11 @@ final class WorkerSchedulingConfiguration {
         return failure -> log.error(
                 "예약 작업 실패 failureType={}",
                 failure.getClass().getSimpleName());
+    }
+
+    @Bean
+    WorkerShutdownSignal workerShutdownSignal(ObjectProvider<ThreadPoolTaskScheduler> schedulers) {
+        return new WorkerShutdownSignal(schedulers);
     }
 
     @Bean(name = MONITORING_TASK_SCHEDULER)

@@ -54,7 +54,6 @@ import tools.jackson.databind.ObjectMapper;
         properties = {
             "management.server.port=0",
             "spring.datasource.password=service-connection-overridden",
-            "spring.task.scheduling.shutdown.await-termination=false",
             "watch.api-token=runtime-load-monitor-token-0123456789abcdef",
             "watch.database.maximum-pool-size=2",
             "watch.database.minimum-idle=0",

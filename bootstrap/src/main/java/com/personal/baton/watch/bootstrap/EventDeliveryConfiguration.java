@@ -77,7 +77,8 @@ class EventDeliveryConfiguration {
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
             DatabaseRuntimeProperties database,
-            PersistenceProperties persistenceProperties) {
+            PersistenceProperties persistenceProperties,
+            WorkerShutdownSignal shutdownSignal) {
         WorkerExecutionBudget.requireSafe(
                 "event delivery",
                 watchProperties.workerExecutionBudget(),
@@ -93,7 +94,8 @@ class EventDeliveryConfiguration {
                 properties.leaseDuration(),
                 new EventDeliveryRetryPolicy(
                         properties.initialRetryDelay(), properties.maxRetryDelay()),
-                properties.batchSize());
+                properties.batchSize(),
+                shutdownSignal::requested);
     }
 
     @Bean

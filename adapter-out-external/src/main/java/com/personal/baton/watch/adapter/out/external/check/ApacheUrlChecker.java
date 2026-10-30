@@ -119,7 +119,7 @@ public final class ApacheUrlChecker implements UrlChecker, AutoCloseable {
 
     private CheckObservation finalResponse(int status, long startedAt, int redirectCount) {
         if (status < 200 || status > 599) {
-            return failure(CheckOutcome.NETWORK_FAILURE, startedAt, redirectCount);
+            return CheckObservation.forUnsupportedStatus(elapsed(startedAt), redirectCount);
         }
         return CheckObservation.forHttpStatus(
                 status, elapsed(startedAt), redirectCount);

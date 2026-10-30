@@ -67,7 +67,8 @@ public class MonitoringConfiguration {
             Clock clock,
             WatchProperties properties,
             DatabaseRuntimeProperties database,
-            PersistenceProperties persistenceProperties) {
+            PersistenceProperties persistenceProperties,
+            WorkerShutdownSignal shutdownSignal) {
         WorkerExecutionBudget.requireSafe(
                 "check",
                 properties.workerExecutionBudget(),
@@ -83,7 +84,8 @@ public class MonitoringConfiguration {
                 properties.leaseDuration(),
                 properties.checkInterval(),
                 properties.internalFailureRetryInterval(),
-                properties.checkBatchSize());
+                properties.checkBatchSize(),
+                shutdownSignal::requested);
     }
 
     @Bean

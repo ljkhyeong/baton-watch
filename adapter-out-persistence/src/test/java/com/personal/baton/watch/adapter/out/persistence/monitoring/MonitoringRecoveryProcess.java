@@ -58,7 +58,7 @@ public final class MonitoringRecoveryProcess {
                             blockAfterClaim(checkpoint);
                         }
                         return CheckObservation.forHttpStatus(200, Duration.ZERO, 0);
-                    }, clock, Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofSeconds(30), 1);
+                    }, clock, Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofSeconds(30), 1, () -> false);
             await().pollInterval(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(80))
                     .until(() -> worker.runDueChecks().applied() == 1);
             return;
@@ -88,7 +88,7 @@ public final class MonitoringRecoveryProcess {
                             throw new UncheckedIOException(exception);
                         }
                     }, clock, Duration.ofSeconds(60),
-                    new EventDeliveryRetryPolicy(Duration.ofSeconds(5), Duration.ofMinutes(15)), 1);
+                    new EventDeliveryRetryPolicy(Duration.ofSeconds(5), Duration.ofMinutes(15)), 1, () -> false);
             await().pollInterval(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(80))
                     .until(() -> worker.runEventDeliveries().delivered() == 1);
         }

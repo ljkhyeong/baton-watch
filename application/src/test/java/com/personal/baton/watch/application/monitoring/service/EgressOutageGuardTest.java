@@ -49,6 +49,15 @@ class EgressOutageGuardTest {
         assertTrue(guard.suspectsOutage(target("host-5.example"), DNS_FAILURE));
     }
 
+    @Test
+    void treatsAnUnsupportedStatusResponseAsWorkingEgress() {
+        failSilentHosts(4);
+
+        assertFalse(guard.suspectsOutage(
+                target("host-5.example"), CheckObservation.forUnsupportedStatus(Duration.ZERO, 0)));
+        assertFalse(guard.suspectsOutage(target("host-6.example"), DNS_FAILURE));
+    }
+
     private void failSilentHosts(int count) {
         for (int host = 1; host <= count; host++) {
             assertFalse(guard.suspectsOutage(target("host-" + host + ".example"), DNS_FAILURE));

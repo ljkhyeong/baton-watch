@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.external.check;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -203,12 +204,13 @@ class ApacheUrlCheckerTest {
 
     @Test
     void mapsUnsupportedFinalHttpStatusToNetworkFailureWithoutStatusMetadata() throws Exception {
-        transport.add(finalStatus(199));
+        transport.add(finalStatus(999));
 
         CheckObservation observation = checker().check(new TargetUrl("https://status.example/"));
 
         assertEquals(CheckOutcome.NETWORK_FAILURE, observation.outcome());
         assertNull(observation.httpStatusCode());
+        assertTrue(observation.responseReceived());
     }
 
     @ParameterizedTest

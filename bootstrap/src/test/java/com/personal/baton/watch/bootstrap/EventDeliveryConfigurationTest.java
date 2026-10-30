@@ -40,6 +40,7 @@ class EventDeliveryConfigurationTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
+            .withBean(WorkerShutdownSignal.class, BootstrapTestFixtures::shutdownSignal)
             .withUserConfiguration(Settings.class, EventDeliveryConfiguration.class,
                     EventDeliveryScheduler.class, EventDeliveryMaintenanceScheduler.class)
             .withPropertyValues(

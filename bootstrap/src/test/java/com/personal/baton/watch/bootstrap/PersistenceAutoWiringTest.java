@@ -50,6 +50,7 @@ class PersistenceAutoWiringTest {
                     "spring.jdbc.template.query-timeout=0s")
             .withBean(DataSource.class, () -> mock(DataSource.class))
             .withBean(Clock.class, Clock::systemUTC)
+            .withBean(WorkerShutdownSignal.class, BootstrapTestFixtures::shutdownSignal)
             .withBean(
                     MonitoringMetrics.class,
                     () -> new MonitoringMetrics(new SimpleMeterRegistry()));

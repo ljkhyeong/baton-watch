@@ -16,6 +16,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -57,31 +59,24 @@ class RunDueChecksServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void preservesInterruptionAndStopsClaimingMoreChecks(boolean interruptedBeforeStart) {
+    void finishesTheClaimedCheckAndStopsClaimingOnceShutdownIsRequested(boolean requestedBeforeStart) {
         RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(CLAIM);
+        AtomicBoolean stopRequested = new AtomicBoolean(requestedBeforeStart);
         RunDueChecksService service = service(
                 persistence,
                 target -> {
                     persistence.calls.add("check");
-                    Thread.currentThread().interrupt();
-                    return CheckObservation.internalFailure();
+                    stopRequested.set(true);
+                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0);
                 },
-                2);
+                2,
+                stopRequested::get);
 
-        try {
-            if (interruptedBeforeStart) {
-                Thread.currentThread().interrupt();
-            }
+        DueCheckBatchResult result = service.runDueChecks();
 
-            DueCheckBatchResult result = service.runDueChecks();
-
-            assertTrue(Thread.currentThread().isInterrupted());
-            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), persistence.calls);
-            int completed = interruptedBeforeStart ? 0 : 1;
-            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, 0), result);
-        } finally {
-            Thread.interrupted();
-        }
+        assertEquals(requestedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), persistence.calls);
+        int completed = requestedBeforeStart ? 0 : 1;
+        assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, 0), result);
     }
 
     @Test
@@ -123,6 +118,23 @@ class RunDueChecksServiceTest {
     }
 
     @Test
+    void countsSuspectedOutagesOnlyWhenTheResultWasApplied() {
+        ClaimedCheck[] claims = IntStream.rangeClosed(1, 5)
+                .mapToObj(host -> new ClaimedCheck(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        new TargetUrl("https://host-" + host + ".example/health"), NOW, false))
+                .toArray(ClaimedCheck[]::new);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(claims);
+        persistence.finalizationStatus = CheckFinalizationStatus.STALE_CLAIM;
+        RunDueChecksService service = service(
+                persistence,
+                target -> CheckObservation.failure(CheckOutcome.DNS_FAILURE, Duration.ofSeconds(5), 0),
+                5);
+
+        assertEquals(new DueCheckBatchResult(5, 0, 0, 5, 0), service.runDueChecks());
+    }
+
+    @Test
     void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
         Instant databaseClaimedAt = NOW.plusSeconds(5);
         RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(new ClaimedCheck(
@@ -159,7 +171,16 @@ class RunDueChecksServiceTest {
 
     private static RunDueChecksService service(
             RecordingCheckWorkPersistence persistence, UrlChecker checker, int batchSize) {
+        return service(persistence, checker, batchSize, () -> false);
+    }
+
+    private static RunDueChecksService service(
+            RecordingCheckWorkPersistence persistence,
+            UrlChecker checker,
+            int batchSize,
+            BooleanSupplier stopRequested) {
         return new RunDueChecksService(
-                persistence, checker, Clock.fixed(NOW, ZoneOffset.UTC), LEASE, INTERVAL, INTERNAL_RETRY, batchSize);
+                persistence, checker, Clock.fixed(NOW, ZoneOffset.UTC), LEASE, INTERVAL, INTERNAL_RETRY, batchSize,
+                stopRequested);
     }
 }

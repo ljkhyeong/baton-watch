@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 public final class RunEventDeliveriesService implements RunEventDeliveriesUseCase {
 
@@ -22,6 +23,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
     private final Duration leaseDuration;
     private final EventDeliveryRetryPolicy retryPolicy;
     private final int batchSize;
+    private final BooleanSupplier stopRequested;
 
     public RunEventDeliveriesService(
             HealthChangeEventDeliveryPersistencePort persistence,
@@ -29,13 +31,15 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
             Clock clock,
             Duration leaseDuration,
             EventDeliveryRetryPolicy retryPolicy,
-            int batchSize) {
+            int batchSize,
+            BooleanSupplier stopRequested) {
         this.persistence = persistence;
         this.sender = sender;
         this.clock = clock;
         this.leaseDuration = leaseDuration;
         this.retryPolicy = retryPolicy;
         this.batchSize = batchSize;
+        this.stopRequested = Objects.requireNonNull(stopRequested, "stopRequested");
     }
 
     @Override
@@ -45,7 +49,7 @@ public final class RunEventDeliveriesService implements RunEventDeliveriesUseCas
         int retryScheduled = 0;
         int alreadyDelivered = 0;
         int staleClaims = 0;
-        while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
+        while (claimed < batchSize && !stopRequested.getAsBoolean()) {
             Optional<ClaimedHealthChangeEvent> nextEvent =
                     persistence.claimPendingEvent(leaseDuration);
             if (nextEvent.isEmpty()) {

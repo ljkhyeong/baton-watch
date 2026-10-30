@@ -21,6 +21,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -59,28 +61,23 @@ class RunEventDeliveriesServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void preservesInterruptionAndStopsClaimingMoreEvents(boolean interruptedBeforeStart) {
+    void finishesTheClaimedEventAndStopsClaimingOnceShutdownIsRequested(boolean requestedBeforeStart) {
         RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(claimed(1));
-        RunEventDeliveriesService service = service(persistence, event -> {
-            persistence.calls.add("send");
-            Thread.currentThread().interrupt();
-            return EventDeliveryObservation.internalFailure();
-        });
+        AtomicBoolean stopRequested = new AtomicBoolean(requestedBeforeStart);
+        RunEventDeliveriesService service = service(
+                persistence,
+                event -> {
+                    persistence.calls.add("send");
+                    stopRequested.set(true);
+                    return EventDeliveryObservation.forHttpStatus(204, null);
+                },
+                stopRequested::get);
 
-        try {
-            if (interruptedBeforeStart) {
-                Thread.currentThread().interrupt();
-            }
+        EventDeliveryBatchResult result = service.runEventDeliveries();
 
-            EventDeliveryBatchResult result = service.runEventDeliveries();
-
-            assertTrue(Thread.currentThread().isInterrupted());
-            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "send", "finalize"), persistence.calls);
-            int completed = interruptedBeforeStart ? 0 : 1;
-            assertEquals(new EventDeliveryBatchResult(completed, 0, completed, 0, 0), result);
-        } finally {
-            Thread.interrupted();
-        }
+        assertEquals(requestedBeforeStart ? List.of() : List.of("claim", "send", "finalize"), persistence.calls);
+        int completed = requestedBeforeStart ? 0 : 1;
+        assertEquals(new EventDeliveryBatchResult(completed, completed, 0, 0, 0), result);
     }
 
     @Test
@@ -152,13 +149,21 @@ class RunEventDeliveriesServiceTest {
 
     private RunEventDeliveriesService service(
             RecordingEventDeliveryPersistence persistence, HealthChangeEventSender sender) {
+        return service(persistence, sender, () -> false);
+    }
+
+    private RunEventDeliveriesService service(
+            RecordingEventDeliveryPersistence persistence,
+            HealthChangeEventSender sender,
+            BooleanSupplier stopRequested) {
         return new RunEventDeliveriesService(
                 persistence,
                 sender,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 LEASE,
                 new EventDeliveryRetryPolicy(INITIAL_BACKOFF, MAX_BACKOFF),
-                5);
+                5,
+                stopRequested);
     }
 
     private ClaimedHealthChangeEvent claimed(int deliveryAttempt) {

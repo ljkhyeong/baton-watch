@@ -14,9 +14,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -35,6 +37,12 @@ final class BootstrapTestFixtures {
                 .withDatabaseName("baton_watch")
                 .withUsername("baton_watch")
                 .withPassword(password);
+    }
+
+    /** 스케줄러 없는 부분 조립 시험에서 쓰는 종료 신호다. */
+    static WorkerShutdownSignal shutdownSignal() {
+        return new WorkerShutdownSignal(
+                new StaticListableBeanFactory().getBeanProvider(ThreadPoolTaskScheduler.class));
     }
 
     static double count(MeterRegistry registry, String name, String... tags) {

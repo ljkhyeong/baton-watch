@@ -21,7 +21,7 @@ final class EgressOutageGuard {
     synchronized boolean suspectsOutage(TargetUrl targetUrl, CheckObservation observation) {
         CheckOutcome outcome = observation.outcome();
         // 리다이렉트 응답을 받은 뒤의 실패도 외부 연결이 동작했다는 근거다.
-        if (outcome.receivedResponse() || observation.redirectCount() > 0) {
+        if (observation.responseReceived() || observation.redirectCount() > 0) {
             silentHosts.clear();
             return false;
         }

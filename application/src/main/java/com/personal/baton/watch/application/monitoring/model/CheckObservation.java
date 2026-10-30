@@ -8,7 +8,8 @@ public record CheckObservation(
         CheckOutcome outcome,
         Integer httpStatusCode,
         Duration duration,
-        int redirectCount) {
+        int redirectCount,
+        boolean responseReceived) {
 
     public static final int MAX_REDIRECT_COUNT = 3;
 
@@ -24,6 +25,15 @@ public record CheckObservation(
         }
     }
 
+    public CheckObservation(CheckOutcome outcome, Integer httpStatusCode, Duration duration, int redirectCount) {
+        this(
+                outcome,
+                httpStatusCode,
+                duration,
+                redirectCount,
+                Objects.requireNonNull(outcome, "outcome").receivedResponse());
+    }
+
     public static CheckObservation forHttpStatus(
             int httpStatusCode, Duration duration, int redirectCount) {
         CheckOutcome outcome = httpOutcome(httpStatusCode);
@@ -31,6 +41,11 @@ public record CheckObservation(
             throw new IllegalArgumentException("unsupported final HTTP status");
         }
         return new CheckObservation(outcome, httpStatusCode, duration, redirectCount);
+    }
+
+    /** 응답은 받았지만 저장 계약의 상태 범위(200~599) 밖이면 코드 없이 네트워크 실패로 남긴다. */
+    public static CheckObservation forUnsupportedStatus(Duration duration, int redirectCount) {
+        return new CheckObservation(CheckOutcome.NETWORK_FAILURE, null, duration, redirectCount, true);
     }
 
     public static CheckObservation failure(
