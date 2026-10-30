@@ -70,20 +70,43 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
         return Duration.ofSeconds(delaySeconds);
     }
 
+    /**
+     * 완료 후보를 먼저 별도 트랜잭션으로 지운다. 버려진 시도 조회는 오래된 완료 행을 모두 훑으므로,
+     * 완료 후보가 한도를 채우면 건너뛰고 조회가 시간 초과되어도 완료 후보 정리는 유지한다.
+     */
     @Override
     public int purgeAttempts(Instant completedBefore, int limit) {
-        return transactions.execute(ignored -> jdbc.sql("""
-                        WITH completed_candidates AS MATERIALIZED (
-                            SELECT attempt.attempt_id, result.completed_at AS retention_at
+        int completed = transactions.execute(ignored -> purgeCompletedAttempts(completedBefore, limit));
+        if (completed >= limit) {
+            return completed;
+        }
+        return completed + transactions.execute(
+                ignored -> purgeAbandonedAttempts(completedBefore, limit - completed));
+    }
+
+    private int purgeCompletedAttempts(Instant completedBefore, int limit) {
+        return jdbc.sql("""
+                        WITH candidates AS MATERIALIZED (
+                            SELECT attempt.attempt_id
                             FROM watch_result result
                             JOIN watch_attempt attempt ON attempt.attempt_id = result.attempt_id
                             WHERE result.completed_at < ?
                             ORDER BY result.completed_at, result.attempt_id
                             LIMIT ?
                             FOR UPDATE OF attempt SKIP LOCKED
-                        ),
-                        abandoned_candidates AS MATERIALIZED (
-                            SELECT attempt.attempt_id, attempt.claimed_at AS retention_at
+                        )
+                        DELETE FROM watch_attempt attempt
+                        USING candidates
+                        WHERE attempt.attempt_id = candidates.attempt_id
+                        """)
+                .params(databaseTime(completedBefore), limit)
+                .update();
+    }
+
+    private int purgeAbandonedAttempts(Instant claimedBefore, int limit) {
+        return jdbc.sql("""
+                        WITH candidates AS MATERIALIZED (
+                            SELECT attempt.attempt_id
                             FROM watch_attempt attempt
                             WHERE attempt.claimed_at < ?
                               AND NOT EXISTS (
@@ -99,25 +122,13 @@ public final class JdbcCheckWorkPersistenceAdapter implements CheckWorkPersisten
                             ORDER BY attempt.claimed_at, attempt.attempt_id
                             LIMIT ?
                             FOR UPDATE OF attempt SKIP LOCKED
-                        ),
-                        candidates AS (
-                            SELECT attempt_id, retention_at FROM completed_candidates
-                            UNION ALL
-                            SELECT attempt_id, retention_at FROM abandoned_candidates
-                            ORDER BY retention_at, attempt_id
-                            LIMIT ?
                         )
                         DELETE FROM watch_attempt attempt
                         USING candidates
                         WHERE attempt.attempt_id = candidates.attempt_id
                         """)
-                .params(
-                        databaseTime(completedBefore),
-                        limit,
-                        databaseTime(completedBefore),
-                        limit,
-                        limit)
-                .update());
+                .params(databaseTime(claimedBefore), limit)
+                .update();
     }
 
     private Optional<ClaimedCheck> claimInTransaction(Duration leaseDuration) {

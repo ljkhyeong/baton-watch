@@ -31,6 +31,11 @@ GRANT SELECT, INSERT, DELETE
     ON TABLE watch_attempt
     TO ${runtimeRole};
 
+-- 보존 정리의 FOR UPDATE는 UPDATE 권한이 있는 열을 하나 요구한다. 삽입 뒤 읽지 않는 열만 연다.
+GRANT UPDATE (lease_expires_at)
+    ON TABLE watch_attempt
+    TO ${runtimeRole};
+
 GRANT SELECT, INSERT
     ON TABLE watch_result
     TO ${runtimeRole};

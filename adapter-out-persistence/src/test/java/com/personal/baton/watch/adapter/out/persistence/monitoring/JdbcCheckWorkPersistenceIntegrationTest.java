@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 
 class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
@@ -258,6 +259,35 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(jdbc.queryForList(
                 "SELECT attempt_id FROM watch_attempt ORDER BY claimed_at", UUID.class))
                 .containsExactly(attempts.get(2).attemptId(), attempts.get(3).attemptId());
+    }
+
+    @Test
+    void retentionKeepsThePurgedCompletedAttemptsWhenTheAbandonedScanFails() {
+        Instant cutoff = databaseClock().plus(Duration.ofDays(1));
+        ClaimedCheck completed = claimed("resource:completed");
+        finalizeAt(completed, cutoff.minusSeconds(1));
+        ClaimedCheck abandoned = claimed("resource:abandoned");
+        synchronizeInactive("resource:abandoned", 2, cutoff.minusSeconds(1));
+        jdbc.execute("""
+                CREATE FUNCTION fail_abandoned_purge() RETURNS trigger LANGUAGE plpgsql AS $watch$
+                BEGIN
+                    IF OLD.attempt_id = '%s' THEN
+                        RAISE EXCEPTION 'abandoned purge failed';
+                    END IF;
+                    RETURN OLD;
+                END
+                $watch$
+                """.formatted(abandoned.attemptId()));
+        jdbc.execute("""
+                CREATE TRIGGER fail_abandoned_purge BEFORE DELETE ON watch_attempt
+                FOR EACH ROW EXECUTE FUNCTION fail_abandoned_purge()
+                """);
+
+        assertThatThrownBy(() -> checkWorkPersistence.purgeAttempts(cutoff, 10))
+                .isInstanceOf(DataAccessException.class);
+
+        assertThat(jdbc.queryForList("SELECT attempt_id FROM watch_attempt", UUID.class))
+                .containsExactly(abandoned.attemptId());
     }
 
     @Test
