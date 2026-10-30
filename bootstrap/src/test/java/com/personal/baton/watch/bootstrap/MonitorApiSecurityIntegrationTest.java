@@ -20,6 +20,7 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -305,6 +306,53 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(chunked);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PUT", "PATCH", "DELETE", "POST"})
+    void formBodiesAreNotParsedBeforeAuthentication(String method) throws Exception {
+        for (String path : List.of("/api/v1/resource-monitors/resource-1", "/api/v1/system/status")) {
+            assertUnauthorized(send(HttpRequest.newBuilder(uri(path))
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+                    .method(method, HttpRequest.BodyPublishers.ofString("%zz")), null));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"multipart/form-data", "multipart/form-data; boundary=x"})
+    void multipartBodiesAreNotParsedBeforeTheMediaTypeDecision(String contentType) throws Exception {
+        String truncatedPart = "--x\r\nContent-Disposition: form-data; name=\"part\"\r\n\r\nvalue";
+
+        assertProblem(
+                put("/api/v1/resource-monitors/resource-1", API_TOKEN, contentType, truncatedPart),
+                415,
+                "urn:baton-watch:problem:unsupported-media-type",
+                "지원하지 않는 요청 본문 형식입니다",
+                "UNSUPPORTED_MEDIA_TYPE");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%ZZ", "%ff", "a&=b", "%C2%85"})
+    void malformedBatchQueryEncodingIsAnInvalidRequestAfterAuthentication(String reference) throws Exception {
+        String target = CONTEXT_PATH + "/api/v1/resource-monitors?resourceReference=" + reference;
+
+        assertThat(rawGet(target, "")).startsWith("HTTP/1.1 401 ");
+        assertThat(rawGet(target, "Authorization: Bearer " + API_TOKEN + "\r\n"))
+                .startsWith("HTTP/1.1 400 ")
+                .contains("\"code\":\"INVALID_REQUEST\"");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "resourceReference=resource-1,missing",
+        "resourceReference=%20resource-1",
+        "resourceReference=resource-1%0A",
+        "resourceReference=resource-1,&resourceReference=missing",
+        "resourceReference=",
+        "other=resource-1"
+    })
+    void batchLookupTakesEveryReferenceLiterally(String query) throws Exception {
+        assertInvalidRequest(get("/api/v1/resource-monitors?" + query, API_TOKEN));
+    }
+
     @Test
     void authenticatedContentLengthAndChunkedBodiesAboveTheLimitReturnStableProblems() throws Exception {
         String oversizedBody = "x".repeat(MAX_REQUEST_BODY_BYTES + 1);
@@ -373,6 +421,14 @@ class MonitorApiSecurityIntegrationTest {
                 .doesNotContain("resource-1")
                 .doesNotContain(CONTEXT_PATH)
                 .doesNotContain(path);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a%2Fraw-value", "a%5Craw-value"})
+    void encodedSeparatorsRejectedByTheContainerDoNotEchoThePath(String reference) throws Exception {
+        assertThat(rawGet(CONTEXT_PATH + "/api/v1/resource-monitors/" + reference, ""))
+                .startsWith("HTTP/1.1 400 ")
+                .doesNotContain("raw-value");
     }
 
     @Test
@@ -534,6 +590,18 @@ class MonitorApiSecurityIntegrationTest {
             request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
         }
         return httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    /** {@link URI}가 거부하는 요청 대상과 헤더 바이트를 그대로 보내고 응답 전체를 반환한다. */
+    private String rawGet(String target, String headers) throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", serverPort)) {
+            socket.setSoTimeout(5_000);
+            String request = "GET " + target + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+                    + headers + "\r\n";
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            return new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        }
     }
 
     private double previousTokenAuthentications() {

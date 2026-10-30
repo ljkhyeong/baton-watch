@@ -11,8 +11,16 @@ final class MonitorApiException extends ErrorResponseException {
     private final MonitorApiProblem problem;
 
     private MonitorApiException(HttpStatus status, String slug, String title, String code) {
+        this(status, MonitorApiProblem.of(slug, title, code));
+    }
+
+    private MonitorApiException(HttpStatus status, MonitorApiProblem problem) {
         super(status);
-        this.problem = MonitorApiProblem.of(slug, title, code);
+        this.problem = problem;
+    }
+
+    static MonitorApiException invalidRequest() {
+        return new MonitorApiException(HttpStatus.BAD_REQUEST, MonitorApiProblem.INVALID_REQUEST);
     }
 
     static MonitorApiException invalidTarget() {
