@@ -118,11 +118,11 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         synchronize(REFERENCE, 1, TARGET, BASE_TIME);
         var check = claimOne();
         finalizeAt(check, check.claimedAt(),
-                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 16, 0));
-        var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+                CheckObservation.forHttpStatus(503, Duration.ofMillis(125), 0));
+        var event = claimOneDelivery();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
-                EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
+                EventDeliveryObservation.forHttpStatus(503, null), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));
         insertOlderHistory();
         var before = databaseRows();
@@ -229,8 +229,8 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
         jdbc.update("""
                 INSERT INTO watch_attempt (
                     attempt_id, resource_reference, source_revision, target_url,
-                    lease_token, claimed_at, lease_expires_at)
-                SELECT gen_random_uuid(), ?, 1, ?, gen_random_uuid(),
+                    claimed_at, lease_expires_at)
+                SELECT gen_random_uuid(), ?, 1, ?,
                        TIMESTAMPTZ '2026-08-01 00:00:00Z' + n * INTERVAL '1 second',
                        TIMESTAMPTZ '2026-08-01 00:00:30Z' + n * INTERVAL '1 second'
                 FROM generate_series(1, 100) n
@@ -253,8 +253,7 @@ class MonitoringDiagnosticsIntegrationTest extends MonitoringPersistenceIntegrat
                 jdbc.queryForList("SELECT * FROM watch_monitor ORDER BY resource_reference"),
                 jdbc.queryForList("SELECT * FROM watch_attempt ORDER BY attempt_id"),
                 jdbc.queryForList("SELECT * FROM watch_result ORDER BY attempt_id"),
-                jdbc.queryForList("SELECT * FROM watch_health_change_event ORDER BY event_id"),
-                jdbc.queryForList("SELECT * FROM watch_health_change_event_backlog"));
+                jdbc.queryForList("SELECT * FROM watch_health_change_event ORDER BY event_id"));
     }
 
     private ToolResult runTool(String... arguments) throws Exception {

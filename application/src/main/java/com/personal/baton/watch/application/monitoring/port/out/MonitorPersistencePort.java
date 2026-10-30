@@ -8,13 +8,10 @@ import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import java.time.Instant;
 import java.time.Duration;
 import java.util.List;
-import java.util.Optional;
 
 public interface MonitorPersistencePort {
 
     SynchronizationResult synchronize(SynchronizeMonitorCommand command, Instant synchronizedAt);
-
-    Optional<MonitorProjection> findProjection(ResourceReference resourceReference);
 
     List<MonitorProjection> findProjections(List<ResourceReference> resourceReferences);
 

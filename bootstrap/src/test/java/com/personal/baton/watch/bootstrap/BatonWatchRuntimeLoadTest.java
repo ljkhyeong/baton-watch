@@ -54,7 +54,6 @@ import tools.jackson.databind.ObjectMapper;
         properties = {
             "management.server.port=0",
             "spring.datasource.password=service-connection-overridden",
-            "spring.task.scheduling.shutdown.await-termination=false",
             "watch.api-token=runtime-load-monitor-token-0123456789abcdef",
             "watch.database.maximum-pool-size=2",
             "watch.database.minimum-idle=0",
@@ -78,7 +77,6 @@ import tools.jackson.databind.ObjectMapper;
             "watch.event-delivery.endpoint=https://callback.invalid/api/v1/internal/resource-health-events",
             "watch.event-delivery.bearer-token=runtime-load-delivery-token-0123456789abcdef",
             "watch.event-delivery.poll-interval=1s",
-            "watch.event-delivery.maintenance-interval=1m",
             "watch.event-delivery.lease-duration=10s",
             "watch.event-delivery.initial-retry-delay=5s",
             "watch.event-delivery.max-retry-delay=5s",
@@ -147,7 +145,7 @@ class BatonWatchRuntimeLoadTest {
                             return CheckObservation.internalFailure();
                         }
                         Thread.sleep(CHECK_DELAY);
-                        return CheckObservation.forHttpStatus(200, CHECK_DELAY, 0, 0);
+                        return CheckObservation.forHttpStatus(200, CHECK_DELAY, 0);
                     } catch (InterruptedException exception) {
                         Thread.currentThread().interrupt();
                         return CheckObservation.internalFailure();
@@ -156,7 +154,7 @@ class BatonWatchRuntimeLoadTest {
                 .when(urlChecker)
                 .check(any());
         doAnswer(ignored -> EventDeliveryObservation.forHttpStatus(
-                        deliveryAvailable.get() ? 204 : 503))
+                        deliveryAvailable.get() ? 204 : 503, null))
                 .when(eventSender)
                 .send(any());
     }

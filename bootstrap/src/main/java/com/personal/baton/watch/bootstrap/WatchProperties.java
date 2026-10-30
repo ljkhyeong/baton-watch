@@ -1,47 +1,46 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.regex.Pattern;
 import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 @Validated
 @ConfigurationProperties("watch")
 public record WatchProperties(
         String apiToken,
-        @DefaultValue("true") boolean checkEnabled,
+        String apiPreviousToken,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
         @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false) @DurationMax(seconds = 60) Duration workerExecutionBudget,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration leaseDuration,
         @NotNull @DurationMin(seconds = 60)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration checkInterval,
         @NotNull @DurationMin(seconds = 30)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration internalFailureRetryInterval,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration staleAfter,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = MAX_TIME_OFFSET_DAYS)
         Duration retention,
         @Min(1) @Max(MAX_CHECK_BATCH_SIZE) int checkBatchSize,
         @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
 
+    /** 시각에 더하거나 빼는 양의 기간 설정 상한이다. */
+    static final long MAX_TIME_OFFSET_DAYS = 365;
     static final int MAX_CHECK_BATCH_SIZE = 100;
     static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
     static final int MAX_API_TOKEN_LENGTH = 200;
@@ -49,7 +48,17 @@ public record WatchProperties(
             Pattern.compile("[A-Za-z0-9\\-._~+/]{32,}=*");
 
     public WatchProperties {
-        requireToken(apiToken);
+        requireToken("apiToken", apiToken);
+        // 교체 기간에만 이전 토큰을 함께 허용한다. 빈 값은 설정하지 않은 것으로 본다.
+        if (apiPreviousToken != null && apiPreviousToken.isEmpty()) {
+            apiPreviousToken = null;
+        }
+        if (apiPreviousToken != null) {
+            requireToken("apiPreviousToken", apiPreviousToken);
+            if (apiPreviousToken.equals(apiToken)) {
+                throw new IllegalArgumentException("apiPreviousToken must differ from apiToken");
+            }
+        }
         if (staleAfter != null
                 && staleAfter.isPositive()
                 && checkInterval != null
@@ -57,21 +66,12 @@ public record WatchProperties(
                 && staleAfter.compareTo(checkInterval) <= 0) {
             throw new IllegalArgumentException("staleAfter must exceed checkInterval");
         }
-        if (retention != null
-                && retention.isPositive()
-                && staleAfter != null
-                && staleAfter.isPositive()
-                && retention.compareTo(staleAfter) <= 0) {
-            throw new IllegalArgumentException("retention must exceed staleAfter");
-        }
     }
 
     public record Http(
             @NotNull @DurationMin(inclusive = false) Duration connectTimeout,
             @NotNull @DurationMin(inclusive = false) Duration responseTimeout,
             @NotNull @DurationMin(inclusive = false) Duration totalTimeout,
-            @Min(1) @Max(OutboundResourceBounds.MAX_CHECK_RESPONSE_BYTES) long maxResponseBytes,
-            @Min(0) @Max(3) int maxRedirects,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_COUNT) int maxHeaderCount,
             @Min(1) @Max(OutboundResourceBounds.MAX_HEADER_LINE_LENGTH) int maxHeaderLineLength,
             @Min(1) @Max(OutboundResourceBounds.MAX_DNS_THREADS) int dnsThreads,
@@ -80,12 +80,13 @@ public record WatchProperties(
             @Min(1) @Max(OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY) int requestQueueCapacity) {
     }
 
-    private static void requireToken(String token) {
+    private static void requireToken(String name, String token) {
         // Bean Validation 실패 분석에는 거부된 값이 포함되므로 자격 증명은 명시적 코드로 검증한다.
-        Objects.requireNonNull(token, "apiToken");
-        if (token.length() > MAX_API_TOKEN_LENGTH || !BEARER_TOKEN.matcher(token).matches()) {
-            throw new IllegalArgumentException(
-                    "apiToken must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
+        if (token == null
+                || token.length() > MAX_API_TOKEN_LENGTH
+                || !BEARER_TOKEN.matcher(token).matches()) {
+            throw new IllegalArgumentException(name
+                    + " must contain at least 32 non-padding RFC 6750 token68 characters and at most 200 total characters");
         }
     }
 

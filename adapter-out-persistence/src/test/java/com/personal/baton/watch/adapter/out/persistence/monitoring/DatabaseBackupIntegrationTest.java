@@ -27,10 +27,10 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
         synchronize("backup-fixture", 1, "https://backup.example/private-query?token=fixture", BASE_TIME);
         var check = claimOne();
         finalizeAt(check, check.claimedAt());
-        var event = deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+        var event = claimOneDelivery();
         deliveryPersistence.finalizeDelivery(new EventDeliveryFinalization(
                 event.payload().eventId(), event.leaseToken(),
-                EventDeliveryObservation.forHttpStatus(503), event.claimedAt(),
+                EventDeliveryObservation.forHttpStatus(503, null), event.claimedAt(),
                 event.claimedAt().plusSeconds(5)));
 
         Path archive = temporary.resolve("database.dump");
@@ -50,11 +50,18 @@ class DatabaseBackupIntegrationTest extends MonitoringPersistenceIntegrationTest
     }
 
     @Test
-    void rejectsRestoredBacklogThatDoesNotMatchEvents() throws Exception {
-        jdbc.update("""
-                UPDATE watch_health_change_event_backlog
-                SET pending_count = 1, oldest_changed_at = transaction_timestamp()
-                """);
+    void rejectsABackupWithoutMonitors() throws Exception {
+        Path archive = temporary.resolve("empty.dump");
+        assertThat(runTool("create", POSTGRES.getContainerId(), archive.toString()).status()).isZero();
+        var empty = runTool("verify", archive.toString());
+        assertThat(empty.status()).isNotZero();
+        assertThat(empty.output()).contains("복원 데이터 확인 실패");
+    }
+
+    @Test
+    void rejectsRestoredDatabaseWithAFailedMigration() throws Exception {
+        synchronize("backup-fixture", 1, "https://backup.example/", BASE_TIME);
+        jdbc.update("UPDATE flyway_schema_history SET success = FALSE");
         Path archive = temporary.resolve("inconsistent.dump");
         assertThat(runTool("create", POSTGRES.getContainerId(), archive.toString()).status()).isZero();
         var inconsistent = runTool("verify", archive.toString());

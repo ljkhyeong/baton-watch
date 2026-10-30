@@ -3,25 +3,24 @@ package com.personal.baton.watch.bootstrap;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.personal.baton.watch.adapter.in.web.monitoring.MonitorApiExceptionHandler;
+import com.personal.baton.watch.adapter.in.web.monitoring.MonitorApiRequestBodyLimit;
 import com.personal.baton.watch.adapter.in.web.monitoring.ResourceMonitorController;
-import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.system.SystemStatusController;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationStatus;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
-import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.HealthDerivation;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
 import com.personal.baton.watch.domain.monitoring.MonitoringState;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
-import com.personal.baton.watch.domain.system.SystemStatus;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.ByteArrayInputStream;
+import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -52,7 +51,6 @@ import org.springframework.boot.web.server.servlet.context.ServletWebServerAppli
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -80,8 +78,11 @@ import tools.jackson.databind.ObjectMapper;
 class MonitorApiSecurityIntegrationTest {
 
     private static final String API_TOKEN = "monitor-api-token-0123456789-abcdef";
+    private static final String PREVIOUS_API_TOKEN = "previous-monitor-api-token-0123456789";
     private static final String CONTEXT_PATH = "/watch";
     private static final Instant NOW = Instant.parse("2026-08-02T00:00:00Z");
+    // PRD-0002의 인증된 모니터 PUT 본문 한도
+    private static final int MAX_REQUEST_BODY_BYTES = 16 * 1024;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -92,13 +93,16 @@ class MonitorApiSecurityIntegrationTest {
 
     private final ObjectMapper objectMapper;
     private final ServletWebServerApplicationContext applicationContext;
+    private final MeterRegistry meterRegistry;
 
     @Autowired
     MonitorApiSecurityIntegrationTest(
             ObjectMapper objectMapper,
-            ServletWebServerApplicationContext applicationContext) {
+            ServletWebServerApplicationContext applicationContext,
+            MeterRegistry meterRegistry) {
         this.objectMapper = objectMapper;
         this.applicationContext = applicationContext;
+        this.meterRegistry = meterRegistry;
     }
 
     @Test
@@ -127,6 +131,19 @@ class MonitorApiSecurityIntegrationTest {
         assertThat(valid.statusCode()).isEqualTo(200);
         assertThat(valid.headers().firstValue(HttpHeaders.SET_COOKIE)).isEmpty();
         assertThat(objectMapper.readTree(valid.body()).path("checkStatus").asString()).isEqualTo("INACTIVE");
+    }
+
+    @Test
+    void acceptsThePreviousTokenDuringRotationAndCountsItsUse() throws Exception {
+        String path = "/api/v1/resource-monitors/resource-1";
+        double before = previousTokenAuthentications();
+
+        assertThat(get(path, API_TOKEN).statusCode()).isEqualTo(200);
+        assertThat(previousTokenAuthentications()).isEqualTo(before);
+        assertThat(get(path, PREVIOUS_API_TOKEN).statusCode()).isEqualTo(200);
+        assertThat(previousTokenAuthentications()).isEqualTo(before + 1);
+        assertUnauthorized(get(path, PREVIOUS_API_TOKEN + "-wrong"));
+        assertThat(previousTokenAuthentications()).isEqualTo(before + 1);
     }
 
     @Test
@@ -271,7 +288,7 @@ class MonitorApiSecurityIntegrationTest {
 
     @Test
     void authenticationPrecedesContentLengthAndChunkedBodyLimits() throws Exception {
-        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        String oversizedBody = "x".repeat(MAX_REQUEST_BODY_BYTES + 1);
         HttpRequest.BodyPublisher chunkedBody = chunked(oversizedBody);
 
         HttpResponse<String> contentLength = put(
@@ -289,9 +306,56 @@ class MonitorApiSecurityIntegrationTest {
         assertUnauthorized(chunked);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"PUT", "PATCH", "DELETE", "POST"})
+    void formBodiesAreNotParsedBeforeAuthentication(String method) throws Exception {
+        for (String path : List.of("/api/v1/resource-monitors/resource-1", "/api/v1/system/status")) {
+            assertUnauthorized(send(HttpRequest.newBuilder(uri(path))
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED_VALUE)
+                    .method(method, HttpRequest.BodyPublishers.ofString("%zz")), null));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"multipart/form-data", "multipart/form-data; boundary=x"})
+    void multipartBodiesAreNotParsedBeforeTheMediaTypeDecision(String contentType) throws Exception {
+        String truncatedPart = "--x\r\nContent-Disposition: form-data; name=\"part\"\r\n\r\nvalue";
+
+        assertProblem(
+                put("/api/v1/resource-monitors/resource-1", API_TOKEN, contentType, truncatedPart),
+                415,
+                "urn:baton-watch:problem:unsupported-media-type",
+                "지원하지 않는 요청 본문 형식입니다",
+                "UNSUPPORTED_MEDIA_TYPE");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"%ZZ", "%ff", "a&=b", "%C2%85"})
+    void malformedBatchQueryEncodingIsAnInvalidRequestAfterAuthentication(String reference) throws Exception {
+        String target = CONTEXT_PATH + "/api/v1/resource-monitors?resourceReference=" + reference;
+
+        assertThat(rawGet(target, "")).startsWith("HTTP/1.1 401 ");
+        assertThat(rawGet(target, "Authorization: Bearer " + API_TOKEN + "\r\n"))
+                .startsWith("HTTP/1.1 400 ")
+                .contains("\"code\":\"INVALID_REQUEST\"");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "resourceReference=resource-1,missing",
+        "resourceReference=%20resource-1",
+        "resourceReference=resource-1%0A",
+        "resourceReference=resource-1,&resourceReference=missing",
+        "resourceReference=",
+        "other=resource-1"
+    })
+    void batchLookupTakesEveryReferenceLiterally(String query) throws Exception {
+        assertInvalidRequest(get("/api/v1/resource-monitors?" + query, API_TOKEN));
+    }
+
     @Test
     void authenticatedContentLengthAndChunkedBodiesAboveTheLimitReturnStableProblems() throws Exception {
-        String oversizedBody = "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1);
+        String oversizedBody = "x".repeat(MAX_REQUEST_BODY_BYTES + 1);
         String path = "/api/v1/resource-monitors/resource-1";
 
         HttpResponse<String> contentLength = put(path, API_TOKEN, MediaType.APPLICATION_JSON_VALUE, oversizedBody);
@@ -307,7 +371,7 @@ class MonitorApiSecurityIntegrationTest {
     void acceptsAJsonBodyAtTheExactByteLimit() throws Exception {
         String json = "{\"sourceRevision\":42,\"monitoringState\":\"INACTIVE\"}";
         String body = json + " ".repeat(
-                MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES
+                MAX_REQUEST_BODY_BYTES
                         - json.getBytes(StandardCharsets.UTF_8).length);
 
         HttpResponse<String> response = put(
@@ -359,6 +423,14 @@ class MonitorApiSecurityIntegrationTest {
                 .doesNotContain(path);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"a%2Fraw-value", "a%5Craw-value"})
+    void encodedSeparatorsRejectedByTheContainerDoNotEchoThePath(String reference) throws Exception {
+        assertThat(rawGet(CONTEXT_PATH + "/api/v1/resource-monitors/" + reference, ""))
+                .startsWith("HTTP/1.1 400 ")
+                .doesNotContain("raw-value");
+    }
+
     @Test
     void authenticatedFrameworkErrorsUseStableProblems() throws Exception {
         HttpResponse<String> unauthenticatedMediaType = put(
@@ -370,7 +442,12 @@ class MonitorApiSecurityIntegrationTest {
                 "/api/v1/resource-monitors/resource-1",
                 null,
                 MediaType.APPLICATION_XML_VALUE);
+        HttpResponse<String> unauthenticatedHtmlAccept = get(
+                "/api/v1/resource-monitors/resource-1",
+                null,
+                MediaType.TEXT_HTML_VALUE);
         HttpResponse<String> methodNotAllowed = post("/api/v1/system/status", API_TOKEN);
+        HttpResponse<String> resourceMethodNotAllowed = post("/api/v1/resource-monitors/resource-1", API_TOKEN);
         HttpResponse<String> unsupportedMediaType = put(
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
@@ -380,7 +457,7 @@ class MonitorApiSecurityIntegrationTest {
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
                 "application/vnd.baton-watch+json",
-                "x".repeat(MonitorApiRequestBodyLimitFilter.MAX_REQUEST_BODY_BYTES + 1));
+                "x".repeat(MAX_REQUEST_BODY_BYTES + 1));
         HttpResponse<String> notAcceptable = get(
                 "/api/v1/resource-monitors/resource-1",
                 API_TOKEN,
@@ -388,13 +465,17 @@ class MonitorApiSecurityIntegrationTest {
 
         assertUnauthorized(unauthenticatedMediaType);
         assertUnauthorized(unauthenticatedAccept);
-        assertProblem(
-                methodNotAllowed,
-                405,
-                "urn:baton-watch:problem:method-not-allowed",
-                "지원하지 않는 HTTP 메서드입니다",
-                "METHOD_NOT_ALLOWED");
-        assertHeaderContains(methodNotAllowed, HttpHeaders.ALLOW, "GET");
+        assertUnauthorized(unauthenticatedHtmlAccept);
+        for (HttpResponse<String> response : List.of(methodNotAllowed, resourceMethodNotAllowed)) {
+            assertProblem(
+                    response,
+                    405,
+                    "urn:baton-watch:problem:method-not-allowed",
+                    "지원하지 않는 HTTP 메서드입니다",
+                    "METHOD_NOT_ALLOWED");
+            assertHeaderContains(response, HttpHeaders.ALLOW, "GET");
+        }
+        assertHeaderContains(resourceMethodNotAllowed, HttpHeaders.ALLOW, "PUT");
         assertProblem(
                 unsupportedMediaType,
                 415,
@@ -511,6 +592,22 @@ class MonitorApiSecurityIntegrationTest {
         return httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    /** {@link URI}가 거부하는 요청 대상과 헤더 바이트를 그대로 보내고 응답 전체를 반환한다. */
+    private String rawGet(String target, String headers) throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", serverPort)) {
+            socket.setSoTimeout(5_000);
+            String request = "GET " + target + " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n"
+                    + headers + "\r\n";
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.ISO_8859_1));
+            socket.getOutputStream().flush();
+            return new String(socket.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private double previousTokenAuthentications() {
+        return meterRegistry.get("baton.watch.api.previous.token.authentications").counter().count();
+    }
+
     private URI uri(String path) {
         return URI.create("http://127.0.0.1:" + serverPort + CONTEXT_PATH + path);
     }
@@ -584,7 +681,9 @@ class MonitorApiSecurityIntegrationTest {
             excludeName = "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration")
     @Import({
         MonitorApiSecurityConfiguration.class,
+        MonitoringMetrics.class,
         MonitorApiExceptionHandler.class,
+        MonitorApiRequestBodyLimit.class,
         ResourceMonitorController.class,
         SystemStatusController.class,
         TestWebConfiguration.class
@@ -602,7 +701,7 @@ class MonitorApiSecurityIntegrationTest {
 
         @Bean
         WatchProperties watchProperties() {
-            return BootstrapTestFixtures.watchProperties(API_TOKEN);
+            return BootstrapTestFixtures.watchProperties(API_TOKEN, PREVIOUS_API_TOKEN);
         }
 
         @Bean
@@ -627,28 +726,13 @@ class MonitorApiSecurityIntegrationTest {
         }
 
         @Bean
-        GetMonitorProjectionUseCase getMonitorProjectionUseCase() {
-            return reference -> {
-                if (reference.value().equals("storage-unavailable")) {
-                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
-                }
-                return Optional.of(projection());
-            };
-        }
-
-        @Bean
         GetMonitorProjectionsUseCase getMonitorProjectionsUseCase() {
             return references -> {
                 if (references.contains(new ResourceReference("storage-unavailable"))) {
-                    throw new DataAccessResourceFailureException("raw-storage-secret");
+                    throw new CannotGetJdbcConnectionException("raw-storage-secret", new SQLException("raw-sql-secret"));
                 }
                 return references.contains(projection().resourceReference()) ? List.of(projection()) : List.of();
             };
-        }
-
-        @Bean
-        GetSystemStatusUseCase getSystemStatusUseCase() {
-            return () -> new SystemStatus("baton-watch", SystemStatus.State.UP, NOW);
         }
     }
 }

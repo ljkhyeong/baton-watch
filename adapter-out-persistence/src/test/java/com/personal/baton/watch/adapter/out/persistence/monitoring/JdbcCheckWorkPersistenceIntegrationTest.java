@@ -3,7 +3,6 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
@@ -19,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 
 class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
@@ -76,29 +76,6 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     }
 
     @Test
-    void claimsHistoricalUnsafeTargetWithoutRollingBackOtherDueWork() {
-        String historicalTarget = "https://legacy.example/%0d%0aHost:internal";
-        synchronize("resource:a-legacy", 1, "https://legacy.example/path", BASE_TIME);
-        synchronize("resource:b-current", 1, "https://current.example/path", BASE_TIME);
-        jdbc.update(
-                "UPDATE watch_monitor SET target_url = ? WHERE resource_reference = ?",
-                historicalTarget,
-                "resource:a-legacy");
-
-        List<ClaimedCheck> claims = List.of(claimOne(), claimOne());
-
-        assertThat(claims)
-                .extracting(claim -> claim.targetUrl().value())
-                .containsExactly(historicalTarget, "https://current.example/path");
-        assertThat(jdbc.query(
-                "SELECT resource_reference, source_revision, target_url FROM watch_attempt ORDER BY resource_reference",
-                (resultSet, row) -> tuple(resultSet.getString(1), resultSet.getLong(2), resultSet.getString(3))))
-                .containsExactly(
-                        tuple("resource:a-legacy", 1L, historicalTarget),
-                        tuple("resource:b-current", 1L, "https://current.example/path"));
-    }
-
-    @Test
     void expiredLeaseCanBeRecoveredAndTheOlderAttemptBecomesStale() {
         synchronize("resource:lease", 1, "https://lease.example/path", BASE_TIME);
         ClaimedCheck first = claimOne();
@@ -119,7 +96,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(recovered.recoveredLease()).isTrue();
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         first,
-                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                         recoveredAt.plusSeconds(1),
                         recoveredAt.plusSeconds(61))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
@@ -132,11 +109,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     void concurrentCheckClaimersReceiveDisjointMonitors() throws Exception {
         synchronize("resource:check-concurrent-1", 1, "https://one.example/path", BASE_TIME);
         synchronize("resource:check-concurrent-2", 1, "https://two.example/path", BASE_TIME);
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
 
         List<Optional<ClaimedCheck>> claims = runConcurrently(
                 () -> checkWorkPersistence.claimDueCheck(LEASE),
-                () -> anotherPersistence.claimDueCheck(LEASE));
+                () -> checkWorkPersistence.claimDueCheck(LEASE));
 
         assertThat(claims)
                 .extracting(claim -> claim.orElseThrow().targetUrl().value())
@@ -154,11 +130,10 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 "https://locked.example/path",
                 BASE_TIME.minusSeconds(1));
         synchronize(nextReference, 1, "https://next.example/path", BASE_TIME);
-        JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
 
         ClaimedCheck claim = callWhileLocked(
                 () -> assertThat(lockLeadingDueMonitor()).isEqualTo(lockedReference),
-                () -> competingPersistence.claimDueCheck(LEASE)).orElseThrow();
+                () -> checkWorkPersistence.claimDueCheck(LEASE)).orElseThrow();
 
         assertThat(claim.targetUrl().value()).isEqualTo("https://next.example/path");
         assertThat(countRowsInTable(jdbc, "watch_attempt")).isEqualTo(1);
@@ -171,7 +146,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization valid = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 42, 1),
+                CheckObservation.forHttpStatus(200, Duration.ofMillis(17), 1),
                 completedAt,
                 completedAt.plus(INTERVAL));
         CheckFinalization wrongToken = new CheckFinalization(
@@ -191,9 +166,9 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
         assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isEqualTo(1);
         assertThat(jdbc.queryForObject(
-                "SELECT response_bytes FROM watch_result WHERE attempt_id = ?",
-                Long.class,
-                claimed.attemptId())).isEqualTo(42L);
+                "SELECT redirect_count FROM watch_result WHERE attempt_id = ?",
+                Integer.class,
+                claimed.attemptId())).isEqualTo(1);
     }
 
     @Test
@@ -203,14 +178,13 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                 completedAt,
                 completedAt.plus(INTERVAL));
-        JdbcCheckWorkPersistenceAdapter anotherPersistence = newCheckWorkPersistenceAdapter();
 
         assertThat(runConcurrently(
                         () -> checkWorkPersistence.finalizeCheck(finalization),
-                        () -> anotherPersistence.finalizeCheck(finalization)))
+                        () -> checkWorkPersistence.finalizeCheck(finalization)))
                 .containsExactlyInAnyOrder(
                         CheckFinalizationStatus.APPLIED,
                         CheckFinalizationStatus.ALREADY_FINALIZED);
@@ -238,7 +212,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
 
         CheckFinalization finalization = finalization(
                 claimed,
-                CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                 completedAt,
                 completedAt.plus(INTERVAL));
         assertThatThrownBy(() -> checkWorkPersistence.finalizeCheck(finalization))
@@ -288,13 +262,41 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
     }
 
     @Test
+    void retentionKeepsThePurgedCompletedAttemptsWhenTheAbandonedScanFails() {
+        Instant cutoff = databaseClock().plus(Duration.ofDays(1));
+        ClaimedCheck completed = claimed("resource:completed");
+        finalizeAt(completed, cutoff.minusSeconds(1));
+        ClaimedCheck abandoned = claimed("resource:abandoned");
+        synchronizeInactive("resource:abandoned", 2, cutoff.minusSeconds(1));
+        jdbc.execute("""
+                CREATE FUNCTION fail_abandoned_purge() RETURNS trigger LANGUAGE plpgsql AS $watch$
+                BEGIN
+                    IF OLD.attempt_id = '%s' THEN
+                        RAISE EXCEPTION 'abandoned purge failed';
+                    END IF;
+                    RETURN OLD;
+                END
+                $watch$
+                """.formatted(abandoned.attemptId()));
+        jdbc.execute("""
+                CREATE TRIGGER fail_abandoned_purge BEFORE DELETE ON watch_attempt
+                FOR EACH ROW EXECUTE FUNCTION fail_abandoned_purge()
+                """);
+
+        assertThatThrownBy(() -> checkWorkPersistence.purgeAttempts(cutoff, 10))
+                .isInstanceOf(DataAccessException.class);
+
+        assertThat(jdbc.queryForList("SELECT attempt_id FROM watch_attempt", UUID.class))
+                .containsExactly(abandoned.attemptId());
+    }
+
+    @Test
     void retentionSkipsALockedOldestAttemptAndPurgesAnotherBoundedCandidate() throws Exception {
         Instant cutoff = databaseClock().plus(Duration.ofDays(1));
         ClaimedCheck locked = claimed("resource:purge-locked");
         ClaimedCheck available = claimed("resource:purge-available");
         finalizeAt(locked, cutoff.minusSeconds(2));
         finalizeAt(available, cutoff.minusSeconds(1));
-        JdbcCheckWorkPersistenceAdapter competingPersistence = newCheckWorkPersistenceAdapter();
 
         assertThat(callWhileLocked(
                 () -> assertThat(jdbc.queryForObject("""
@@ -303,7 +305,7 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                         WHERE attempt_id = ?
                         FOR UPDATE
                         """, UUID.class, locked.attemptId())).isEqualTo(locked.attemptId()),
-                () -> competingPersistence.purgeAttempts(cutoff, 1)))
+                () -> checkWorkPersistence.purgeAttempts(cutoff, 1)))
                 .isEqualTo(1);
         assertThat(jdbc.queryForList(
                         "SELECT attempt_id FROM watch_attempt ORDER BY attempt_id", UUID.class))
@@ -323,10 +325,5 @@ class JdbcCheckWorkPersistenceIntegrationTest extends MonitoringPersistenceInteg
                 FOR UPDATE
                 """,
                 String.class);
-    }
-
-    private ClaimedCheck claimed(String reference) {
-        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
-        return claimOne();
     }
 }

@@ -25,7 +25,7 @@ DB 연결 풀, 진행 중인 외부 요청 수를 보여준다. 임계치는 운
 
 프록시·공개 HTTPS 요청과 공개 TLS 인증서 만료는 [인바운드 점검 절차](ingress-monitoring.md)의
 Blackbox Exporter 수집 템플릿과 선택적 경보 4개로 별도 확인한다. 아래 WATCH 내부
-지표 11개 규칙만으로는 프록시 경로 장애를 감지할 수 없다.
+지표 12개 규칙만으로는 프록시 경로 장애를 감지할 수 없다.
 
 `ops/prometheus/watch-alerts.yml`은 기존 메트릭을 사용하는 경보 예시다.
 외부 알림은 [Telegram·Slack 연결 설정](external-api-options.md)을 선택적으로 사용한다.
@@ -45,13 +45,15 @@ Blackbox Exporter 수집 템플릿과 선택적 경보 4개로 별도 확인한�
 | `WatchFinalizationFailures` | 점검·전달 완료 실패가 최근 5분에 합계 3회 이상 | 2분 | DB 잠금·연결 제한, 확정 트랜잭션 |
 | `WatchLeaseRecoveryBurst` | 만료 리스 회수가 최근 5분에 합계 3회 이상 | 2분 | 작업자 중단과 DB 지연 |
 | `WatchCheckScheduleDelayed` | 점검 활성 인스턴스에서 가장 오래된 선점 가능 점검의 일정 지연이 120초 초과 | 5분 | 대상 지연과 처리할 모니터 수 |
+| `WatchCheckEgressFailure` | 최근 5분 점검에 HTTP 응답을 받은 결과가 없고 응답 없는 실패가 3회 이상 | 2분 | WATCH 호스트의 DNS·방화벽·NAT·시계와 대상 전체의 실제 중단 여부 |
 | `WatchDatabaseClockOffset` | JVM과 DB 시계 편차 절댓값이 1초 초과 | 5분 | 호스트 시간 동기화와 DB 왕복 지연 |
 | `WatchEventDeliveryDelayed` | 전달 활성 환경의 미전달 이벤트가 있고 가장 오래된 이벤트가 900초 초과 | 5분 | 콜백 상태·인증과 재시도 백로그 |
 
 개별 대상의 일시적 HTTP 오류에는 경보를 걸지 않는다. 미실행 경보는
 `process_uptime_seconds > 600`일 때만 평가하여 시작·재시작 직후를 제외한다.
 오류 카운터가 아직 없는 상태와 카운터 초기화 자체를 장애로 취급하지 않는다.
-점검·전달의 완료 실패(`status="failure"`)와 리스 회수 카운터 4개는 시작 시 0으로 등록한다.
+점검·전달의 완료 실패(`status="failure"`)와 리스 회수 카운터 4개, 응답 없는 점검 실패 6종의 시도 카운터는
+시작 시 0으로 등록한다.
 실패 뒤 처음 나타나는 카운터의 증가량 누락을 줄이기 위한 것으로,
 [Prometheus의 기본값 권장사항](https://prometheus.io/docs/practices/instrumentation/#avoid-missing-metrics)을 따른다.
 첫 실패 전에 0이 한 번 이상 수집되어야 효과가 있으며, 최초 수집 전에 발생한 사건을 소급 계산하지는 않는다.
@@ -90,6 +92,33 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 기존 수집 경보가 담당한다. 기본 설정에서 마지막 실행 횟수 증가 후 약 5분간 새 실행이 없고, 이 상태가
 2분간 유지되면 경보가 발생하며 실제 지연에는 수집·평가 간격이 더해진다.
 
+## 외부 연결 장애 경보의 판단 기준
+
+`WatchCheckEgressFailure`는 개별 대상이 아니라 WATCH 쪽 DNS·방화벽·NAT·시계·인증서 신뢰 설정의 장애를 찾는다.
+`baton_watch_check_attempts_total`의 결과 분류를 세 묶음으로 나눈다.
+
+| 묶음 | 결과 분류 | 경보에서의 역할 |
+| --- | --- | --- |
+| 응답 없음 | `destination_rejected`, `dns_failure`, `connect_timeout`, `read_timeout`, `tls_failure`, `network_failure` | 최근 5분 증가량 합계가 3 이상이면 후보 |
+| 응답 수신 | `success`, `http_client_error`, `http_server_error`, `redirect_rejected`, `too_many_redirects`, `response_too_large` | 같은 인스턴스에서 하나라도 늘면 개별 대상 장애로 보고 제외 |
+| 내부 실패 | `internal_failure` | 어느 쪽에도 넣지 않음 |
+
+마지막 응답이 5분 조회 구간에서 빠지고 2분이 더 지나야 발생하므로 기본 설정에서는 응답이 끊긴 뒤
+약 7분 뒤에 알린다. 응답 수신이 하나라도 다시 수집되면 다음 평가에서 해제된다. 재시작으로 응답 수신
+카운터가 사라져도 같은 기준으로 판단한다. 응답 없는 실패 6종의 시도 카운터는 시작 시 0으로 등록해
+첫 증가량을 잃지 않게 한다. 등록 목록은 `CheckOutcome.receivedResponse()`에서 만들어지므로 결과 분류를
+추가·변경하면 이 메서드의 분류에 맞춰 규칙의 두 목록과 이 표를 함께 갱신한다.
+
+경보와 별도로 점검 실행 서비스는 서로 다른 호스트의 응답 없는 실패를 세어 다섯 번째 호스트의 실패부터
+`INTERNAL_FAILURE`로 기록한다. 호스트가 다섯 곳 이상이면 장애 초기에 먼저 실패한 몇 개 대상만 `DEGRADED`가 되고
+`BROKEN` 전파는 막히며, 확정 결과가 끊긴 대상은 10분 뒤 `UNKNOWN`이 된다. 호스트가 네 곳 이하면 판정에 닿지 않아
+대상 실패로 계속 세므로 `BROKEN`까지 진행한다. 이렇게 기록한 점검 수는
+`baton_watch_check_egress_suspected_total`로 확인한다. 경보는 판정 전의 원래 결과로 평가하므로 이 처리와
+관계없이 발생한다. 외부 연결을 복구한 뒤 다음 점검에서 `HEALTHY`로 돌아오는지 확인한다. 대상이 적고
+모두 실제로 응답하지 않는 환경에서도 발생할 수 있다.
+점검 간격이 길어 5분 실패가 3회 미만이거나 점검을 끈 인스턴스는 평가하지 않는다. 수집이 끊기면
+증가량을 계산할 수 없으므로 `WatchScrapeFailed`가 담당한다.
+
 ## 적용 전 조건
 
 - Prometheus 수집 작업의 `job_name`을 `baton-watch`로 지정한다.
@@ -123,7 +152,8 @@ Spring의 `tasks_scheduled_execution_seconds_count` 증가량을 사용하며 �
 ```
 
 고정된 공식 Prometheus 이미지의 `promtool`로 문법, 지속 장애 감지, 복구 해제,
-전달 비활성, 카운터 초기화와 수집 대상 누락을 검사한다.
+전달 비활성, 카운터 초기화와 수집 대상 누락을 검사한다. 외부 연결 장애 경보는 대기·발생·해제,
+적은 실패 제외, 응답 기록 없는 시작·재시작, 수집 실패와 결과 분류 13종의 판단을 확인한다.
 `watch-workers-test.yml`은 시작 유예, 타이머 누락, 유휴 배치, 다중 인스턴스,
 일부 유지보수 중단과 복구, 점검 중지 중의 전달·유지보수 경보 유지도 확인한다. 이미지가 없으면 최초
 실행 시 내려받으며 검사 컨테이너는 `--network none`으로 실행한다. 이 검사는

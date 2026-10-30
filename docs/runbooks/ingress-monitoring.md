@@ -16,7 +16,7 @@ NGINX의 `/health`는 프록시 프로세스가 응답하는지만 확인한다.
 - [Prometheus 수집 예시](../../ops/prometheus/watch-ingress-scrape.yml): 기존 설정에
   `scrape_configs` 항목과 `rule_files` 경로를 병합한다. 기존 전역 설정을 덮어쓰지 않는다.
 - [선택적 경보](../../ops/prometheus/watch-ingress-alerts.yml): 두 경로가 준비된 뒤
-  수집 작업과 함께 적용한다. 기존 WATCH 경보 11개와 분리되어 있다.
+  수집 작업과 함께 적용한다. 기존 WATCH 경보 12개와 분리되어 있다.
 
 | 구분 | 점검 경로 | 확인 범위 |
 | --- | --- | --- |

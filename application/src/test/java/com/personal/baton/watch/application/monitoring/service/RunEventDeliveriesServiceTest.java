@@ -5,14 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklogSnapshot;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
-import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalization;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryObservation;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryOutcome;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
-import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
+import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
@@ -20,10 +18,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -38,20 +37,19 @@ class RunEventDeliveriesServiceTest {
 
     @Test
     void claimsThenSendsThenFinalizesWithoutHoldingTheClaimOperation() {
-        List<String> calls = new ArrayList<>();
         ClaimedHealthChangeEvent claim = claimed(1);
-        RecordingPersistence persistence = new RecordingPersistence(calls, claim);
+        RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(claim);
         RunEventDeliveriesService service = service(
                 persistence,
                 payload -> {
                     assertEquals(claim.payload(), payload);
-                    calls.add("send");
-                    return EventDeliveryObservation.forHttpStatus(204);
+                    persistence.calls.add("send");
+                    return EventDeliveryObservation.forHttpStatus(204, null);
                 });
 
         EventDeliveryBatchResult result = service.runEventDeliveries();
 
-        assertEquals(List.of("claim", "send", "finalize", "claim"), calls);
+        assertEquals(List.of("claim", "send", "finalize", "claim"), persistence.calls);
         assertEquals(
                 new EventDeliveryBatchResult(1, 1, 0, 0, 0),
                 result);
@@ -63,41 +61,35 @@ class RunEventDeliveriesServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void preservesInterruptionAndStopsClaimingMoreEvents(boolean interruptedBeforeStart) {
-        List<String> calls = new ArrayList<>();
-        RecordingPersistence persistence = new RecordingPersistence(calls, claimed(1));
-        RunEventDeliveriesService service = service(persistence, event -> {
-            calls.add("send");
-            Thread.currentThread().interrupt();
-            return EventDeliveryObservation.internalFailure();
-        });
+    void finishesTheClaimedEventAndStopsClaimingOnceShutdownIsRequested(boolean requestedBeforeStart) {
+        RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(claimed(1));
+        AtomicBoolean stopRequested = new AtomicBoolean(requestedBeforeStart);
+        RunEventDeliveriesService service = service(
+                persistence,
+                event -> {
+                    persistence.calls.add("send");
+                    stopRequested.set(true);
+                    return EventDeliveryObservation.forHttpStatus(204, null);
+                },
+                stopRequested::get);
 
-        try {
-            if (interruptedBeforeStart) {
-                Thread.currentThread().interrupt();
-            }
+        EventDeliveryBatchResult result = service.runEventDeliveries();
 
-            EventDeliveryBatchResult result = service.runEventDeliveries();
-
-            assertTrue(Thread.currentThread().isInterrupted());
-            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "send", "finalize"), calls);
-            int completed = interruptedBeforeStart ? 0 : 1;
-            assertEquals(new EventDeliveryBatchResult(completed, 0, completed, 0, 0), result);
-        } finally {
-            Thread.interrupted();
-        }
+        assertEquals(requestedBeforeStart ? List.of() : List.of("claim", "send", "finalize"), persistence.calls);
+        int completed = requestedBeforeStart ? 0 : 1;
+        assertEquals(new EventDeliveryBatchResult(completed, completed, 0, 0, 0), result);
     }
 
     @Test
     void schedulesRetryFromTheClaimAttemptAndConvertsUnexpectedSenderFailures() {
-        RecordingPersistence thirdAttempt = new RecordingPersistence(new ArrayList<>(), claimed(3));
+        RecordingEventDeliveryPersistence thirdAttempt = new RecordingEventDeliveryPersistence(claimed(3));
         service(thirdAttempt, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE))
                 .runEventDeliveries();
 
         assertEquals(NOW.plusSeconds(40), thirdAttempt.finalization.nextAttemptAt());
         assertEquals(EventDeliveryOutcome.DNS_FAILURE, thirdAttempt.finalization.observation().outcome());
 
-        RecordingPersistence unexpectedFailure = new RecordingPersistence(new ArrayList<>(), claimed(1));
+        RecordingEventDeliveryPersistence unexpectedFailure = new RecordingEventDeliveryPersistence(claimed(1));
         EventDeliveryBatchResult result = service(unexpectedFailure, event -> {
                     throw new IllegalStateException("sensitive transport detail");
                 })
@@ -111,7 +103,7 @@ class RunEventDeliveriesServiceTest {
     @ValueSource(ints = {429, 503})
     void persistsServerRetryTimeWithoutChangingTheClaimedEvent(int httpStatus) {
         ClaimedHealthChangeEvent claim = claimed(1);
-        RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claim);
+        RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(claim);
 
         EventDeliveryBatchResult result = service(persistence,
                 event -> EventDeliveryObservation.forHttpStatus(httpStatus, NOW.plusSeconds(45)))
@@ -129,8 +121,8 @@ class RunEventDeliveriesServiceTest {
             value = EventDeliveryFinalizationStatus.class,
             names = {"ALREADY_DELIVERED", "STALE_CLAIM"})
     void reportsIdempotentAndStaleFinalizationsSeparatelyFromTransportOutcome(EventDeliveryFinalizationStatus status) {
-        RecordingPersistence persistence = new RecordingPersistence(new ArrayList<>(), claimed(1));
-        persistence.status = status;
+        RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(claimed(1));
+        persistence.finalizationStatus = status;
 
         EventDeliveryBatchResult result = service(
                         persistence, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.CONNECT_TIMEOUT))
@@ -145,8 +137,8 @@ class RunEventDeliveriesServiceTest {
     @Test
     void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
         Instant databaseClaimedAt = NOW.plusSeconds(5);
-        RecordingPersistence persistence = new RecordingPersistence(
-                new ArrayList<>(), claimed(1, databaseClaimedAt));
+        RecordingEventDeliveryPersistence persistence = new RecordingEventDeliveryPersistence(
+                claimed(1, databaseClaimedAt));
 
         service(persistence, event -> EventDeliveryObservation.failure(EventDeliveryOutcome.DNS_FAILURE))
                 .runEventDeliveries();
@@ -156,15 +148,22 @@ class RunEventDeliveriesServiceTest {
     }
 
     private RunEventDeliveriesService service(
-            RecordingPersistence persistence,
-            com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender sender) {
+            RecordingEventDeliveryPersistence persistence, HealthChangeEventSender sender) {
+        return service(persistence, sender, () -> false);
+    }
+
+    private RunEventDeliveriesService service(
+            RecordingEventDeliveryPersistence persistence,
+            HealthChangeEventSender sender,
+            BooleanSupplier stopRequested) {
         return new RunEventDeliveriesService(
                 persistence,
                 sender,
                 Clock.fixed(NOW, ZoneOffset.UTC),
                 LEASE,
                 new EventDeliveryRetryPolicy(INITIAL_BACKOFF, MAX_BACKOFF),
-                5);
+                5,
+                stopRequested);
     }
 
     private ClaimedHealthChangeEvent claimed(int deliveryAttempt) {
@@ -185,48 +184,5 @@ class RunEventDeliveriesServiceTest {
                 deliveryAttempt,
                 claimedAt,
                 false);
-    }
-
-    private static final class RecordingPersistence implements HealthChangeEventDeliveryPersistencePort {
-
-        private final List<String> calls;
-        private final ClaimedHealthChangeEvent claimed;
-        private Duration leaseDuration;
-        private EventDeliveryFinalization finalization;
-        private EventDeliveryFinalizationStatus status = EventDeliveryFinalizationStatus.APPLIED;
-        private boolean claimReturned;
-
-        private RecordingPersistence(List<String> calls, ClaimedHealthChangeEvent claimed) {
-            this.calls = calls;
-            this.claimed = claimed;
-        }
-
-        @Override
-        public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
-            calls.add("claim");
-            this.leaseDuration = leaseDuration;
-            if (claimReturned) {
-                return Optional.empty();
-            }
-            claimReturned = true;
-            return Optional.of(claimed);
-        }
-
-        @Override
-        public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
-            calls.add("finalize");
-            this.finalization = finalization;
-            return status;
-        }
-
-        @Override
-        public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public EventDeliveryBacklogSnapshot getBacklogSnapshot() {
-            throw new UnsupportedOperationException();
-        }
     }
 }

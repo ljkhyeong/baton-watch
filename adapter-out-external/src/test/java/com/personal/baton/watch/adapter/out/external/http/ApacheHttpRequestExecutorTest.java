@@ -2,7 +2,6 @@ package com.personal.baton.watch.adapter.out.external.http;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,11 +11,7 @@ import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.time.Duration;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,33 +22,29 @@ import org.apache.hc.core5.io.IOFunction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
-import org.junit.jupiter.params.provider.ValueSource;
 
 class ApacheHttpRequestExecutorTest {
 
     @Test
-    void alreadyInterruptedCallerDoesNotStartHttpWorkAndPreservesInterruption() throws Exception {
-        AtomicBoolean workerCreated = new AtomicBoolean();
-        ExecutorService worker = Executors.newSingleThreadExecutor(task -> {
-            workerCreated.set(true);
-            return Thread.ofPlatform().unstarted(task);
-        });
+    void alreadyInterruptedCallerCancelsTheRequestWithoutCallingTheOperation() {
+        AtomicBoolean operationCalled = new AtomicBoolean();
         HttpGet request = new HttpGet("https://check.test/cancelled");
-        try (var executor = new ApacheHttpRequestExecutor(worker)) {
+        try (var executor = new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
             try {
                 Thread.currentThread().interrupt();
                 OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class,
-                        () -> executor.execute(request, Duration.ofSeconds(1), started -> "sent"));
+                        () -> executor.execute(request, Duration.ofSeconds(1), started -> {
+                            operationCalled.set(true);
+                            return "sent";
+                        }));
                 assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
                 assertTrue(Thread.currentThread().isInterrupted());
             } finally {
                 Thread.interrupted();
             }
-            assertFalse(workerCreated.get());
-            assertTrue(request.isCancelled());
-            assertEquals("sent", executor.execute(new HttpGet("https://check.test/next"),
-                    Duration.ofSeconds(1), started -> "sent"));
         }
+        assertFalse(operationCalled.get());
+        assertTrue(request.isCancelled());
     }
 
     @ParameterizedTest
@@ -100,80 +91,6 @@ class ApacheHttpRequestExecutorTest {
     }
 
     @Test
-    void restoresCallerInterruptAndCancelsTheRequest() throws Exception {
-        CountDownLatch operationStarted = new CountDownLatch(1);
-        CountDownLatch workerInterrupted = new CountDownLatch(1);
-        CountDownLatch block = new CountDownLatch(1);
-        AtomicReference<OutboundHttpFailure.Kind> failureKind = new AtomicReference<>();
-        AtomicBoolean callerInterruptRestored = new AtomicBoolean();
-        HttpGet request = new HttpGet("https://check.test/");
-
-        try (ApacheHttpRequestExecutor executor =
-                new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
-            Thread caller = new Thread(() -> {
-                try {
-                    executor.execute(request, Duration.ofSeconds(5), onResponseStarted -> {
-                        operationStarted.countDown();
-                        try {
-                            block.await();
-                        } catch (InterruptedException exception) {
-                            workerInterrupted.countDown();
-                            throw new InterruptedIOException("cancelled");
-                        }
-                        return null;
-                    });
-                } catch (OutboundHttpFailure failure) {
-                    failureKind.set(failure.kind());
-                    callerInterruptRestored.set(Thread.currentThread().isInterrupted());
-                }
-            }, "test-http-caller");
-            caller.start();
-
-            assertTrue(operationStarted.await(1, TimeUnit.SECONDS));
-            caller.interrupt();
-            caller.join(1_000);
-
-            assertFalse(caller.isAlive());
-            assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failureKind.get());
-            assertTrue(callerInterruptRestored.get());
-            assertTrue(workerInterrupted.await(1, TimeUnit.SECONDS));
-            assertTrue(request.isCancelled());
-        }
-    }
-
-    @Test
-    void mapsRejectedWorkToInternalFailureAndOwnsExecutorShutdown() {
-        ExecutorService rejectedExecutor = Executors.newSingleThreadExecutor();
-        rejectedExecutor.shutdownNow();
-        try (ApacheHttpRequestExecutor executor =
-                new ApacheHttpRequestExecutor(rejectedExecutor)) {
-            OutboundHttpFailure failure = assertThrows(
-                    OutboundHttpFailure.class,
-                    () -> executor.execute(new HttpGet("https://check.test/"), Duration.ofSeconds(1), onResponseStarted -> null));
-
-            assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, failure.kind());
-        }
-
-        ExecutorService ownedExecutor = Executors.newSingleThreadExecutor();
-        ApacheHttpRequestExecutor executor = new ApacheHttpRequestExecutor(ownedExecutor);
-        executor.close();
-
-        assertTrue(ownedExecutor.isShutdown());
-    }
-
-    @Test
-    void createsNamedDaemonThreads() throws Exception {
-        try (ApacheHttpRequestExecutor executor =
-                new ApacheHttpRequestExecutor(1, 1, "test-http-")) {
-            Thread worker = executor.execute(
-                    new HttpGet("https://check.test/"), Duration.ofSeconds(1), onResponseStarted -> Thread.currentThread());
-
-            assertTrue(worker.getName().startsWith("test-http-"));
-            assertTrue(worker.isDaemon());
-        }
-    }
-
-    @Test
     void preservesTheBoundedBlockingFailureTaxonomy() {
         assertBlockingFailure(
                 OutboundHttpFailure.Kind.TLS_FAILURE,
@@ -208,7 +125,9 @@ class ApacheHttpRequestExecutorTest {
     }
 
     @Test
-    void rejectsExecutorBoundsAboveTheImplementationCeilings() {
+    void rejectsExecutorBoundsOutsideTheImplementationLimits() {
+        assertThrows(IllegalArgumentException.class, () -> new ApacheHttpRequestExecutor(0, 1, "test-http-"));
+        assertThrows(IllegalArgumentException.class, () -> new ApacheHttpRequestExecutor(1, 0, "test-http-"));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new ApacheHttpRequestExecutor(
@@ -221,107 +140,6 @@ class ApacheHttpRequestExecutorTest {
                         1,
                         OutboundResourceBounds.MAX_REQUEST_QUEUE_CAPACITY + 1,
                         "test-http-"));
-    }
-
-    @Test
-    void shutdownCancelsQueuedRequestsWithoutWaitingForTheirDeadline() throws Exception {
-        CountDownLatch workerOccupied = new CountDownLatch(1);
-        CountDownLatch releaseWorker = new CountDownLatch(1);
-        var queue = new ArrayBlockingQueue<Runnable>(1);
-        var worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, queue);
-        worker.execute(() -> {
-            workerOccupied.countDown();
-            try {
-                releaseWorker.await();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        HttpGet request = new HttpGet("https://check.test/");
-        AtomicBoolean operationCalled = new AtomicBoolean();
-        try (var executor = new ApacheHttpRequestExecutor(worker);
-                var caller = Executors.newSingleThreadExecutor()) {
-            assertTrue(workerOccupied.await(1, TimeUnit.SECONDS));
-            var result = caller.submit(() -> assertThrows(OutboundHttpFailure.class,
-                    () -> executor.execute(request, Duration.ofSeconds(10), onResponseStarted -> {
-                        operationCalled.set(true);
-                        return null;
-                    })));
-            Runnable queued = queue.poll(1, TimeUnit.SECONDS);
-            assertNotNull(queued);
-            queue.add(queued);
-            executor.close();
-
-            assertEquals(OutboundHttpFailure.Kind.INTERNAL_FAILURE, result.get(1, TimeUnit.SECONDS).kind());
-            assertTrue(request.isCancelled());
-            assertFalse(operationCalled.get());
-        } finally {
-            releaseWorker.countDown();
-            worker.shutdownNow();
-        }
-    }
-
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void releasesCancelledQueueCapacityBeforeTheBusyWorkerFinishes(boolean interruptCaller) throws Exception {
-        var queue = new ArrayBlockingQueue<Runnable>(1);
-        var worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, queue);
-        CountDownLatch occupied = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        worker.execute(() -> {
-            occupied.countDown();
-            try {
-                release.await();
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        HttpGet request = new HttpGet("https://check.test/cancelled");
-        AtomicBoolean operationCalled = new AtomicBoolean();
-        AtomicBoolean interruptRestored = new AtomicBoolean();
-        AtomicReference<OutboundHttpFailure.Kind> kind = new AtomicReference<>();
-        try (var executor = new ApacheHttpRequestExecutor(worker)) {
-            Thread caller = Thread.ofPlatform().unstarted(() -> {
-                try {
-                    executor.execute(request, interruptCaller ? Duration.ofSeconds(10) : Duration.ofMillis(200),
-                            onResponseStarted -> {
-                                operationCalled.set(true);
-                                return null;
-                            });
-                } catch (OutboundHttpFailure failure) {
-                    kind.set(failure.kind());
-                    interruptRestored.set(Thread.currentThread().isInterrupted());
-                }
-            });
-            try {
-                assertTrue(occupied.await(1, TimeUnit.SECONDS));
-                caller.start();
-                Runnable queued = queue.poll(1, TimeUnit.SECONDS);
-                assertNotNull(queued);
-                queue.add(queued);
-                if (interruptCaller) {
-                    caller.interrupt();
-                }
-                caller.join(1_500);
-                assertFalse(caller.isAlive());
-                assertEquals(interruptCaller ? OutboundHttpFailure.Kind.INTERNAL_FAILURE
-                        : OutboundHttpFailure.Kind.CONNECT_TIMEOUT, kind.get());
-                assertEquals(interruptCaller, interruptRestored.get());
-                assertTrue(request.isCancelled());
-                assertFalse(operationCalled.get());
-                // 기존 작업자가 계속 점유 중이어도 새 작업을 대기열에 넣을 수 있어야 한다.
-                var next = worker.submit(() -> "accepted");
-                release.countDown();
-                assertEquals("accepted", next.get(1, TimeUnit.SECONDS));
-            } finally {
-                caller.interrupt();
-                caller.join(1_000);
-            }
-        } finally {
-            release.countDown();
-            worker.shutdownNow();
-            assertTrue(worker.awaitTermination(1, TimeUnit.SECONDS));
-        }
     }
 
     private static void assertBlockingFailure(

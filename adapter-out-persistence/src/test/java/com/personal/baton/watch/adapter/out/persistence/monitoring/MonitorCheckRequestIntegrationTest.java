@@ -2,6 +2,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 
 import static com.personal.baton.watch.adapter.out.persistence.monitoring.MonitoringJdbcRows.databaseTime;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
 
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.MonitorCheckRequestResult;
@@ -30,8 +31,8 @@ class MonitorCheckRequestIntegrationTest extends MonitoringPersistenceIntegratio
         assertThat(first.nextCheckAt()).isEqualTo(BASE_TIME);
         assertThat(projection(REFERENCE.value()))
                 .usingRecursiveComparison().ignoringFields("nextCheckAt").isEqualTo(before);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM watch_attempt", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM watch_health_change_event", Integer.class)).isZero();
+        assertThat(countRowsInTable(jdbc, "watch_attempt")).isZero();
+        assertThat(countRowsInTable(jdbc, "watch_health_change_event")).isZero();
         assertThat(requestAt(BASE_TIME.plusSeconds(1)).status()).isEqualTo(Status.ALREADY_SCHEDULED);
 
         // 완료 처리로 다음 일반 점검이 예약된 상태를 구성한다.
@@ -50,7 +51,7 @@ class MonitorCheckRequestIntegrationTest extends MonitoringPersistenceIntegratio
 
         assertThat(requestAt(claim.claimedAt().plusSeconds(1)).status()).isEqualTo(Status.IN_PROGRESS);
         finalizeAt(claim, claim.claimedAt().plusSeconds(2),
-                CheckObservation.forHttpStatus(200, Duration.ofMillis(100), 0, 0));
+                CheckObservation.forHttpStatus(200, Duration.ofMillis(100), 0));
 
         synchronizeInactive(REFERENCE.value(), 8, claim.claimedAt().plusSeconds(3));
         assertThat(requestAt(claim.claimedAt().plusSeconds(4)).status()).isEqualTo(Status.INACTIVE);
@@ -65,6 +66,18 @@ class MonitorCheckRequestIntegrationTest extends MonitoringPersistenceIntegratio
 
         assertThat(runConcurrently(request, request))
                 .containsExactlyInAnyOrder(Status.SCHEDULED, Status.ALREADY_SCHEDULED);
+    }
+
+    @Test
+    void anEarlierRequestThatLocksLastJoinsTheScheduleInsteadOfBeingRateLimited() {
+        synchronize(REFERENCE.value(), 7, "https://example.com/", BASE_TIME);
+        postpone();
+        assertThat(requestAt(BASE_TIME.plusMillis(1)).status()).isEqualTo(Status.SCHEDULED);
+
+        var joined = requestAt(BASE_TIME);
+
+        assertThat(joined.status()).isEqualTo(Status.ALREADY_SCHEDULED);
+        assertThat(joined.nextCheckAt()).isEqualTo(BASE_TIME.plusMillis(1));
     }
 
     private MonitorCheckRequestResult requestAt(Instant now) {

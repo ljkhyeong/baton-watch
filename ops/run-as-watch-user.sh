@@ -9,6 +9,7 @@ readonly target_gid=10001
 readonly secret_directory=/run/watch-secrets
 readonly datasource_secret=/run/secrets/spring.datasource.password
 readonly api_token_secret=/run/secrets/watch.api-token
+readonly api_previous_token_secret=/run/secrets/watch.api-previous-token
 readonly event_delivery_token_secret=/run/secrets/watch.event-delivery.bearer-token
 
 require_secret() {
@@ -42,6 +43,10 @@ chmod 0700 "$secret_directory"
 
 copy_secret "$datasource_secret" "$secret_directory/spring.datasource.password"
 copy_secret "$api_token_secret" "$secret_directory/watch.api-token"
+if [ -e "$api_previous_token_secret" ] || [ -L "$api_previous_token_secret" ]; then
+    require_secret "$api_previous_token_secret"
+    copy_secret "$api_previous_token_secret" "$secret_directory/watch.api-previous-token"
+fi
 if [ -e "$event_delivery_token_secret" ] || [ -L "$event_delivery_token_secret" ]; then
     require_secret "$event_delivery_token_secret"
     copy_secret \

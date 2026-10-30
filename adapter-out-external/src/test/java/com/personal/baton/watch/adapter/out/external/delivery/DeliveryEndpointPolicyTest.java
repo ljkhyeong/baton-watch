@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.net.URI;
@@ -14,14 +15,12 @@ class DeliveryEndpointPolicyTest {
     private final DeliveryEndpointPolicy policy = new DeliveryEndpointPolicy();
 
     @Test
-    void acceptsOnlyAnUnambiguousDefaultPortHttpsEndpoint() throws Exception {
-        ValidatedDeliveryEndpoint implicit =
-                policy.validate(URI.create("https://Events.Example.com/api/v1/health-events"));
-        ValidatedDeliveryEndpoint explicit =
-                policy.validate(URI.create("HTTPS://events.example.com:443/api/v1/health-events"));
+    void acceptsOnlyAnUnambiguousDefaultPortHttpsEndpoint() {
+        URI implicit = URI.create("https://Events.Example.com/api/v1/health-events");
+        URI explicit = URI.create("HTTPS://events.example.com:443/api/v1/health-events");
 
-        assertEquals("events.example.com", implicit.hostname());
-        assertEquals("events.example.com", explicit.hostname());
+        assertSame(implicit, policy.validate(implicit));
+        assertSame(explicit, policy.validate(explicit));
     }
 
     @ParameterizedTest

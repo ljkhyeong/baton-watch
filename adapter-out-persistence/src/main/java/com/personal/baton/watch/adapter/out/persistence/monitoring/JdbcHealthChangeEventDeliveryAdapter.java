@@ -9,7 +9,6 @@ import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinali
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.HealthChangeEventPayload;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import com.personal.baton.watch.domain.monitoring.Health;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import com.personal.baton.watch.domain.monitoring.SourceRevision;
@@ -17,13 +16,11 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import org.springframework.util.Assert;
 
 /** 상태 변경 이벤트의 전달 예약·점유·결과를 DB에 저장한다. */
 public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeEventDeliveryPersistencePort {
@@ -38,8 +35,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             changed_at,
             delivery_status,
             delivery_attempt,
-            delivery_lease_token,
-            delivery_lease_expires_at
+            delivery_lease_token
             """;
 
     private final JdbcClient jdbc;
@@ -53,28 +49,16 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
 
     @Override
     public Optional<ClaimedHealthChangeEvent> claimPendingEvent(Duration leaseDuration) {
-        Duration supportedLease = TimeBoundaryPolicy.requireSupportedOffset(
-                leaseDuration, "leaseDuration");
-        return transactions.execute(ignored -> {
-            Instant claimedAt = jdbc.sql("SELECT transaction_timestamp()")
-                    .query(OffsetDateTime.class)
-                    .single()
-                    .toInstant();
-            Instant leaseUntil = claimedAt.plus(supportedLease);
-            return claimInTransaction(claimedAt, leaseUntil);
-        });
+        return transactions.execute(ignored -> claimInTransaction(leaseDuration));
     }
 
     @Override
     public EventDeliveryFinalizationStatus finalizeDelivery(EventDeliveryFinalization finalization) {
-        Objects.requireNonNull(finalization, "finalization");
         return transactions.execute(ignored -> finalizeInTransaction(finalization));
     }
 
     @Override
     public int purgeDeliveredEvents(Instant deliveredBefore, int limit) {
-        Objects.requireNonNull(deliveredBefore, "deliveredBefore");
-        Assert.isTrue(limit > 0, "limit must be positive");
         return transactions.execute(ignored -> jdbc.sql("""
                         WITH candidates AS MATERIALIZED (
                             SELECT event_id
@@ -96,9 +80,9 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
     @Override
     public EventDeliveryBacklogSnapshot getBacklogSnapshot() {
         return jdbc.sql("""
-                        SELECT pending_count, oldest_changed_at
-                        FROM watch_health_change_event_backlog
-                        WHERE singleton
+                        SELECT count(*) AS pending_count, min(changed_at) AS oldest_changed_at
+                        FROM watch_health_change_event
+                        WHERE delivery_status = 'PENDING'
                         """)
                 .query((resultSet, ignoredRow) -> new EventDeliveryBacklogSnapshot(
                         resultSet.getLong("pending_count"),
@@ -106,25 +90,29 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 .single();
     }
 
-    private Optional<ClaimedHealthChangeEvent> claimInTransaction(
-            Instant claimedAt, Instant leaseUntil) {
-        Optional<DeliveryRow> pending = jdbc.sql(
+    private Optional<ClaimedHealthChangeEvent> claimInTransaction(Duration leaseDuration) {
+        ClaimableEvent pending = jdbc.sql(
                         "SELECT " + DELIVERY_COLUMNS + """
+                                , transaction_timestamp() AS claimed_at
                                  FROM watch_health_change_event
                                  WHERE delivery_status = 'PENDING'
-                                   AND next_attempt_at <= ?
-                                   AND (delivery_lease_expires_at IS NULL OR delivery_lease_expires_at <= ?)
+                                   AND next_attempt_at <= transaction_timestamp()
+                                   AND (delivery_lease_expires_at IS NULL
+                                        OR delivery_lease_expires_at <= transaction_timestamp())
                                  ORDER BY next_attempt_at, changed_at, event_id
                                  LIMIT 1
                                  FOR UPDATE SKIP LOCKED
                                 """)
-                .params(databaseTime(claimedAt), databaseTime(claimedAt))
-                .query(JdbcHealthChangeEventDeliveryAdapter::mapDelivery)
-                .optional();
-        if (pending.isEmpty()) {
+                .query((resultSet, row) -> new ClaimableEvent(
+                        mapDelivery(resultSet, row), instant(resultSet, "claimed_at")))
+                .optional()
+                .orElse(null);
+        if (pending == null) {
             return Optional.empty();
         }
-        DeliveryRow event = pending.orElseThrow();
+        DeliveryRow event = pending.event();
+        Instant claimedAt = pending.claimedAt();
+        Instant leaseUntil = claimedAt.plus(leaseDuration);
 
         UUID leaseToken = UUID.randomUUID();
         int deliveryAttempt = Math.clamp(
@@ -150,9 +138,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 leaseToken,
                 deliveryAttempt,
                 claimedAt,
-                event.leaseToken() != null
-                        && event.leaseExpiresAt() != null
-                        && !event.leaseExpiresAt().isAfter(claimedAt)));
+                event.leaseToken() != null));
     }
 
     private EventDeliveryFinalizationStatus finalizeInTransaction(EventDeliveryFinalization finalization) {
@@ -177,41 +163,27 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             throw new IllegalArgumentException("delivery completion cannot precede the event");
         }
 
-        if (finalization.observation().outcome().isDelivered()) {
-            jdbc.sql("""
-                            UPDATE watch_health_change_event
-                            SET delivery_status = 'DELIVERED',
-                                next_attempt_at = NULL,
-                                delivery_lease_token = NULL,
-                                delivery_lease_expires_at = NULL,
-                                delivered_at = ?,
-                                last_delivery_outcome = ?,
-                                last_http_status_code = ?
-                            WHERE event_id = ?
-                            """)
-                    .params(
-                            databaseTime(finalization.completedAt()),
-                            finalization.observation().outcome().name(),
-                            finalization.observation().httpStatusCode(),
-                            finalization.eventId())
-                    .update();
-        } else {
-            jdbc.sql("""
-                            UPDATE watch_health_change_event
-                            SET next_attempt_at = ?,
-                                delivery_lease_token = NULL,
-                                delivery_lease_expires_at = NULL,
-                                last_delivery_outcome = ?,
-                                last_http_status_code = ?
-                            WHERE event_id = ?
-                            """)
-                    .params(
-                            databaseTime(finalization.nextAttemptAt()),
-                            finalization.observation().outcome().name(),
-                            finalization.observation().httpStatusCode(),
-                            finalization.eventId())
-                    .update();
-        }
+        // 성공이면 다음 시도 시각이 없고, 실패면 전달 시각이 없다는 조합은 레코드와 DB CHECK가 함께 보장한다.
+        boolean delivered = finalization.observation().outcome().isDelivered();
+        jdbc.sql("""
+                        UPDATE watch_health_change_event
+                        SET delivery_status = ?,
+                            next_attempt_at = ?,
+                            delivered_at = ?,
+                            delivery_lease_token = NULL,
+                            delivery_lease_expires_at = NULL,
+                            last_delivery_outcome = ?,
+                            last_http_status_code = ?
+                        WHERE event_id = ?
+                        """)
+                .params(
+                        (delivered ? DeliveryStatus.DELIVERED : DeliveryStatus.PENDING).name(),
+                        databaseTime(finalization.nextAttemptAt()),
+                        delivered ? databaseTime(finalization.completedAt()) : null,
+                        finalization.observation().outcome().name(),
+                        finalization.observation().httpStatusCode(),
+                        finalization.eventId())
+                .update();
         return EventDeliveryFinalizationStatus.APPLIED;
     }
 
@@ -226,8 +198,7 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
                 instant(resultSet, "changed_at"),
                 DeliveryStatus.valueOf(resultSet.getString("delivery_status")),
                 resultSet.getInt("delivery_attempt"),
-                resultSet.getObject("delivery_lease_token", UUID.class),
-                instant(resultSet, "delivery_lease_expires_at"));
+                resultSet.getObject("delivery_lease_token", UUID.class));
     }
 
     private enum DeliveryStatus {
@@ -245,7 +216,9 @@ public final class JdbcHealthChangeEventDeliveryAdapter implements HealthChangeE
             Instant changedAt,
             DeliveryStatus deliveryStatus,
             int deliveryAttempt,
-            UUID leaseToken,
-            Instant leaseExpiresAt) {
+            UUID leaseToken) {
+    }
+
+    private record ClaimableEvent(DeliveryRow event, Instant claimedAt) {
     }
 }

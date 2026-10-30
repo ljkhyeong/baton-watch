@@ -9,10 +9,16 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
-import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.mock.env.MockEnvironment;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
@@ -24,12 +30,19 @@ final class BootstrapTestFixtures {
     }
 
     static PostgreSQLContainer postgres(String password) {
-        return new PostgreSQLContainer(DockerImageName.parse(
-                        "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2")
+        return new PostgreSQLContainer(DockerImageName.parse(Objects.requireNonNull(
+                        System.getProperty("watch.test.postgres-image"),
+                        "Gradle 테스트 태스크로 실행해야 합니다: watch.test.postgres-image 없음"))
                 .asCompatibleSubstituteFor("postgres"))
                 .withDatabaseName("baton_watch")
                 .withUsername("baton_watch")
                 .withPassword(password);
+    }
+
+    /** 스케줄러 없는 부분 조립 시험에서 쓰는 종료 신호다. */
+    static WorkerShutdownSignal shutdownSignal() {
+        return new WorkerShutdownSignal(
+                new StaticListableBeanFactory().getBeanProvider(ThreadPoolTaskScheduler.class));
     }
 
     static double count(MeterRegistry registry, String name, String... tags) {
@@ -65,85 +78,29 @@ final class BootstrapTestFixtures {
                 recoveredLease);
     }
 
-    static WatchProperties watchProperties() {
-        return watchProperties("a-test-token-that-is-longer-than-32-characters");
+    static WatchProperties watchProperties(String apiToken) {
+        return productionProperties("watch", WatchProperties.class, Map.of("watch.api-token", apiToken));
     }
 
-    static WatchProperties watchProperties(String apiToken) {
-        return new WatchProperties(
-                apiToken,
-                true,
-                Duration.ofSeconds(1),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(60),
-                Duration.ofSeconds(30),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(30),
-                Duration.ofMinutes(10),
-                Duration.ofDays(30),
-                1,
-                100,
-                new WatchProperties.Http(
-                        Duration.ofSeconds(2),
-                        Duration.ofSeconds(3),
-                        Duration.ofSeconds(5),
-                        65_536,
-                        3,
-                        100,
-                        8_192,
-                        2,
-                        8,
-                        1,
-                        1));
+    static WatchProperties watchProperties(String apiToken, String apiPreviousToken) {
+        return productionProperties("watch", WatchProperties.class, Map.of(
+                "watch.api-token", apiToken,
+                "watch.api-previous-token", apiPreviousToken));
     }
 
     static DatabaseRuntimeProperties databaseRuntimeProperties() {
-        return new DatabaseRuntimeProperties(
-                4,
-                1,
-                3_000,
-                1_000,
-                600_000,
-                1_800_000,
-                300_000,
-                1_000,
-                3,
-                3,
-                10,
-                3,
-                true);
+        return productionProperties("watch.database", DatabaseRuntimeProperties.class, Map.of());
     }
 
     static PersistenceProperties persistenceProperties() {
-        return new PersistenceProperties(
-                Duration.ofSeconds(3),
-                Duration.ofSeconds(5),
-                Duration.ofSeconds(1));
+        return productionProperties("watch.persistence", PersistenceProperties.class, Map.of());
     }
 
-    static EventDeliveryProperties disabledEventDeliveryProperties() {
-        return new EventDeliveryProperties(
-                false,
-                "",
-                "",
-                Duration.ofSeconds(1),
-                Duration.ofMinutes(1),
-                Duration.ofSeconds(60),
-                Duration.ofSeconds(5),
-                Duration.ofMinutes(15),
-                Duration.ofDays(30),
-                2,
-                100,
-                new EventDeliveryProperties.Http(
-                        Duration.ofSeconds(2),
-                        Duration.ofSeconds(3),
-                        Duration.ofSeconds(5),
-                        8_192,
-                        100,
-                        8_192,
-                        2,
-                        8,
-                        1,
-                        1));
+    /** 운영 application.yml 기본값을 시스템 환경 변수 없이 바인딩한다. */
+    static <T> T productionProperties(String prefix, Class<T> type, Map<String, String> overrides) {
+        MockEnvironment environment = new MockEnvironment();
+        overrides.forEach(environment::setProperty);
+        ConfigDataEnvironmentPostProcessor.applyTo(environment);
+        return Binder.get(environment).bindOrCreate(prefix, type);
     }
 }

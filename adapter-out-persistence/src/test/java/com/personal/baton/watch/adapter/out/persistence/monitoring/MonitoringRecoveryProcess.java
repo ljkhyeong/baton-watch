@@ -40,12 +40,13 @@ public final class MonitoringRecoveryProcess {
         var driverProperties = new Properties();
         driverProperties.setProperty("connectTimeout", "3");
         driverProperties.setProperty("socketTimeout", "10");
+        driverProperties.setProperty("options", "-c lock_timeout=1000ms");
         dataSource.setConnectionProperties(driverProperties);
         var template = new JdbcTemplate(dataSource);
         template.setQueryTimeout(5);
         var transaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         transaction.setTimeout(5);
-        var transactions = new PostgresTransactionOperations(template, transaction, Duration.ofSeconds(1));
+        var transactions = new PostgresTransactionOperations(transaction);
         var jdbc = JdbcClient.create(template);
         Clock clock = Clock.fixed(Instant.parse(System.getenv("WATCH_RECOVERY_TIME")), ZoneOffset.UTC);
 
@@ -56,8 +57,8 @@ public final class MonitoringRecoveryProcess {
                         if (mode.equals("check-block")) {
                             blockAfterClaim(checkpoint);
                         }
-                        return CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0);
-                    }, clock, Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofSeconds(30), 1);
+                        return CheckObservation.forHttpStatus(200, Duration.ZERO, 0);
+                    }, clock, Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofSeconds(30), 1, () -> false);
             await().pollInterval(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(80))
                     .until(() -> worker.runDueChecks().applied() == 1);
             return;
@@ -79,7 +80,7 @@ public final class MonitoringRecoveryProcess {
                                 .build();
                         try {
                             return EventDeliveryObservation.forHttpStatus(
-                                    client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode());
+                                    client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode(), null);
                         } catch (InterruptedException exception) {
                             Thread.currentThread().interrupt();
                             throw new IllegalStateException("복구 시험 전달이 중단됐습니다", exception);
@@ -87,7 +88,7 @@ public final class MonitoringRecoveryProcess {
                             throw new UncheckedIOException(exception);
                         }
                     }, clock, Duration.ofSeconds(60),
-                    new EventDeliveryRetryPolicy(Duration.ofSeconds(5), Duration.ofMinutes(15)), 1);
+                    new EventDeliveryRetryPolicy(Duration.ofSeconds(5), Duration.ofMinutes(15)), 1, () -> false);
             await().pollInterval(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(80))
                     .until(() -> worker.runEventDeliveries().delivered() == 1);
         }

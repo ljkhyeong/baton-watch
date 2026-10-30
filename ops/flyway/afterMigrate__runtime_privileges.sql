@@ -1,3 +1,4 @@
+-- 테이블 권한 회수는 같은 권한의 열 권한까지 함께 회수한다. 아래에서 필요한 권한만 다시 부여한다.
 REVOKE ALL PRIVILEGES
     ON ALL TABLES IN SCHEMA public
     FROM ${runtimeRole};
@@ -22,48 +23,16 @@ REVOKE EXECUTE
     ON ALL FUNCTIONS IN SCHEMA public
     FROM PUBLIC;
 
-REVOKE UPDATE (
-    attempt_id,
-    resource_reference,
-    source_revision,
-    target_url,
-    lease_token,
-    claimed_at,
-    lease_expires_at
-)
-    ON TABLE watch_attempt
-    FROM ${runtimeRole};
-
-REVOKE UPDATE (
-    attempt_id,
-    outcome,
-    http_status_code,
-    completed_at,
-    duration_seconds,
-    duration_nanos,
-    response_bytes,
-    redirect_count
-)
-    ON TABLE watch_result
-    FROM ${runtimeRole};
-
-REVOKE UPDATE (
-    event_id,
-    resource_reference,
-    source_revision,
-    attempt_id,
-    previous_health,
-    current_health,
-    changed_at
-)
-    ON TABLE watch_health_change_event
-    FROM ${runtimeRole};
-
 GRANT SELECT, INSERT, UPDATE
     ON TABLE watch_monitor
     TO ${runtimeRole};
 
 GRANT SELECT, INSERT, DELETE
+    ON TABLE watch_attempt
+    TO ${runtimeRole};
+
+-- 보존 정리의 FOR UPDATE는 UPDATE 권한이 있는 열을 하나 요구한다. 삽입 뒤 읽지 않는 열만 연다.
+GRANT UPDATE (lease_expires_at)
     ON TABLE watch_attempt
     TO ${runtimeRole};
 
@@ -86,16 +55,4 @@ GRANT UPDATE (
     last_http_status_code
 )
     ON TABLE watch_health_change_event
-    TO ${runtimeRole};
-
-REVOKE ALL PRIVILEGES
-    ON TABLE flyway_schema_history
-    FROM ${runtimeRole};
-
-REVOKE INSERT, UPDATE, DELETE
-    ON TABLE watch_health_change_event_backlog
-    FROM ${runtimeRole};
-
-GRANT SELECT
-    ON TABLE watch_health_change_event_backlog
     TO ${runtimeRole};

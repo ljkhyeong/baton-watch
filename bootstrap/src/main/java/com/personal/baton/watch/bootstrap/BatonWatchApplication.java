@@ -1,7 +1,5 @@
 package com.personal.baton.watch.bootstrap;
 
-import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
-import com.personal.baton.watch.domain.system.SystemStatus;
 import java.time.Clock;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -24,10 +22,5 @@ public class BatonWatchApplication {
     @Bean
     Clock systemClock() {
         return Clock.systemUTC();
-    }
-
-    @Bean
-    GetSystemStatusUseCase getSystemStatusUseCase(Clock clock) {
-        return () -> new SystemStatus("baton-watch", SystemStatus.State.UP, clock.instant());
     }
 }

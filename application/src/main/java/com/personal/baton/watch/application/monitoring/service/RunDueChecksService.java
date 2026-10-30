@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 public final class RunDueChecksService implements RunDueChecksUseCase {
 
@@ -24,6 +25,8 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
     private final Duration checkInterval;
     private final Duration internalFailureRetryInterval;
     private final int batchSize;
+    private final BooleanSupplier stopRequested;
+    private final EgressOutageGuard egressGuard = new EgressOutageGuard();
 
     public RunDueChecksService(
             CheckWorkPersistencePort persistence,
@@ -32,18 +35,16 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             Duration leaseDuration,
             Duration checkInterval,
             Duration internalFailureRetryInterval,
-            int batchSize) {
-        this.persistence = Objects.requireNonNull(persistence, "persistence");
-        this.checker = Objects.requireNonNull(checker, "checker");
-        this.clock = Objects.requireNonNull(clock, "clock");
-        this.leaseDuration = TimeBoundaryPolicy.requireSupportedOffset(leaseDuration, "leaseDuration");
-        this.checkInterval = TimeBoundaryPolicy.requireSupportedOffset(checkInterval, "checkInterval");
-        this.internalFailureRetryInterval = TimeBoundaryPolicy.requireSupportedOffset(
-                internalFailureRetryInterval, "internalFailureRetryInterval");
-        if (batchSize <= 0) {
-            throw new IllegalArgumentException("batchSize must be positive");
-        }
+            int batchSize,
+            BooleanSupplier stopRequested) {
+        this.persistence = persistence;
+        this.checker = checker;
+        this.clock = clock;
+        this.leaseDuration = leaseDuration;
+        this.checkInterval = checkInterval;
+        this.internalFailureRetryInterval = internalFailureRetryInterval;
         this.batchSize = batchSize;
+        this.stopRequested = Objects.requireNonNull(stopRequested, "stopRequested");
     }
 
     @Override
@@ -52,7 +53,8 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
         int applied = 0;
         int alreadyFinalized = 0;
         int staleClaims = 0;
-        while (claimed < batchSize && !Thread.currentThread().isInterrupted()) {
+        int egressSuspected = 0;
+        while (claimed < batchSize && !stopRequested.getAsBoolean()) {
             Optional<ClaimedCheck> nextClaim = persistence.claimDueCheck(leaseDuration);
             if (nextClaim.isEmpty()) {
                 break;
@@ -60,6 +62,12 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
             ClaimedCheck claimedCheck = nextClaim.orElseThrow();
             claimed++;
             CheckObservation observation = check(claimedCheck);
+            boolean outageSuspected = egressGuard.suspectsOutage(claimedCheck.targetUrl(), observation);
+            if (outageSuspected) {
+                // WATCH 쪽 외부 연결 장애로 보이면 대상 실패로 세지 않고 내부 실패로 기록한다.
+                observation = CheckObservation.failure(
+                        CheckOutcome.INTERNAL_FAILURE, observation.duration(), observation.redirectCount());
+            }
             Instant observedAt = clock.instant();
             Instant completedAt = observedAt.isBefore(claimedCheck.claimedAt())
                     ? claimedCheck.claimedAt()
@@ -75,12 +83,17 @@ public final class RunDueChecksService implements RunDueChecksUseCase {
                     completedAt.plus(interval));
             CheckFinalizationStatus status = persistence.finalizeCheck(finalization);
             switch (status) {
-                case APPLIED -> applied++;
+                case APPLIED -> {
+                    applied++;
+                    if (outageSuspected) {
+                        egressSuspected++;
+                    }
+                }
                 case ALREADY_FINALIZED -> alreadyFinalized++;
                 case STALE_CLAIM -> staleClaims++;
             }
         }
-        return new DueCheckBatchResult(claimed, applied, alreadyFinalized, staleClaims);
+        return new DueCheckBatchResult(claimed, applied, alreadyFinalized, staleClaims, egressSuspected);
     }
 
     private CheckObservation check(ClaimedCheck claimedCheck) {

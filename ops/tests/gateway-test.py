@@ -85,6 +85,7 @@ class GatewayTest(unittest.TestCase):
         self.assertEqual(headers["X-Test-Length"], "20000")
         self.assertEqual(json.loads(body), {"code": "UNAUTHORIZED"})
         self.assertNotIn("Retry-After", headers)
+        self.assertEqual(self.request("/api/v1")[0], 401)
         self.assertEqual(self.request("/actuator/prometheus")[0], 404)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=24) as executor:

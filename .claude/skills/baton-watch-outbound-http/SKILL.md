@@ -15,11 +15,11 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 | 역할 | 위치 |
 | --- | --- |
 | 정적 URL 구문 | `domain/.../monitoring/TargetUrl`(등록), `adapter-out-external/.../check/TargetUriPolicy`(리다이렉트 연결) |
-| 대상 점검 흐름 | `check/SafeUrlCheckEngine`(홉·순환), `ApacheHttpHopTransport`, `ApacheUrlChecker` |
-| 주소 정책·DNS | `check/GlobalAddressPolicy`, `BoundedDnsLookup`. IANA 기준은 `ops/check-iana-registry.sh`·`ops/iana-registry-sha256.txt` |
-| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`, `ApacheHttpClientLimits` |
-| 실행·취소·응답 수명 | `http/ApacheHttpRequestExecutor`, `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
-| 콜백 | `delivery/DeliveryEndpointPolicy`, `SafeEventDeliveryEngine`, `ApacheEventDeliveryTransport`. 설정은 `bootstrap/.../EventDeliveryProperties`·`EventDeliveryConfiguration` |
+| 대상 점검 흐름 | `check/ApacheUrlChecker`(홉·순환·실행기 소유), `ApacheHttpHopTransport` |
+| 주소 정책·DNS | `check/GlobalAddressPolicy`, `BoundedDnsLookup`. 실패 분류는 `http/OutboundHttpFailure` 하나로 공유한다. IANA 기준은 `ops/check-iana-registry.sh`·`ops/iana-registry-sha256.txt` |
+| IP 고정·클라이언트 | `http/PinnedDnsResolver`, `PinnedApacheClientFactory`(실행기 내부, 단계 제한 축소·1밀리초 하한), `ApacheHttpClientLimits`(`CheckerLimits`·`EventDeliveryLimits`가 구현하는 공통 제한) |
+| 실행·취소·응답 수명 | `BoundedTaskExecutor`(DNS·HTTP 공통 기한·취소·대기열 정리·종료), `http/ApacheHttpRequestExecutor.executePinned`(두 전송의 공통 진입점), `ApacheResponseLifecycle`, `ResponseBodyDiscarder` |
+| 콜백 | `delivery/DeliveryEndpointPolicy`, `ApacheHealthChangeEventSender`, `ApacheEventDeliveryTransport`(콜백 URI·토큰 고정), `HealthChangeEventRequest`(고정 DTO 직렬화). 설정은 `bootstrap/.../EventDeliveryProperties`·`EventDeliveryConfiguration` |
 | 결과 분류 | `domain/.../monitoring/CheckOutcome` |
 
 ## 규칙
@@ -29,6 +29,8 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 - DNS 결과 중 하나라도 전역 주소가 아니면 전체를 거부한다. 클라우드 내부 주소의 명시 거부를 유지한다. 허용 범위를 넓히는 변경은 IANA 체크섬·경계 테스트를 함께 검토하며 자동으로 넓히지 않는다.
 - 검증한 IP에만 연결하고 HTTP `Host`·SNI·TLS 호스트 이름 검증에는 원래 호스트를 유지한다. 연결 직전 DNS를 다시 조회하는 경로를 만들지 않는다.
 - 자동 재시도·쿠키·인증 캐시·프록시 탐색·응답 압축 해제를 비활성화한다. 콜백은 리다이렉트를 따르지 않는다.
+- 대상 GET과 콜백은 `PinnedApacheClientFactory`의 고정 `User-Agent` 하나를 보낸다. 브라우저 값·HTTP 클라이언트 버전·런타임 설정으로 바꾸지 않는다.
+- 비ASCII 경로·쿼리는 저장 값을 유지하고 전송 직전에만 UTF-8 퍼센트 인코딩한다. 응답 헤더는 바이트가 문자로 넓혀진 값이므로 `Location`은 UTF-8로 복원해 정책에 넘긴다.
 - 대상 GET은 헤더를 받으면 본문을 읽거나 비우지 않고 연결을 닫는다. 콜백 응답은 크기 제한 안에서만 소비하고 초과하면 비우지 않고 중단한다. 응답 본문은 저장하지 않는다.
 - 각 단계 제한은 남은 전체 기한으로 줄여 적용한다. 전체 기한은 DNS와 모든 리다이렉트(콜백은 직렬화 포함)를 묶은 단일 마감이다. 소켓 제한은 최소 1밀리초로 두어 0(무제한) 변환을 막는다.
 - 기한 만료·인터럽트 시 대기 작업을 큐에서 제거하고 실제 HTTP 요청을 취소한다. 이미 인터럽트된 호출은 실행기에 제출하지 않고 `INTERNAL_FAILURE`를 반환하며 호출자의 인터럽트 상태를 지우지 않는다.
@@ -38,12 +40,12 @@ description: BATON WATCH의 외부 HTTP 요청 안전성을 바꿀 때 사용한
 
 ## 검증
 
-- 실제 공개 대상에 요청하지 않는다. 로컬 HTTP·TLS 서버(`StreamingHttpTestServer`, `PinnedApacheClientFactoryTlsIntegrationTest`)와 DNS 대역으로 재현한다.
+- 실제 공개 대상에 요청하지 않는다. 로컬 HTTP·TLS 서버(`LoopbackHttpTestServer`, `PinnedApacheClientFactoryTlsIntegrationTest`)와 DNS 대역으로 재현한다.
 - 시간 경계는 1ns·999999ns처럼 밀리초 변환 경계를 포함하고, 취소는 헤더 대기 중·본문 수신 중을 구분한다.
 
 ```bash
 python3 ops/run-validation.py run --label <주제>-reproduction -- \
-  ./gradlew :adapter-out-external:test --tests '*SafeUrlCheckEngineTest'
+  ./gradlew :adapter-out-external:test --tests '*ApacheUrlCheckerTest'
 python3 ops/run-validation.py run --label <주제>-external -- ./gradlew :adapter-out-external:test
 ```
 

@@ -1,22 +1,19 @@
 package com.personal.baton.watch.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBacklog;
 import com.personal.baton.watch.application.monitoring.model.EventDeliveryBatchResult;
-import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEventsUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.EventDeliveryMaintenanceUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.MonitoringMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -42,22 +39,20 @@ class MonitoringSchedulingTest {
             .withBean(SimpleMeterRegistry.class, SimpleMeterRegistry::new)
             .withUserConfiguration(MonitoringMetrics.class)
             .withBean(RunDueChecksUseCase.class,
-                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0))
+                    () -> () -> new DueCheckBatchResult(0, 0, 0, 0, 0))
             .withBean(RunEventDeliveriesUseCase.class,
                     () -> () -> new EventDeliveryBatchResult(0, 0, 0, 0, 0))
-            .withBean(MarkStaleProjectionsUseCase.class, () -> () -> 0)
-            .withBean(PurgeAttemptHistoryUseCase.class, () -> () -> 0)
-            .withBean(PurgeDeliveredEventsUseCase.class, () -> () -> 0)
-            .withBean(GetCheckScheduleDelayUseCase.class, () -> () -> Duration.ZERO)
-            .withBean(GetDatabaseClockOffsetUseCase.class, () -> () -> Duration.ZERO)
-            .withBean(GetEventDeliveryBacklogUseCase.class,
-                    () -> () -> new EventDeliveryBacklog(0, Optional.empty()))
+            .withBean(MonitoringMaintenanceUseCase.class, () -> mock(MonitoringMaintenanceUseCase.class))
+            .withBean(EventDeliveryMaintenanceUseCase.class, () -> {
+                EventDeliveryMaintenanceUseCase maintenance = mock(EventDeliveryMaintenanceUseCase.class);
+                when(maintenance.eventDeliveryBacklog()).thenReturn(new EventDeliveryBacklog(0, Duration.ZERO));
+                return maintenance;
+            })
             .withPropertyValues(
                     "watch.api-token=a-test-token-that-is-longer-than-32-characters",
                     "watch.poll-interval=1h", "watch.maintenance-interval=1h",
                     "watch.event-delivery.enabled=true",
-                    "watch.event-delivery.poll-interval=1h",
-                    "watch.event-delivery.maintenance-interval=1h");
+                    "watch.event-delivery.poll-interval=1h");
 
     @ParameterizedTest(name = "점검 설정 {0}에서 전달과 유지보수 예약 유지")
     @CsvSource({
@@ -70,7 +65,6 @@ class MonitoringSchedulingTest {
                         .addFirst(new MapPropertySource("checkSetting", Map.of("watch.check-enabled", enabled))));
         configured.run(context -> {
             assertThat(context).hasNotFailed();
-            assertThat(context.getBean(WatchProperties.class).checkEnabled()).isEqualTo(expected);
             assertThat(context).hasSingleBean(MonitoringMaintenanceScheduler.class)
                     .hasSingleBean(EventDeliveryScheduler.class)
                     .hasSingleBean(EventDeliveryMaintenanceScheduler.class);
@@ -84,6 +78,17 @@ class MonitoringSchedulingTest {
                 assertThat(tasks).hasSize(8);
             }
         });
+    }
+
+    @Test
+    void countsChecksRecordedAsSuspectedEgressOutages() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        MonitoringScheduler scheduler = new MonitoringScheduler(
+                () -> new DueCheckBatchResult(3, 3, 0, 0, 2), new MonitoringMetrics(registry));
+
+        scheduler.checkDueMonitors();
+
+        assertThat(registry.get("baton.watch.check.egress.suspected").counter().count()).isEqualTo(2.0);
     }
 
     @Test

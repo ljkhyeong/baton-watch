@@ -1,0 +1,10 @@
+# 모니터 API 토큰을 교체하는 동안에만 추가해 이전 토큰을 비밀 파일로 함께 허용한다.
+services:
+  watch:
+    secrets:
+      - source: watch-api-previous-token
+        target: watch.api-previous-token
+
+secrets:
+  watch-api-previous-token:
+    file: "${WATCH_API_PREVIOUS_TOKEN_FILE:?WATCH_API_PREVIOUS_TOKEN_FILE is required}"

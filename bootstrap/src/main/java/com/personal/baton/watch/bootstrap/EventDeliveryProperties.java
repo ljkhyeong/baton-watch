@@ -1,14 +1,12 @@
 package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
-import com.personal.baton.watch.application.monitoring.service.TimeBoundaryPolicy;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.time.Duration;
-import java.util.Objects;
 import org.hibernate.validator.constraints.time.DurationMax;
 import org.hibernate.validator.constraints.time.DurationMin;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -17,32 +15,21 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties("watch.event-delivery")
 public record EventDeliveryProperties(
-        boolean enabled,
         String endpoint,
         String bearerToken,
         @NotNull @DurationMin(seconds = 1) Duration pollInterval,
-        @NotNull @DurationMin(seconds = 60) Duration maintenanceInterval,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration leaseDuration,
         @NotNull @DurationMin(seconds = 5) Duration initialRetryDelay,
         @NotNull @DurationMin(seconds = 5) Duration maxRetryDelay,
         @NotNull @DurationMin(inclusive = false)
-        @DurationMax(days = TimeBoundaryPolicy.MAX_SUPPORTED_OFFSET_DAYS)
+        @DurationMax(days = WatchProperties.MAX_TIME_OFFSET_DAYS)
         Duration retention,
         @Min(1) @Max(MAX_DELIVERY_BATCH_SIZE) int batchSize,
-        @Min(1) @Max(MAX_MAINTENANCE_BATCH_SIZE) int maintenanceBatchSize,
         @Valid @NotNull Http http) {
 
     static final int MAX_DELIVERY_BATCH_SIZE = 100;
-    static final int MAX_MAINTENANCE_BATCH_SIZE = 1_000;
-
-    public EventDeliveryProperties {
-        if (enabled) {
-            Objects.requireNonNull(endpoint, "endpoint");
-            Objects.requireNonNull(bearerToken, "bearerToken");
-        }
-    }
 
     URI endpointUri() {
         try {

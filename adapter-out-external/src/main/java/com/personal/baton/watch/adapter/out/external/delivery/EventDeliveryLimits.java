@@ -1,6 +1,7 @@
 package com.personal.baton.watch.adapter.out.external.delivery;
 
 import com.personal.baton.watch.adapter.out.external.OutboundResourceBounds;
+import com.personal.baton.watch.adapter.out.external.http.ApacheHttpClientLimits;
 import java.time.Duration;
 import org.apache.hc.core5.util.Args;
 
@@ -11,7 +12,7 @@ public record EventDeliveryLimits(
         Duration totalTimeout,
         long maxResponseBytes,
         int maxHeaderCount,
-        int maxHeaderLineLength) {
+        int maxHeaderLineLength) implements ApacheHttpClientLimits {
 
     public EventDeliveryLimits {
         OutboundResourceBounds.requirePositiveDuration(connectTimeout, "connectTimeout");

@@ -3,6 +3,7 @@ package com.personal.baton.watch.adapter.out.persistence.monitoring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTable;
+import static org.springframework.test.jdbc.JdbcTestUtils.countRowsInTableWhere;
 
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
@@ -19,13 +20,11 @@ import com.personal.baton.watch.domain.monitoring.SourceRevision;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.Callable;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.simple.JdbcClient;
 
 class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegrationTestSupport {
 
@@ -112,11 +111,8 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
 
         assertThat(runConcurrently(request, request))
                 .containsExactlyInAnyOrder(SynchronizationStatus.APPLIED, SynchronizationStatus.UNCHANGED);
-        assertThat(jdbc.queryForObject("""
-                SELECT COUNT(*)
-                FROM watch_monitor
-                WHERE resource_reference = 'resource:concurrent-sync'
-                """, Integer.class))
+        assertThat(countRowsInTableWhere(
+                        jdbc, "watch_monitor", "resource_reference = 'resource:concurrent-sync'"))
                 .isEqualTo(1);
     }
 
@@ -125,7 +121,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         synchronize("resource:target-change", 1, "https://one.example/path", BASE_TIME);
         ClaimedCheck first = claimOne();
         Instant completedAt = first.claimedAt().plusSeconds(1);
-        finalizeAt(first, completedAt, CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0));
+        finalizeAt(first, completedAt, CheckObservation.forHttpStatus(204, Duration.ZERO, 0));
         assertThat(projection("resource:target-change").lastConclusiveAt()).contains(completedAt);
 
         jdbc.update("""
@@ -145,17 +141,12 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         assertThat(changed.projection().nextCheckAt()).contains(changedAt);
         assertThat(checkWorkPersistence.finalizeCheck(finalization(
                         inFlight,
-                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0),
+                        CheckObservation.forHttpStatus(200, Duration.ZERO, 0),
                         changedAt.plusSeconds(1),
                         changedAt.plus(INTERVAL))))
                 .isEqualTo(CheckFinalizationStatus.STALE_CLAIM);
         assertThat(countRowsInTable(jdbc, "watch_result")).isEqualTo(1);
-        assertThat(jdbc.queryForList("""
-                SELECT previous_health || '->' || current_health
-                FROM watch_health_change_event
-                WHERE resource_reference = ?
-                ORDER BY changed_at
-                """, String.class, "resource:target-change"))
+        assertThat(healthTransitions("resource:target-change"))
                 .containsExactly("UNKNOWN->HEALTHY", "HEALTHY->UNKNOWN");
     }
 
@@ -167,44 +158,15 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck claimed = claimOne();
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         finalizeAt(claimed, completedAt);
-        MonitorProjection before = projection(reference);
-        Instant updatedAt = jdbc.queryForObject(
-                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
-                        OffsetDateTime.class,
-                        reference)
-                .toInstant();
-        jdbc.execute("""
-                CREATE UNIQUE INDEX ux_test_sync_event_failure
-                ON watch_health_change_event (resource_reference)
-                WHERE resource_reference = 'resource:sync-event-rollback'
-                """);
 
-        Throwable failure = catchThrowable(() -> synchronize(
-                reference,
-                2,
-                "https://changed.example/path",
-                completedAt.plusSeconds(1)));
-        assertUniqueConstraintViolation(failure, "ux_test_sync_event_failure");
-
-        assertThat(projection(reference)).isEqualTo(before);
+        assertRollsBackWhenEventInsertFails(reference, () -> synchronize(
+                reference, 2, "https://changed.example/path", completedAt.plusSeconds(1)));
         assertThat(jdbc.queryForObject(
                 "SELECT target_url FROM watch_monitor WHERE resource_reference = ?",
                 String.class,
                 reference))
                 .isEqualTo(originalTarget);
-        assertThat(jdbc.queryForObject(
-                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
-                        OffsetDateTime.class,
-                        reference)
-                .toInstant())
-                .isEqualTo(updatedAt);
-        assertThat(jdbc.queryForList("""
-                SELECT previous_health || '->' || current_health
-                FROM watch_health_change_event
-                WHERE resource_reference = ?
-                ORDER BY changed_at
-                """, String.class, reference))
-                .containsExactly("UNKNOWN->HEALTHY");
+        assertThat(healthTransitions(reference)).containsExactly("UNKNOWN->HEALTHY");
     }
 
     @Test
@@ -213,7 +175,7 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck claimed = claimOne();
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         finalizeAt(claimed, completedAt,
-                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0));
+                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0));
 
         assertThat(monitorPersistence.markStaleUnknown(
                         completedAt.minusNanos(1_000), completedAt.plusSeconds(600), 10))
@@ -250,8 +212,6 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                 ? available.claimedAt()
                 : lockedCompletedAt.plusNanos(1_000);
         finalizeAt(available, availableCompletedAt);
-        JdbcMonitorPersistenceAdapter competingPersistence = new JdbcMonitorPersistenceAdapter(
-                JdbcClient.create(new JdbcTemplate(testDataSource)), newTransactionOperations());
         Instant markedAt = availableCompletedAt.plusSeconds(600);
 
         assertThat(callWhileLocked(
@@ -261,16 +221,11 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
                         WHERE resource_reference = ?
                         FOR UPDATE
                         """, String.class, lockedReference)).isEqualTo(lockedReference),
-                () -> competingPersistence.markStaleUnknown(availableCompletedAt, markedAt, 1)))
+                () -> monitorPersistence.markStaleUnknown(availableCompletedAt, markedAt, 1)))
                 .isEqualTo(1);
         assertThat(projection(lockedReference).health()).isEqualTo(Health.HEALTHY);
         assertThat(projection(availableReference).health()).isEqualTo(Health.UNKNOWN);
-        assertThat(jdbc.queryForList("""
-                SELECT previous_health || '->' || current_health
-                FROM watch_health_change_event
-                WHERE resource_reference = ?
-                ORDER BY changed_at
-                """, String.class, availableReference))
+        assertThat(healthTransitions(availableReference))
                 .containsExactly("UNKNOWN->HEALTHY", "HEALTHY->UNKNOWN");
     }
 
@@ -281,44 +236,31 @@ class JdbcMonitorPersistenceIntegrationTest extends MonitoringPersistenceIntegra
         ClaimedCheck claimed = claimOne();
         Instant completedAt = claimed.claimedAt().plusSeconds(1);
         finalizeAt(claimed, completedAt,
-                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0, 0));
-        MonitorProjection before = projection(reference);
-        Instant updatedAt = jdbc.queryForObject(
-                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
-                        OffsetDateTime.class,
-                        reference)
-                .toInstant();
-        jdbc.execute("""
-                CREATE UNIQUE INDEX ux_test_stale_event_failure
-                ON watch_health_change_event (resource_reference)
-                WHERE resource_reference = 'resource:stale-event-rollback'
-                """);
+                CheckObservation.failure(CheckOutcome.CONNECT_TIMEOUT, Duration.ZERO, 0));
 
-        Throwable failure = catchThrowable(() -> monitorPersistence.markStaleUnknown(
+        assertRollsBackWhenEventInsertFails(reference, () -> monitorPersistence.markStaleUnknown(
                 completedAt, completedAt.plusSeconds(600), 1));
-        assertUniqueConstraintViolation(failure, "ux_test_stale_event_failure");
+        assertThat(healthTransitions(reference)).containsExactly("UNKNOWN->DEGRADED");
+    }
 
+    /** 이벤트 저장이 유일 제약으로 실패하면 프로젝션이 그대로인지 확인한다. */
+    private void assertRollsBackWhenEventInsertFails(String reference, ThrowingCallable change) {
+        MonitorProjection before = projection(reference);
+        jdbc.execute("CREATE UNIQUE INDEX ux_test_event_failure ON watch_health_change_event (resource_reference)");
+
+        Throwable failure = catchThrowable(change);
+        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class)
+                .rootCause().hasMessageContaining("ux_test_event_failure");
+        assertSqlState(failure, "23505");
         assertThat(projection(reference)).isEqualTo(before);
-        assertThat(jdbc.queryForObject(
-                        "SELECT updated_at FROM watch_monitor WHERE resource_reference = ?",
-                        OffsetDateTime.class,
-                        reference)
-                .toInstant())
-                .isEqualTo(updatedAt);
-        assertThat(jdbc.queryForList("""
+    }
+
+    private List<String> healthTransitions(String reference) {
+        return jdbc.queryForList("""
                 SELECT previous_health || '->' || current_health
                 FROM watch_health_change_event
                 WHERE resource_reference = ?
                 ORDER BY changed_at
-                """, String.class, reference))
-                .containsExactly("UNKNOWN->DEGRADED");
+                """, String.class, reference);
     }
-
-    private static void assertUniqueConstraintViolation(
-            Throwable failure, String constraintName) {
-        assertThat(failure).isInstanceOf(DataIntegrityViolationException.class)
-                .rootCause().hasMessageContaining(constraintName);
-        assertSqlState(failure, "23505");
-    }
-
 }

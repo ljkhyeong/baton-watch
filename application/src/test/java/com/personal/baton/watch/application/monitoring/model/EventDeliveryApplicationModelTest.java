@@ -27,13 +27,13 @@ class EventDeliveryApplicationModelTest {
         "599, HTTP_SERVER_ERROR"
     })
     void mapsFinalHttpStatusBoundaries(int status, EventDeliveryOutcome expected) {
-        assertEquals(expected, EventDeliveryObservation.forHttpStatus(status).outcome());
+        assertEquals(expected, EventDeliveryObservation.forHttpStatus(status, null).outcome());
     }
 
     @Test
     void rejectsUnsupportedStatusesAndMismatchedOutcomes() {
-        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(199));
-        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(600));
+        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(199, null));
+        assertThrows(IllegalArgumentException.class, () -> EventDeliveryObservation.forHttpStatus(600, null));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EventDeliveryObservation(EventDeliveryOutcome.DELIVERED, 199, null));

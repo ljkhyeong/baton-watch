@@ -99,6 +99,10 @@ expect_status 401 "미인증 모니터 요청이 실패했습니다" \
     --header 'Content-Type: application/json' \
     --data-binary '{'
 
+expect_status 401 "미인증 묶음 조회가 실패했습니다" \
+    "미인증 묶음 조회는 리다이렉트 없이 HTTP 401이어야 합니다" \
+    "$public_base_url/api/v1/resource-monitors?resourceReference=staging-auth-smoke"
+
 expect_status 404 "인그레스 기타 경로 요청이 실패했습니다" \
     "인그레스 기타 경로는 리다이렉트 없이 HTTP 404여야 합니다" \
     "$public_base_url/api/v1/ingress-deny-smoke"

@@ -3,14 +3,12 @@ package com.personal.baton.watch.bootstrap;
 import com.personal.baton.watch.adapter.out.external.delivery.ApacheHealthChangeEventSender;
 import com.personal.baton.watch.adapter.out.external.delivery.EventDeliveryLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcHealthChangeEventDeliveryAdapter;
-import com.personal.baton.watch.application.monitoring.port.in.GetEventDeliveryBacklogUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeDeliveredEventsUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.EventDeliveryMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunEventDeliveriesUseCase;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventDeliveryPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.HealthChangeEventSender;
+import com.personal.baton.watch.application.monitoring.service.EventDeliveryMaintenanceService;
 import com.personal.baton.watch.application.monitoring.service.EventDeliveryRetryPolicy;
-import com.personal.baton.watch.application.monitoring.service.GetEventDeliveryBacklogService;
-import com.personal.baton.watch.application.monitoring.service.PurgeDeliveredEventsService;
 import com.personal.baton.watch.application.monitoring.service.RunEventDeliveriesService;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
@@ -22,23 +20,15 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
-import tools.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 class EventDeliveryConfiguration {
 
     @Bean
-    JdbcHealthChangeEventDeliveryAdapter healthChangeEventDeliveryPersistenceAdapter(
-            JdbcClient jdbcClient, TransactionOperations transactions) {
-        return new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
-    }
-
-    @Bean
-    @Primary
-    HealthChangeEventDeliveryPersistencePort meteredHealthChangeEventDeliveryPersistence(
-            JdbcHealthChangeEventDeliveryAdapter persistence,
-            MonitoringMetrics metrics) {
-        return new MeteredHealthChangeEventDeliveryPersistence(persistence, metrics);
+    HealthChangeEventDeliveryPersistencePort healthChangeEventDeliveryPersistence(
+            JdbcClient jdbcClient, TransactionOperations transactions, MonitoringMetrics metrics) {
+        return new MeteredHealthChangeEventDeliveryPersistence(
+                new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions), metrics);
     }
 
     @Bean
@@ -46,10 +36,10 @@ class EventDeliveryConfiguration {
     ApacheHealthChangeEventSender healthChangeEventSender(
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
-            ObjectMapper objectMapper,
             Clock clock) {
-        if (properties.bearerToken().equals(watchProperties.apiToken())) {
-            throw new IllegalArgumentException("event delivery token must differ from the monitor API token");
+        if (properties.bearerToken().equals(watchProperties.apiToken())
+                || properties.bearerToken().equals(watchProperties.apiPreviousToken())) {
+            throw new IllegalArgumentException("event delivery token must differ from the monitor API tokens");
         }
         EventDeliveryProperties.Http http = properties.http();
         EventDeliveryLimits limits = new EventDeliveryLimits(
@@ -67,7 +57,6 @@ class EventDeliveryConfiguration {
                 http.dnsQueueCapacity(),
                 http.requestThreads(),
                 http.requestQueueCapacity(),
-                objectMapper,
                 clock);
     }
 
@@ -88,7 +77,8 @@ class EventDeliveryConfiguration {
             EventDeliveryProperties properties,
             WatchProperties watchProperties,
             DatabaseRuntimeProperties database,
-            PersistenceProperties persistenceProperties) {
+            PersistenceProperties persistenceProperties,
+            WorkerShutdownSignal shutdownSignal) {
         WorkerExecutionBudget.requireSafe(
                 "event delivery",
                 watchProperties.workerExecutionBudget(),
@@ -104,22 +94,18 @@ class EventDeliveryConfiguration {
                 properties.leaseDuration(),
                 new EventDeliveryRetryPolicy(
                         properties.initialRetryDelay(), properties.maxRetryDelay()),
-                properties.batchSize());
+                properties.batchSize(),
+                shutdownSignal::requested);
     }
 
     @Bean
-    PurgeDeliveredEventsUseCase purgeDeliveredEventsUseCase(
+    EventDeliveryMaintenanceUseCase eventDeliveryMaintenanceUseCase(
             HealthChangeEventDeliveryPersistencePort persistence,
             Clock clock,
-            EventDeliveryProperties properties) {
-        return new PurgeDeliveredEventsService(
-                persistence, clock, properties.retention(), properties.maintenanceBatchSize());
-    }
-
-    @Bean
-    GetEventDeliveryBacklogUseCase getEventDeliveryBacklogUseCase(
-            HealthChangeEventDeliveryPersistencePort persistence, Clock clock) {
-        return new GetEventDeliveryBacklogService(persistence, clock);
+            EventDeliveryProperties properties,
+            WatchProperties watchProperties) {
+        return new EventDeliveryMaintenanceService(
+                persistence, clock, properties.retention(), watchProperties.maintenanceBatchSize());
     }
 
     static final class EnabledCondition implements Condition {

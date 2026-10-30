@@ -57,7 +57,7 @@ class MonitoringProcessRecoveryTest extends MonitoringPersistenceIntegrationTest
 
     @Test
     void recoversDeliveryAfterProcessDiesBeforeSending() throws Exception {
-        UUID eventId = createEvent();
+        UUID eventId = createHealthChangeEvent("process-recovery");
         try (var receiver = new CallbackReceiver(false)) {
             try (var crashed = new WorkerProcess("delivery-block", receiver.endpoint())) {
                 crashed.awaitCheckpoint();
@@ -76,7 +76,7 @@ class MonitoringProcessRecoveryTest extends MonitoringPersistenceIntegrationTest
 
     @Test
     void redeliversSameEventAfterReceiverAcceptsButProcessLosesResponse() throws Exception {
-        UUID eventId = createEvent();
+        UUID eventId = createHealthChangeEvent("process-recovery");
         try (var receiver = new CallbackReceiver(true)) {
             ReceivedDelivery first;
             try (var crashed = new WorkerProcess("delivery", receiver.endpoint())) {
@@ -93,13 +93,6 @@ class MonitoringProcessRecoveryTest extends MonitoringPersistenceIntegrationTest
             assertThat(receiver.received).containsExactly(first);
         }
         assertDeliveredOnce(eventId);
-    }
-
-    private UUID createEvent() {
-        synchronize("process-recovery", 1, "https://recovery.example/check", BASE_TIME);
-        var claim = claimOne();
-        finalizeAt(claim, claim.claimedAt());
-        return jdbc.queryForObject("SELECT event_id FROM watch_health_change_event", UUID.class);
     }
 
     private void assertPendingClaim() {

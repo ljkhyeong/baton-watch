@@ -14,10 +14,6 @@ public record EventDeliveryObservation(
         }
     }
 
-    public static EventDeliveryObservation forHttpStatus(int httpStatusCode) {
-        return forHttpStatus(httpStatusCode, null);
-    }
-
     public static EventDeliveryObservation forHttpStatus(int httpStatusCode, Instant retryNotBefore) {
         EventDeliveryOutcome outcome = httpOutcome(httpStatusCode);
         if (outcome == null) {

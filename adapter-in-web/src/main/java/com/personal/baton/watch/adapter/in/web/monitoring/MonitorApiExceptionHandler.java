@@ -39,15 +39,6 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
     private static final MonitorApiProblem SERVICE_UNAVAILABLE = MonitorApiProblem.of(
             "service-unavailable", "일시적으로 요청을 처리할 수 없습니다", "SERVICE_UNAVAILABLE");
 
-    @ExceptionHandler(MonitorApiException.class)
-    ResponseEntity<Object> handleMonitorApiException(MonitorApiException exception) {
-        HttpHeaders headers = new HttpHeaders();
-        if (exception.retryAfterSeconds() > 0) {
-            headers.set(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
-        }
-        return problem(exception.status(), exception.problem(), headers);
-    }
-
     @ExceptionHandler(Exception.class)
     ResponseEntity<Object> handleUnexpected(Exception exception) {
         logFailure(exception);
@@ -92,14 +83,18 @@ public final class MonitorApiExceptionHandler extends ResponseEntityExceptionHan
         if (!status.is4xxClientError()) {
             return problem(HttpStatus.INTERNAL_SERVER_ERROR, INTERNAL_ERROR, headers);
         }
-        MonitorApiProblem problem = switch (status.value()) {
-            case 400 -> MonitorApiProblem.INVALID_REQUEST;
-            case 404 -> ROUTE_NOT_FOUND;
-            case 405 -> METHOD_NOT_ALLOWED;
-            case 406 -> NOT_ACCEPTABLE;
-            case 415 -> UNSUPPORTED_MEDIA_TYPE;
-            default -> MonitorApiProblem.REQUEST_REJECTED;
-        };
+        // MonitorApiException은 handleErrorResponseException을 거쳐 상태·헤더와 함께 들어온다.
+        // 404가 ROUTE_NOT_FOUND로 바뀌지 않도록 상태별 분류보다 먼저 판정한다.
+        MonitorApiProblem problem = exception instanceof MonitorApiException monitorException
+                ? monitorException.problem()
+                : switch (status.value()) {
+                    case 400 -> MonitorApiProblem.INVALID_REQUEST;
+                    case 404 -> ROUTE_NOT_FOUND;
+                    case 405 -> METHOD_NOT_ALLOWED;
+                    case 406 -> NOT_ACCEPTABLE;
+                    case 415 -> UNSUPPORTED_MEDIA_TYPE;
+                    default -> MonitorApiProblem.REQUEST_REJECTED;
+                };
         return problem(status, problem, headers);
     }
 

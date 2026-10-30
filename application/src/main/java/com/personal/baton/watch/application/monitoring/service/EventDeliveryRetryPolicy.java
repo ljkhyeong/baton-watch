@@ -5,11 +5,14 @@ import java.time.Instant;
 
 public record EventDeliveryRetryPolicy(Duration initialDelay, Duration maxDelay) {
 
+    /** 설정에 없는 상한으로, 지수 백오프의 기간·시각 계산 범위를 보장한다. */
+    static final Duration MAX_DELAY = Duration.ofDays(30);
+
     public EventDeliveryRetryPolicy {
-        TimeBoundaryPolicy.requireEventDeliveryRetryDelay(initialDelay, "initialDelay");
-        TimeBoundaryPolicy.requireEventDeliveryRetryDelay(maxDelay, "maxDelay");
-        if (initialDelay.compareTo(maxDelay) > 0) {
-            throw new IllegalArgumentException("initialDelay must not exceed maxDelay");
+        if (!initialDelay.isPositive()
+                || initialDelay.compareTo(maxDelay) > 0
+                || maxDelay.compareTo(MAX_DELAY) > 0) {
+            throw new IllegalArgumentException("retry delays must satisfy 0 < initialDelay <= maxDelay <= 30 days");
         }
     }
 

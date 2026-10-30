@@ -59,5 +59,5 @@ bootstrap/build/test-results/runtimeLoadTest/
 이 시험은 실제 외부 DNS 해석, TCP 연결, TLS 검증, 응답 크기 제한, 리다이렉트 정책,
 BATON 공개 콜백, Cloudflare Tunnel, NGINX, 외부 Prometheus·Grafana·알림 경로를
 검증하지 않는다. 실제 외부 통신은 승인된 스테이징에서 별도로 검증해야 한다.
-DB 잠금 실패와 리스 만료 복구는 [격리 DB 부하·장애 복구 시험](load-recovery-test.md),
+DB 잠금 실패와 리스 만료 복구는 영속성 통합 시험(`PostgresTransactionOperationsIntegrationTest`·`JdbcCheckWorkPersistenceIntegrationTest`),
 별도 JVM 강제 종료는 [프로세스 복구 시험](process-recovery-test.md)을 함께 사용한다.

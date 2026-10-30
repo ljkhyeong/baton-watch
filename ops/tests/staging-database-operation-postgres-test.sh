@@ -178,8 +178,8 @@ migration_evidence="$(
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$migration_evidence" != "1,2,3,4,5,6" ]]; then
-    fail "Flyway V1~V6 적용 증거가 올바르지 않습니다"
+if [[ "$migration_evidence" != "1" ]]; then
+    fail "Flyway V1 적용 증거가 올바르지 않습니다"
 fi
 
 role_evidence="$(
@@ -220,6 +220,11 @@ runtime_search_path="$(
 )"
 if [[ "$runtime_search_path" != "pg_catalog,public" ]]; then
     fail "런타임 역할의 search_path가 올바르지 않습니다"
+fi
+
+staging_compose run --rm --no-deps -T database-role-init
+if ! printf 'SELECT count(*) FROM public.watch_monitor;\n' | runtime_psql >/dev/null; then
+    fail "역할 초기화 재실행이 실행 중 런타임 역할의 테이블 권한을 회수했습니다"
 fi
 
 printf '%s\n' \
@@ -264,13 +269,11 @@ privilege_evidence="$(
         "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'DELETE')," \
         "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'changed_at', 'UPDATE')," \
         "  has_column_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event', 'delivery_status', 'UPDATE')," \
-        "  has_table_privilege('${RUNTIME_ROLE}', 'public.flyway_schema_history', 'SELECT')," \
-        "  has_table_privilege('${RUNTIME_ROLE}', 'public.watch_health_change_event_backlog', 'UPDATE')," \
-        "  has_function_privilege('${RUNTIME_ROLE}', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" \
+        "  has_table_privilege('${RUNTIME_ROLE}', 'public.flyway_schema_history', 'SELECT'));" \
         | owner_psql \
         | tr -d '[:space:]'
 )"
-if [[ "$privilege_evidence" != "f|t|f|t|f|t|f|t|f|t|f|f|f" ]]; then
+if [[ "$privilege_evidence" != "f|t|f|t|f|t|f|t|f|t|f" ]]; then
     fail "런타임 역할의 최소 권한 증거가 올바르지 않습니다"
 fi
 
@@ -301,10 +304,10 @@ owner_password_file="$TEMP_DIR/rollback-owner-password"
 printf '%s\n' \
     "INSERT INTO public.watch_monitor (" \
     "  resource_reference, source_revision, monitor_status, target_url," \
-    "  current_health, next_check_at, created_at, updated_at" \
+    "  current_health, next_check_at" \
     ") VALUES (" \
     "  'ops-runtime-smoke', 1, 'INACTIVE', NULL," \
-    "  'UNKNOWN', NULL, transaction_timestamp(), transaction_timestamp()" \
+    "  'UNKNOWN', NULL" \
     ");" \
     "INSERT INTO public.watch_health_change_event (" \
     "  event_id, resource_reference, source_revision, attempt_id," \
@@ -318,35 +321,22 @@ printf '%s\n' \
     | runtime_psql \
     >/dev/null
 
-backlog_evidence="$(
-    printf '%s\n' \
-        "SELECT pending_count" \
-        "FROM public.watch_health_change_event_backlog" \
-        "WHERE singleton;" \
-        | runtime_psql \
-        | tr -d '[:space:]'
-)"
-if [[ "$backlog_evidence" != "1" ]]; then
-    fail "런타임 이벤트 쓰기의 보호된 백로그 갱신 증거가 올바르지 않습니다"
-fi
-
 printf '%s\n' \
     "INSERT INTO public.watch_attempt (" \
     "  attempt_id, resource_reference, source_revision, target_url," \
-    "  lease_token, claimed_at, lease_expires_at" \
+    "  claimed_at, lease_expires_at" \
     ") VALUES (" \
     "  '00000000-0000-0000-0000-000000000010', 'ops-runtime-smoke', 1," \
     "  'https://runtime-smoke.example/path'," \
-    "  '00000000-0000-0000-0000-000000000011'," \
     "  transaction_timestamp() - INTERVAL '1 second'," \
     "  transaction_timestamp() + INTERVAL '1 minute'" \
     ");" \
     "INSERT INTO public.watch_result (" \
     "  attempt_id, outcome, http_status_code, completed_at," \
-    "  duration_seconds, duration_nanos, response_bytes, redirect_count" \
+    "  duration_seconds, duration_nanos, redirect_count" \
     ") VALUES (" \
     "  '00000000-0000-0000-0000-000000000010', 'SUCCESS', 204," \
-    "  transaction_timestamp(), 0, 0, 0, 0" \
+    "  transaction_timestamp(), 0, 0, 0" \
     ");" \
     "INSERT INTO public.watch_health_change_event (" \
     "  event_id, resource_reference, source_revision, attempt_id," \
@@ -358,7 +348,7 @@ printf '%s\n' \
     "  'PENDING', 0, transaction_timestamp()" \
     ");" \
     "UPDATE public.watch_monitor" \
-    "SET updated_at = transaction_timestamp()" \
+    "SET last_check_requested_at = transaction_timestamp()" \
     "WHERE resource_reference = 'ops-runtime-smoke';" \
     "UPDATE public.watch_health_change_event" \
     "SET delivery_attempt = delivery_attempt + 1," \
@@ -388,6 +378,8 @@ assert_runtime_rejects \
     "UPDATE public.watch_health_change_event SET changed_at = changed_at WHERE event_id = '00000000-0000-0000-0000-000000000001';"
 
 printf '%s\n' \
+    "SELECT attempt_id FROM public.watch_attempt" \
+    "WHERE attempt_id = '00000000-0000-0000-0000-000000000010' FOR UPDATE SKIP LOCKED;" \
     "DELETE FROM public.watch_health_change_event" \
     "WHERE event_id = '00000000-0000-0000-0000-000000000020';" \
     "DELETE FROM public.watch_attempt" \
@@ -404,13 +396,13 @@ retention_evidence="$(
         "   WHERE attempt_id = '00000000-0000-0000-0000-000000000010')," \
         "  (SELECT COUNT(*) FROM public.watch_health_change_event" \
         "   WHERE event_id = '00000000-0000-0000-0000-000000000020')," \
-        "  (SELECT pending_count FROM public.watch_health_change_event_backlog" \
-        "   WHERE singleton));" \
+        "  (SELECT COUNT(*) FROM public.watch_health_change_event" \
+        "   WHERE delivery_status = 'PENDING'));" \
         | owner_psql \
         | tr -d '[:space:]'
 )"
 if [[ "$retention_evidence" != "0|0|0|1" ]]; then
-    fail "런타임 역할의 허용된 보존 DML 또는 백로그 증거가 올바르지 않습니다"
+    fail "런타임 역할의 허용된 보존 DML 또는 미전달 이벤트 보존 증거가 올바르지 않습니다"
 fi
 
 wait_for_watch

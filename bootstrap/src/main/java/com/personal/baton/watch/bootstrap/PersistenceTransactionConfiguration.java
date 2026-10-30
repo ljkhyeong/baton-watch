@@ -25,7 +25,6 @@ class PersistenceTransactionConfiguration {
         TransactionTemplate transactions = new TransactionTemplate(transactionManager);
         transactions.setName("baton-watch-persistence");
         transactions.setTimeout(Math.toIntExact(properties.transactionTimeout().toSeconds()));
-        return new PostgresTransactionOperations(
-                jdbcTemplate, transactions, properties.lockTimeout());
+        return new PostgresTransactionOperations(transactions);
     }
 }

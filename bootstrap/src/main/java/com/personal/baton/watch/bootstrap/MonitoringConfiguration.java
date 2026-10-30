@@ -5,12 +5,8 @@ import com.personal.baton.watch.adapter.out.external.check.CheckerLimits;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcCheckWorkPersistenceAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcDatabaseClockAdapter;
 import com.personal.baton.watch.adapter.out.persistence.monitoring.JdbcMonitorPersistenceAdapter;
-import com.personal.baton.watch.application.monitoring.port.in.GetCheckScheduleDelayUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetDatabaseClockOffsetUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.MarkStaleProjectionsUseCase;
-import com.personal.baton.watch.application.monitoring.port.in.PurgeAttemptHistoryUseCase;
+import com.personal.baton.watch.application.monitoring.port.in.MonitoringMaintenanceUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RunDueChecksUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
@@ -18,13 +14,10 @@ import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersist
 import com.personal.baton.watch.application.monitoring.port.out.DatabaseClockPort;
 import com.personal.baton.watch.application.monitoring.port.out.MonitorPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
-import com.personal.baton.watch.application.monitoring.service.MarkStaleProjectionsService;
-import com.personal.baton.watch.application.monitoring.service.PurgeAttemptHistoryService;
+import com.personal.baton.watch.application.monitoring.service.MonitoringMaintenanceService;
 import com.personal.baton.watch.application.monitoring.service.RunDueChecksService;
 import com.personal.baton.watch.application.monitoring.service.RequestMonitorCheckService;
 import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -41,17 +34,10 @@ public class MonitoringConfiguration {
     }
 
     @Bean
-    JdbcCheckWorkPersistenceAdapter checkWorkPersistenceAdapter(
-            JdbcClient jdbcClient, TransactionOperations transactions) {
-        return new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
-    }
-
-    @Bean
-    @Primary
-    CheckWorkPersistencePort meteredCheckWorkPersistence(
-            JdbcCheckWorkPersistenceAdapter persistence,
-            MonitoringMetrics metrics) {
-        return new MeteredCheckWorkPersistence(persistence, metrics);
+    CheckWorkPersistencePort checkWorkPersistence(
+            JdbcClient jdbcClient, TransactionOperations transactions, MonitoringMetrics metrics) {
+        return new MeteredCheckWorkPersistence(
+                new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions), metrics);
     }
 
     @Bean
@@ -60,31 +46,8 @@ public class MonitoringConfiguration {
     }
 
     @Bean
-    GetDatabaseClockOffsetUseCase getDatabaseClockOffsetUseCase(
-            DatabaseClockPort databaseClock,
-            Clock clock) {
-        return () -> {
-            Instant before = clock.instant();
-            Instant databaseTime = databaseClock.currentTime();
-            Instant after = clock.instant();
-            Instant midpoint = before.plus(Duration.between(before, after).dividedBy(2));
-            return Duration.between(databaseTime, midpoint);
-        };
-    }
-
-    @Bean
-    GetCheckScheduleDelayUseCase getCheckScheduleDelayUseCase(CheckWorkPersistencePort persistence) {
-        return persistence::getOldestDueCheckDelay;
-    }
-
-    @Bean
     SynchronizeMonitorUseCase synchronizeMonitorUseCase(MonitorPersistencePort persistence, Clock clock) {
         return command -> persistence.synchronize(command, clock.instant());
-    }
-
-    @Bean
-    GetMonitorProjectionUseCase getMonitorProjectionUseCase(MonitorPersistencePort persistence) {
-        return persistence::findProjection;
     }
 
     @Bean
@@ -104,7 +67,8 @@ public class MonitoringConfiguration {
             Clock clock,
             WatchProperties properties,
             DatabaseRuntimeProperties database,
-            PersistenceProperties persistenceProperties) {
+            PersistenceProperties persistenceProperties,
+            WorkerShutdownSignal shutdownSignal) {
         WorkerExecutionBudget.requireSafe(
                 "check",
                 properties.workerExecutionBudget(),
@@ -120,25 +84,23 @@ public class MonitoringConfiguration {
                 properties.leaseDuration(),
                 properties.checkInterval(),
                 properties.internalFailureRetryInterval(),
-                properties.checkBatchSize());
+                properties.checkBatchSize(),
+                shutdownSignal::requested);
     }
 
     @Bean
-    MarkStaleProjectionsUseCase markStaleProjectionsUseCase(
-            MonitorPersistencePort persistence, Clock clock, WatchProperties properties) {
-        return new MarkStaleProjectionsService(
-                persistence,
+    MonitoringMaintenanceUseCase monitoringMaintenanceUseCase(
+            MonitorPersistencePort monitors,
+            CheckWorkPersistencePort checkWork,
+            DatabaseClockPort databaseClock,
+            Clock clock,
+            WatchProperties properties) {
+        return new MonitoringMaintenanceService(
+                monitors,
+                checkWork,
+                databaseClock,
                 clock,
                 properties.staleAfter(),
-                properties.maintenanceBatchSize());
-    }
-
-    @Bean
-    PurgeAttemptHistoryUseCase purgeAttemptHistoryUseCase(
-            CheckWorkPersistencePort persistence, Clock clock, WatchProperties properties) {
-        return new PurgeAttemptHistoryService(
-                persistence,
-                clock,
                 properties.retention(),
                 properties.maintenanceBatchSize());
     }
@@ -150,7 +112,6 @@ public class MonitoringConfiguration {
                 http.connectTimeout(),
                 http.responseTimeout(),
                 http.totalTimeout(),
-                http.maxRedirects(),
                 http.maxHeaderCount(),
                 http.maxHeaderLineLength());
         return new ApacheUrlChecker(

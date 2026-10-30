@@ -5,11 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.http.LoopbackHttpTestServer;
 import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
-import com.personal.baton.watch.adapter.out.external.http.StreamingHttpTestServer;
-import com.sun.net.httpserver.HttpServer;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -18,7 +16,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.AutoClose;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -26,14 +24,8 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class ApacheHttpHopTransportTest {
 
-    private HttpServer server;
-
-    @AfterEach
-    void stopServer() {
-        if (server != null) {
-            server.stop(0);
-        }
-    }
+    @AutoClose
+    private final LoopbackHttpTestServer server = new LoopbackHttpTestServer();
 
     @Test
     void getsThePinnedAddressWithoutFollowingRedirectsAndPreservesResponseMetadata()
@@ -41,8 +33,7 @@ class ApacheHttpHopTransportTest {
         AtomicReference<String> method = new AtomicReference<>();
         AtomicReference<String> host = new AtomicReference<>();
         AtomicBoolean redirectTargetCalled = new AtomicBoolean();
-        server = server();
-        server.createContext("/start", exchange -> {
+        server.handle("/start", exchange -> {
             method.set(exchange.getRequestMethod());
             host.set(exchange.getRequestHeaders().getFirst("Host"));
             exchange.getResponseHeaders().add("Location", "/first");
@@ -52,37 +43,48 @@ class ApacheHttpHopTransportTest {
             exchange.getResponseBody().write(body);
             exchange.close();
         });
-        server.createContext("/first", exchange -> {
+        server.handle("/first", exchange -> {
             redirectTargetCalled.set(true);
             exchange.sendResponseHeaders(204, -1);
             exchange.close();
         });
-        server.start();
 
-        int port = server.getAddress().getPort();
+        ApprovedTarget start = target("/start");
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(), 1, 1)) {
-            HttpHopResponse response = transport.execute(
-                    target("/start"), Duration.ofSeconds(2));
+            HttpHopResponse response = transport.execute(start, Duration.ofSeconds(2));
 
             assertEquals(302, response.statusCode());
             assertEquals(List.of("/first", "/second"), response.locations());
         }
         assertEquals("GET", method.get());
-        assertEquals("check.test:" + port, host.get());
+        assertEquals(start.target().uri().getAuthority(), host.get());
         assertFalse(redirectTargetCalled.get());
+    }
+
+    @Test
+    void identifiesWatchWithOneFixedUserAgent() throws Exception {
+        AtomicReference<List<String>> userAgents = new AtomicReference<>();
+        server.handle("/agent", exchange -> {
+            userAgents.set(exchange.getRequestHeaders().get("User-Agent"));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/agent"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals(List.of("baton-watch (+https://github.com/ljkhyeong/baton-watch)"), userAgents.get());
     }
 
     @Test
     void preservesRepeatedSlashesInTheRequestPath() throws Exception {
         AtomicReference<String> path = new AtomicReference<>();
-        server = server();
-        server.createContext("/docs", exchange -> {
+        server.handle("/docs", exchange -> {
             path.set(exchange.getRequestURI().getRawPath());
             exchange.sendResponseHeaders(204, -1);
             exchange.close();
         });
-        server.start();
 
         try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             assertEquals(204, transport.execute(target("/docs//page"), Duration.ofSeconds(2)).statusCode());
@@ -91,10 +93,83 @@ class ApacheHttpHopTransportTest {
     }
 
     @Test
+    void percentEncodesNonAsciiPathAndQueryOnTheRequestLine() throws Exception {
+        AtomicReference<String> requestTarget = new AtomicReference<>();
+        server.handle("/", exchange -> {
+            requestTarget.set(exchange.getRequestURI().toString());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/문서?검색=한글"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals("/%EB%AC%B8%EC%84%9C?%EA%B2%80%EC%83%89=%ED%95%9C%EA%B8%80", requestTarget.get());
+    }
+
+    @Test
+    void keepsExistingPercentEncodingOnTheRequestLine() throws Exception {
+        AtomicReference<String> requestTarget = new AtomicReference<>();
+        server.handle("/", exchange -> {
+            requestTarget.set(exchange.getRequestURI().toString());
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(target("/a%20b/%EB%AC%B8?q=%2F"), Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals("/a%20b/%EB%AC%B8?q=%2F", requestTarget.get());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/문서/뷰?검색=한글", "/ascii?q=1"})
+    void restoresALocationSentAsRawUtf8Bytes(String location) throws Exception {
+        server.handle("/moved", exchange -> {
+            exchange.getResponseHeaders().add(
+                    "Location", new String(location.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1));
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(List.of(location), transport.execute(target("/moved"), Duration.ofSeconds(2)).locations());
+        }
+    }
+
+    @Test
+    void leavesALocationThatIsNotValidUtf8ForTheRedirectPolicyToJudge() throws Exception {
+        server.handle("/moved", exchange -> {
+            exchange.getResponseHeaders().add("Location", "/caf\u00e9");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(List.of("/caf\u00e9"), transport.execute(target("/moved"), Duration.ofSeconds(2)).locations());
+        }
+    }
+
+    @Test
+    void pinsAHostThatStartsWithAPunycodeLabel() throws Exception {
+        AtomicReference<String> host = new AtomicReference<>();
+        server.handle("/idn", exchange -> {
+            host.set(exchange.getRequestHeaders().getFirst("Host"));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+
+        ApprovedTarget idn = target("xn--bcher-kva.test", "/idn");
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            assertEquals(204, transport.execute(idn, Duration.ofSeconds(2)).statusCode());
+        }
+        assertEquals(idn.target().uri().getAuthority(), host.get());
+    }
+
+    @Test
     void acceptsALargeDeclaredBodyWithoutWaitingForIt() throws Exception {
         CountDownLatch releaseBody = new CountDownLatch(1);
-        server = server();
-        server.createContext("/large", exchange -> {
+        server.handle("/large", exchange -> {
             exchange.sendResponseHeaders(200, 1024 * 1024);
             try {
                 exchange.getResponseBody().flush();
@@ -103,7 +178,6 @@ class ApacheHttpHopTransportTest {
                 exchange.close();
             }
         });
-        server.start();
 
         try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             HttpHopResponse response = transport.execute(target("/large"), Duration.ofSeconds(1));
@@ -115,29 +189,26 @@ class ApacheHttpHopTransportTest {
 
     @Test
     void closesAStreamingBodyImmediatelyAndReleasesTheWorker() throws Exception {
-        try (var streaming = new StreamingHttpTestServer();
-                var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
-            HttpHopResponse response = transport.execute(
-                    target(streaming.uri("check.test", "/stream")), Duration.ofSeconds(1));
+        try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
+            HttpHopResponse response = transport.execute(target("/stream"), Duration.ofSeconds(1));
             assertEquals(200, response.statusCode());
-            assertTrue(streaming.awaitDisconnected());
-            assertEquals(204, transport.execute(
-                    target(streaming.uri("check.test", "/quick")),
-                    Duration.ofSeconds(1)).statusCode());
+            assertTrue(server.awaitDisconnected());
+            assertEquals(204, transport.execute(target("/quick"), Duration.ofSeconds(1)).statusCode());
+        }
+    }
+
+    @Test
+    void acceptsExactlyTheConfiguredResponseHeaderCount() throws Exception {
+        handleWithHeaderCount("/headers", 4);
+
+        try (var transport = new ApacheHttpHopTransport(testLimits(4), 1, 1)) {
+            assertEquals(204, transport.execute(target("/headers"), Duration.ofSeconds(2)).statusCode());
         }
     }
 
     @Test
     void mapsExcessiveResponseHeaderCountToResponseTooLarge() throws Exception {
-        server = server();
-        server.createContext("/headers", exchange -> {
-            for (int index = 0; index < 16; index++) {
-                exchange.getResponseHeaders().add("X-Test-" + index, "value");
-            }
-            exchange.sendResponseHeaders(204, -1);
-            exchange.close();
-        });
-        server.start();
+        handleWithHeaderCount("/headers", 5);
 
         try (ApacheHttpHopTransport transport =
                 new ApacheHttpHopTransport(testLimits(4), 1, 1)) {
@@ -149,24 +220,29 @@ class ApacheHttpHopTransportTest {
         }
     }
 
+    /** 시험 서버가 {@code Date} 헤더 하나를 더하므로 나머지만 직접 추가한다. */
+    private void handleWithHeaderCount(String path, int headerCount) {
+        server.handle(path, exchange -> {
+            for (int index = 1; index < headerCount; index++) {
+                exchange.getResponseHeaders().add("X-Test-" + index, "value");
+            }
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+    }
+
     @ParameterizedTest
     @EnumSource(StopReason.class)
     void cancelsWhileWaitingForHeadersAndReleasesTheWorker(StopReason reason) throws Exception {
         CountDownLatch requestStarted = new CountDownLatch(1);
         CountDownLatch releaseHeaders = new CountDownLatch(1);
-        server = server();
-        server.createContext("/slow", exchange -> {
+        server.handle("/slow", exchange -> {
             try (exchange) {
                 requestStarted.countDown();
                 await(releaseHeaders);
                 exchange.sendResponseHeaders(204, -1);
             }
         });
-        server.createContext("/quick", exchange -> {
-            exchange.sendResponseHeaders(204, -1);
-            exchange.close();
-        });
-        server.start();
         ApprovedTarget slow = target("/slow");
         try (var transport = new ApacheHttpHopTransport(testLimits(), 1, 1)) {
             AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
@@ -216,18 +292,16 @@ class ApacheHttpHopTransportTest {
     void keepsSubMillisecondResponseTimeoutsEnabled(long timeoutNanos) throws Exception {
         CountDownLatch requestStarted = new CountDownLatch(1);
         CountDownLatch releaseHeaders = new CountDownLatch(1);
-        server = server();
-        server.createContext("/slow", exchange -> {
+        server.handle("/slow", exchange -> {
             try (exchange) {
                 requestStarted.countDown();
                 await(releaseHeaders);
                 exchange.sendResponseHeaders(204, -1);
             }
         });
-        server.start();
         CheckerLimits limits = new CheckerLimits(
                 Duration.ofSeconds(1), Duration.ofNanos(timeoutNanos), Duration.ofSeconds(10),
-                3, 100, 8_192);
+                100, 8_192);
         ApprovedTarget target = target("/slow");
         try (var transport = new ApacheHttpHopTransport(limits, 1, 1)) {
             AtomicReference<OutboundHttpFailure> failure = new AtomicReference<>();
@@ -254,18 +328,13 @@ class ApacheHttpHopTransportTest {
 
     private enum StopReason { TIMEOUT, CALLER_INTERRUPTED, SHUTDOWN }
 
-    private HttpServer server() throws Exception {
-        return HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+    private ApprovedTarget target(String path) {
+        return target("check.test", path);
     }
 
-    private ApprovedTarget target(String path) throws Exception {
-        int port = server.getAddress().getPort();
-        URI uri = URI.create("http://check.test:" + port + path);
-        return target(uri);
-    }
-
-    private static ApprovedTarget target(URI uri) {
-        ValidatedUri validated = new ValidatedUri(uri, "http", "check.test", uri.toString());
+    private ApprovedTarget target(String hostname, String path) {
+        URI uri = server.uri(hostname, path);
+        ValidatedUri validated = new ValidatedUri(uri, "http", hostname, uri.toString());
         return new ApprovedTarget(validated, List.of(InetAddress.getLoopbackAddress()));
     }
 
@@ -278,7 +347,6 @@ class ApacheHttpHopTransportTest {
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(2),
-                3,
                 maxHeaderCount,
                 8_192);
     }

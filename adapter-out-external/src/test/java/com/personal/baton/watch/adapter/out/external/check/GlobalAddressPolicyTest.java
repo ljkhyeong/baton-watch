@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.personal.baton.watch.adapter.out.external.http.OutboundHttpFailure;
 import java.net.InetAddress;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -158,14 +159,15 @@ class GlobalAddressPolicyTest {
                 InetAddress.getByName("8.8.8.8"),
                 InetAddress.getByName("10.0.0.1"));
 
-        assertThrows(AddressPolicyException.class, () -> policy.approve(mixed));
+        OutboundHttpFailure failure = assertThrows(OutboundHttpFailure.class, () -> policy.approve(mixed));
+        assertEquals(OutboundHttpFailure.Kind.DESTINATION_REJECTED, failure.kind());
     }
 
     @Test
     void rejectsAzureWireServerAsAPlatformServiceDestination() throws Exception {
         InetAddress wireServer = InetAddress.getByName("168.63.129.16");
 
-        assertThrows(AddressPolicyException.class, () -> policy.approve(List.of(wireServer)));
+        assertThrows(OutboundHttpFailure.class, () -> policy.approve(List.of(wireServer)));
     }
 
     @Test
@@ -178,8 +180,8 @@ class GlobalAddressPolicyTest {
 
     @Test
     void rejectsEmptyAndNullContainingAnswers() throws Exception {
-        assertThrows(AddressPolicyException.class, () -> policy.approve(List.of()));
-        assertThrows(AddressPolicyException.class, () -> policy.approve(java.util.Arrays.asList(
+        assertThrows(OutboundHttpFailure.class, () -> policy.approve(List.of()));
+        assertThrows(OutboundHttpFailure.class, () -> policy.approve(java.util.Arrays.asList(
                 InetAddress.getByName("8.8.8.8"), null)));
     }
 }

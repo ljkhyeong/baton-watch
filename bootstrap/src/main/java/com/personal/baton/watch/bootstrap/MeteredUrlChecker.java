@@ -22,8 +22,7 @@ final class MeteredUrlChecker implements UrlChecker {
             observation = delegate.check(targetUrl);
             return observation;
         } finally {
-            metrics.checkFinished();
-            metrics.recordCheckAttempt(observation == null
+            metrics.checkFinished(observation == null
                     ? CheckObservation.internalFailure()
                     : observation);
         }

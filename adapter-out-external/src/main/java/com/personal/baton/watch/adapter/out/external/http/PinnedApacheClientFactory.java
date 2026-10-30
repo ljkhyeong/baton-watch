@@ -18,13 +18,18 @@ import org.apache.hc.core5.ssl.SSLContexts;
 import org.apache.hc.core5.util.Timeout;
 
 /** 승인된 호스트 이름 하나만 해석할 수 있는 요청 범위 클라이언트를 구성한다. */
-public final class PinnedApacheClientFactory {
+final class PinnedApacheClientFactory {
 
+    /**
+     * 대상 점검과 콜백이 함께 보내는 고정 {@code User-Agent}다. 이 헤더가 없는 요청을 거부하는 사이트의
+     * 거짓 실패를 막으며, 브라우저를 가장하거나 HTTP 클라이언트·JVM 버전을 드러내지 않는다.
+     */
+    static final String USER_AGENT = "baton-watch (+https://github.com/ljkhyeong/baton-watch)";
     private static final Duration MINIMUM_SOCKET_TIMEOUT = Duration.ofMillis(1);
 
     private final SSLContext sslContext;
 
-    public PinnedApacheClientFactory() {
+    PinnedApacheClientFactory() {
         this(SSLContexts.createDefault());
     }
 
@@ -32,14 +37,16 @@ public final class PinnedApacheClientFactory {
         this.sslContext = Objects.requireNonNull(sslContext, "sslContext");
     }
 
-    public CloseableHttpClient open(
+    CloseableHttpClient open(
             String hostname,
             List<InetAddress> approvedAddresses,
-            ApacheHttpClientLimits limits) {
-        Timeout connectTimeout = socketTimeout(limits.connectTimeout());
-        Timeout responseTimeout = socketTimeout(limits.responseTimeout());
+            ApacheHttpClientLimits limits,
+            Duration remainingTime) {
+        Timeout connectTimeout = socketTimeout(limits.connectTimeout(), remainingTime);
+        Timeout responseTimeout = socketTimeout(limits.responseTimeout(), remainingTime);
         Http1Config http1Config = Http1Config.custom()
-                .setMaxHeaderCount(limits.maxHeaderCount())
+                // Apache는 상한과 같은 개수에서 거부하므로 설정한 개수까지 받도록 하나를 더한다.
+                .setMaxHeaderCount(limits.maxHeaderCount() + 1)
                 .setMaxLineLength(limits.maxHeaderLineLength())
                 .build();
         ManagedHttpClientConnectionFactory connectionFactory =
@@ -66,27 +73,25 @@ public final class PinnedApacheClientFactory {
                         .setMaxConnPerRoute(1)
                         .build();
 
-        try {
-            return HttpClients.custom()
-                    .setConnectionManager(connectionManager)
-                    .setDefaultRequestConfig(requestConfig)
-                    .disableAutomaticRetries()
-                    .disableRedirectHandling()
-                    .disableCookieManagement()
-                    .disableAuthCaching()
-                    .disableContentCompression()
-                    .disableConnectionState()
-                    .disableDefaultUserAgent()
-                    .build();
-        } catch (RuntimeException | Error exception) {
-            connectionManager.close();
-            throw exception;
-        }
+        return HttpClients.custom()
+                .setConnectionManager(connectionManager)
+                .setDefaultRequestConfig(requestConfig)
+                .disableAutomaticRetries()
+                .disableRedirectHandling()
+                .disableCookieManagement()
+                .disableAuthCaching()
+                .disableContentCompression()
+                .disableConnectionState()
+                .setUserAgent(USER_AGENT)
+                .build();
     }
 
-    private static Timeout socketTimeout(Duration duration) {
-        // 소켓에서 0밀리초는 무제한이므로 양수 제한이 잘려 비활성화되지 않게 한다.
-        return Timeout.of(duration.compareTo(MINIMUM_SOCKET_TIMEOUT) < 0
-                ? MINIMUM_SOCKET_TIMEOUT : duration);
+    /**
+     * 단계 제한을 남은 전체 기한으로 줄인다. 소켓에서 0밀리초는 무제한이므로
+     * 1밀리초 미만으로 잘린 양수 제한은 1밀리초로 올린다.
+     */
+    static Timeout socketTimeout(Duration limit, Duration remainingTime) {
+        Duration capped = limit.compareTo(remainingTime) <= 0 ? limit : remainingTime;
+        return Timeout.of(capped.compareTo(MINIMUM_SOCKET_TIMEOUT) < 0 ? MINIMUM_SOCKET_TIMEOUT : capped);
     }
 }

@@ -17,10 +17,10 @@ class EventDeliveryRetryPolicyTest {
     void acceptsTheHardCeilingAndRejectsLargerDelays() {
         new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(5),
-                TimeBoundaryPolicy.MAX_EVENT_DELIVERY_RETRY_DELAY);
+                EventDeliveryRetryPolicy.MAX_DELAY);
         assertThrows(IllegalArgumentException.class, () -> new EventDeliveryRetryPolicy(
                 Duration.ofSeconds(5),
-                TimeBoundaryPolicy.MAX_EVENT_DELIVERY_RETRY_DELAY.plusNanos(1)));
+                EventDeliveryRetryPolicy.MAX_DELAY.plusNanos(1)));
     }
 
     @Test

@@ -3,12 +3,10 @@ package com.personal.baton.watch.application.monitoring.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
 import com.personal.baton.watch.application.monitoring.model.DueCheckBatchResult;
-import com.personal.baton.watch.application.monitoring.port.out.CheckWorkPersistencePort;
 import com.personal.baton.watch.application.monitoring.port.out.UrlChecker;
 import com.personal.baton.watch.domain.monitoring.CheckOutcome;
 import com.personal.baton.watch.domain.monitoring.TargetUrl;
@@ -16,10 +14,11 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -40,20 +39,19 @@ class RunDueChecksServiceTest {
 
     @Test
     void claimsThenChecksThenFinalizesOutsideTheClaimOperation() {
-        List<String> calls = new ArrayList<>();
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(calls);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(CLAIM);
         RunDueChecksService service = service(
                 persistence,
                 target -> {
-                    calls.add("check");
-                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0);
+                    persistence.calls.add("check");
+                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0);
                 },
                 5);
 
         DueCheckBatchResult result = service.runDueChecks();
 
-        assertEquals(List.of("claim", "check", "finalize", "claim"), calls);
-        assertEquals(new DueCheckBatchResult(1, 1, 0, 0), result);
+        assertEquals(List.of("claim", "check", "finalize", "claim"), persistence.calls);
+        assertEquals(new DueCheckBatchResult(1, 1, 0, 0, 0), result);
         assertEquals(LEASE, persistence.leaseDuration);
         assertEquals(CheckOutcome.SUCCESS, persistence.finalization.observation().outcome());
         assertEquals(NOW.plus(INTERVAL), persistence.finalization.nextCheckAt());
@@ -61,37 +59,29 @@ class RunDueChecksServiceTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void preservesInterruptionAndStopsClaimingMoreChecks(boolean interruptedBeforeStart) {
-        List<String> calls = new ArrayList<>();
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(calls);
+    void finishesTheClaimedCheckAndStopsClaimingOnceShutdownIsRequested(boolean requestedBeforeStart) {
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(CLAIM);
+        AtomicBoolean stopRequested = new AtomicBoolean(requestedBeforeStart);
         RunDueChecksService service = service(
                 persistence,
                 target -> {
-                    calls.add("check");
-                    Thread.currentThread().interrupt();
-                    return CheckObservation.internalFailure();
+                    persistence.calls.add("check");
+                    stopRequested.set(true);
+                    return CheckObservation.forHttpStatus(204, Duration.ZERO, 0);
                 },
-                2);
+                2,
+                stopRequested::get);
 
-        try {
-            if (interruptedBeforeStart) {
-                Thread.currentThread().interrupt();
-            }
+        DueCheckBatchResult result = service.runDueChecks();
 
-            DueCheckBatchResult result = service.runDueChecks();
-
-            assertTrue(Thread.currentThread().isInterrupted());
-            assertEquals(interruptedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), calls);
-            int completed = interruptedBeforeStart ? 0 : 1;
-            assertEquals(new DueCheckBatchResult(completed, completed, 0, 0), result);
-        } finally {
-            Thread.interrupted();
-        }
+        assertEquals(requestedBeforeStart ? List.of() : List.of("claim", "check", "finalize"), persistence.calls);
+        int completed = requestedBeforeStart ? 0 : 1;
+        assertEquals(new DueCheckBatchResult(completed, completed, 0, 0, 0), result);
     }
 
     @Test
     void convertsUnexpectedCheckerRuntimeErrorsToSafeInternalFailures() {
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(CLAIM);
         RunDueChecksService service = service(
                 persistence,
                 target -> {
@@ -106,16 +96,54 @@ class RunDueChecksServiceTest {
     }
 
     @Test
+    void recordsSilentFailuresAfterFiveHostsAsInternalFailuresWithoutChangingTheirMeasurements() {
+        ClaimedCheck[] claims = IntStream.rangeClosed(1, 5)
+                .mapToObj(host -> new ClaimedCheck(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        new TargetUrl("https://host-" + host + ".example/health"), NOW, false))
+                .toArray(ClaimedCheck[]::new);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(claims);
+        RunDueChecksService service = service(
+                persistence,
+                target -> CheckObservation.failure(CheckOutcome.DNS_FAILURE, Duration.ofSeconds(5), 0),
+                5);
+
+        DueCheckBatchResult result = service.runDueChecks();
+
+        assertEquals(new DueCheckBatchResult(5, 5, 0, 0, 1), result);
+        assertEquals(
+                CheckObservation.failure(CheckOutcome.INTERNAL_FAILURE, Duration.ofSeconds(5), 0),
+                persistence.finalization.observation());
+        assertEquals(NOW.plus(INTERNAL_RETRY), persistence.finalization.nextCheckAt());
+    }
+
+    @Test
+    void countsSuspectedOutagesOnlyWhenTheResultWasApplied() {
+        ClaimedCheck[] claims = IntStream.rangeClosed(1, 5)
+                .mapToObj(host -> new ClaimedCheck(
+                        UUID.randomUUID(), UUID.randomUUID(),
+                        new TargetUrl("https://host-" + host + ".example/health"), NOW, false))
+                .toArray(ClaimedCheck[]::new);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(claims);
+        persistence.finalizationStatus = CheckFinalizationStatus.STALE_CLAIM;
+        RunDueChecksService service = service(
+                persistence,
+                target -> CheckObservation.failure(CheckOutcome.DNS_FAILURE, Duration.ofSeconds(5), 0),
+                5);
+
+        assertEquals(new DueCheckBatchResult(5, 0, 0, 5, 0), service.runDueChecks());
+    }
+
+    @Test
     void usesTheDatabaseClaimTimeAsTheCompletionFloor() {
         Instant databaseClaimedAt = NOW.plusSeconds(5);
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
-        persistence.claims = List.of(new ClaimedCheck(
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(new ClaimedCheck(
                 CLAIM.attemptId(),
                 CLAIM.leaseToken(),
                 CLAIM.targetUrl(),
                 databaseClaimedAt,
                 false));
-        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0), 1);
 
         service.runDueChecks();
 
@@ -128,64 +156,31 @@ class RunDueChecksServiceTest {
             value = CheckFinalizationStatus.class,
             names = {"ALREADY_FINALIZED", "STALE_CLAIM"})
     void reportsNonAppliedFinalizationsByTheirPersistenceStatus(CheckFinalizationStatus status) {
-        RecordingWorkPersistence persistence = new RecordingWorkPersistence(new ArrayList<>());
-        persistence.status = status;
-        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0, 0), 1);
+        RecordingCheckWorkPersistence persistence = new RecordingCheckWorkPersistence(CLAIM);
+        persistence.finalizationStatus = status;
+        RunDueChecksService service = service(persistence, target -> CheckObservation.forHttpStatus(204, Duration.ZERO, 0), 1);
 
         DueCheckBatchResult result = service.runDueChecks();
 
         int alreadyFinalized = status == CheckFinalizationStatus.ALREADY_FINALIZED ? 1 : 0;
         int staleClaims = status == CheckFinalizationStatus.STALE_CLAIM ? 1 : 0;
         assertEquals(
-                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims),
+                new DueCheckBatchResult(1, 0, alreadyFinalized, staleClaims, 0),
                 result);
     }
 
     private static RunDueChecksService service(
-            RecordingWorkPersistence persistence, UrlChecker checker, int batchSize) {
-        return new RunDueChecksService(
-                persistence, checker, Clock.fixed(NOW, ZoneOffset.UTC), LEASE, INTERVAL, INTERNAL_RETRY, batchSize);
+            RecordingCheckWorkPersistence persistence, UrlChecker checker, int batchSize) {
+        return service(persistence, checker, batchSize, () -> false);
     }
 
-    private static final class RecordingWorkPersistence implements CheckWorkPersistencePort {
-
-        private final List<String> calls;
-        private Duration leaseDuration;
-        private CheckFinalization finalization;
-        private List<ClaimedCheck> claims = List.of(CLAIM);
-        private CheckFinalizationStatus status = CheckFinalizationStatus.APPLIED;
-
-        private RecordingWorkPersistence(List<String> calls) {
-            this.calls = calls;
-        }
-
-        @Override
-        public Optional<ClaimedCheck> claimDueCheck(Duration leaseDuration) {
-            calls.add("claim");
-            this.leaseDuration = leaseDuration;
-            if (claims.isEmpty()) {
-                return Optional.empty();
-            }
-            ClaimedCheck next = claims.getFirst();
-            claims = claims.subList(1, claims.size());
-            return Optional.of(next);
-        }
-
-        @Override
-        public CheckFinalizationStatus finalizeCheck(CheckFinalization finalization) {
-            calls.add("finalize");
-            this.finalization = finalization;
-            return status;
-        }
-
-        @Override
-        public Duration getOldestDueCheckDelay() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public int purgeAttempts(Instant completedBefore, int limit) {
-            throw new UnsupportedOperationException();
-        }
+    private static RunDueChecksService service(
+            RecordingCheckWorkPersistence persistence,
+            UrlChecker checker,
+            int batchSize,
+            BooleanSupplier stopRequested) {
+        return new RunDueChecksService(
+                persistence, checker, Clock.fixed(NOW, ZoneOffset.UTC), LEASE, INTERVAL, INTERNAL_RETRY, batchSize,
+                stopRequested);
     }
 }

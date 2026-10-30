@@ -8,10 +8,10 @@ public record CheckObservation(
         CheckOutcome outcome,
         Integer httpStatusCode,
         Duration duration,
-        long responseBytes,
-        int redirectCount) {
+        int redirectCount,
+        boolean responseReceived) {
 
-    private static final int MAX_REDIRECT_COUNT = 3;
+    public static final int MAX_REDIRECT_COUNT = 3;
 
     public CheckObservation {
         Objects.requireNonNull(outcome, "outcome");
@@ -20,30 +20,41 @@ public record CheckObservation(
         if (duration.isNegative()) {
             throw new IllegalArgumentException("duration must be non-negative");
         }
-        if (responseBytes < 0) {
-            throw new IllegalArgumentException("response bytes must be non-negative");
-        }
         if (redirectCount < 0 || redirectCount > MAX_REDIRECT_COUNT) {
             throw new IllegalArgumentException("redirect count is outside the bounded policy");
         }
     }
 
+    public CheckObservation(CheckOutcome outcome, Integer httpStatusCode, Duration duration, int redirectCount) {
+        this(
+                outcome,
+                httpStatusCode,
+                duration,
+                redirectCount,
+                Objects.requireNonNull(outcome, "outcome").receivedResponse());
+    }
+
     public static CheckObservation forHttpStatus(
-            int httpStatusCode, Duration duration, long responseBytes, int redirectCount) {
+            int httpStatusCode, Duration duration, int redirectCount) {
         CheckOutcome outcome = httpOutcome(httpStatusCode);
         if (outcome == null) {
             throw new IllegalArgumentException("unsupported final HTTP status");
         }
-        return new CheckObservation(outcome, httpStatusCode, duration, responseBytes, redirectCount);
+        return new CheckObservation(outcome, httpStatusCode, duration, redirectCount);
+    }
+
+    /** 응답은 받았지만 저장 계약의 상태 범위(200~599) 밖이면 코드 없이 네트워크 실패로 남긴다. */
+    public static CheckObservation forUnsupportedStatus(Duration duration, int redirectCount) {
+        return new CheckObservation(CheckOutcome.NETWORK_FAILURE, null, duration, redirectCount, true);
     }
 
     public static CheckObservation failure(
-            CheckOutcome outcome, Duration duration, long responseBytes, int redirectCount) {
-        return new CheckObservation(outcome, null, duration, responseBytes, redirectCount);
+            CheckOutcome outcome, Duration duration, int redirectCount) {
+        return new CheckObservation(outcome, null, duration, redirectCount);
     }
 
     public static CheckObservation internalFailure() {
-        return failure(CheckOutcome.INTERNAL_FAILURE, Duration.ZERO, 0, 0);
+        return failure(CheckOutcome.INTERNAL_FAILURE, Duration.ZERO, 0);
     }
 
     private static void validateStatus(CheckOutcome outcome, Integer status) {

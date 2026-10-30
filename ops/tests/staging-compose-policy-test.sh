@@ -13,6 +13,7 @@ readonly TEMP_DIR
 readonly BASE_CONFIG="$TEMP_DIR/base.json"
 readonly TUNNEL_CONFIG="$TEMP_DIR/tunnel.json"
 readonly EVENT_DELIVERY_CONFIG="$TEMP_DIR/event-delivery.json"
+readonly API_TOKEN_ROTATION_CONFIG="$TEMP_DIR/api-token-rotation.json"
 
 cleanup() {
     rm -rf "$TEMP_DIR"
@@ -30,9 +31,11 @@ render_config() {
 
     env \
         -u WATCH_COMPOSE_PROJECT_NAME \
+        -u WATCH_CHECK_ENABLED \
         -u WATCH_DB_OWNER_PASSWORD_FILE \
         -u WATCH_DB_RUNTIME_PASSWORD_FILE \
         -u WATCH_API_TOKEN_FILE \
+        -u WATCH_API_PREVIOUS_TOKEN_FILE \
         -u WATCH_TUNNEL_TOKEN_FILE \
         -u WATCH_EVENT_DELIVERY_ENDPOINT \
         -u WATCH_EVENT_DELIVERY_TOKEN_FILE \
@@ -60,12 +63,16 @@ render_config() {
         WATCH_IMAGE_REVISION=0000000000000000000000000000000000000001 \
         WATCH_POSTGRES_VOLUME_NAME=baton-watch-compose-policy-test \
         WATCH_EVENT_DELIVERY_ENDPOINT=https://baton.example.test/api/v1/internal/resource-health-events \
+        WATCH_API_PREVIOUS_TOKEN_FILE="$HOME/.config/baton-watch/staging/secrets/watch-api-previous-token" \
         docker compose \
             --project-directory "$REPOSITORY_ROOT" \
             --env-file "$REPOSITORY_ROOT/ops/staging.env.example" \
             "$@" \
             config --format json >"$output_file"
 }
+
+WATCH_DB_PASSWORD=compose-policy-test WATCH_API_TOKEN=compose-policy-test \
+    docker compose --project-directory "$REPOSITORY_ROOT" --file "$REPOSITORY_ROOT/compose.yml" config --quiet
 
 render_config \
     "$BASE_CONFIG" \
@@ -79,8 +86,14 @@ render_config \
     --file "$REPOSITORY_ROOT/compose.staging.yml" \
     --file "$REPOSITORY_ROOT/compose.staging-tunnel.yml" \
     --file "$REPOSITORY_ROOT/compose.staging-event-delivery.yml"
+render_config \
+    "$API_TOKEN_ROTATION_CONFIG" \
+    --file "$REPOSITORY_ROOT/compose.staging.yml" \
+    --file "$REPOSITORY_ROOT/compose.staging-tunnel.yml" \
+    --file "$REPOSITORY_ROOT/compose.staging-event-delivery.yml" \
+    --file "$REPOSITORY_ROOT/compose.staging-api-token-rotation.yml"
 
-python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$EVENT_DELIVERY_CONFIG" <<'PY'
+python3 - "$BASE_CONFIG" "$TUNNEL_CONFIG" "$EVENT_DELIVERY_CONFIG" "$API_TOKEN_ROTATION_CONFIG" "$REPOSITORY_ROOT" <<'PY'
 import json
 import re
 import sys
@@ -116,6 +129,7 @@ def assert_digest_pinned(image: str, repository: str, label: str) -> None:
 base = load(sys.argv[1])
 tunnel = load(sys.argv[2])
 event_delivery = load(sys.argv[3])
+api_token_rotation = load(sys.argv[4])
 
 require(
     set(base["services"]) == {"postgres", "database-role-init", "migrate", "watch"},
@@ -131,9 +145,14 @@ require(
     == {"postgres", "database-role-init", "migrate", "watch", "watch-gateway", "cloudflared"},
     "event delivery overlay services changed",
 )
+require(
+    set(api_token_rotation["services"]) == set(event_delivery["services"]),
+    "API token rotation overlay services changed",
+)
 assert_no_host_ports(base, "base")
 assert_no_host_ports(tunnel, "tunnel")
 assert_no_host_ports(event_delivery, "event delivery")
+assert_no_host_ports(api_token_rotation, "API token rotation")
 
 networks = tunnel["networks"]
 require(networks["watch-db"].get("internal") is True, "database network must be internal")
@@ -172,6 +191,7 @@ require(
     "NGINX 설정은 읽기 전용으로 마운트해야 합니다",
 )
 event_delivery_watch = event_delivery["services"]["watch"]
+api_token_rotation_watch = api_token_rotation["services"]["watch"]
 
 require(watch.get("build") is None, "staging WATCH must use a prebuilt image")
 require(
@@ -201,15 +221,19 @@ require(
     migrate["environment"].get("WATCH_DB_RUNTIME_USER") == "baton_watch_runtime",
     "migration callback must target the runtime database role",
 )
-for service, kind in ((postgres, "postgres"), (cloudflared, "cloudflared")):
-    require(
-        service.get("image") == f"baton-watch-{kind}:0000000000000000000000000000000000000001",
-        f"{kind} 이미지는 검증된 전체 Git SHA 태그여야 합니다",
-    )
-    require(
-        service.get("build") is None and service.get("pull_policy") == "never",
-        f"{kind}는 미리 빌드해 검증한 로컬 이미지를 사용해야 합니다",
-    )
+require(
+    postgres.get("image") == "baton-watch-postgres:0000000000000000000000000000000000000001",
+    "postgres 이미지는 검증된 전체 Git SHA 태그여야 합니다",
+)
+require(
+    postgres.get("build") is None and postgres.get("pull_policy") == "never",
+    "postgres는 미리 빌드해 검증한 로컬 이미지를 사용해야 합니다",
+)
+assert_digest_pinned(cloudflared.get("image", ""), "cloudflare/cloudflared", "cloudflared")
+require(
+    cloudflared.get("entrypoint") == ["cloudflared", "--no-autoupdate"],
+    "cloudflared must keep automatic updates disabled",
+)
 require(
     cloudflared.get("user") == "65532:65532",
     "cloudflared must retain its fixed non-root user",
@@ -246,8 +270,12 @@ require(
     "WATCH runtime must not retain schema migration authority",
 )
 require(
-    watch_environment.get("SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE") == "30s",
-    "Spring shutdown phase budget changed",
+    "SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE" not in watch_environment,
+    "종료 단계 제한은 애플리케이션 안전 설정에서만 관리해야 합니다",
+)
+require(
+    watch_environment.get("WATCH_CHECK_ENABLED") == "true",
+    "환경 파일의 WATCH 설정이 컨테이너 환경으로 전달되어야 합니다",
 )
 require(
     watch_environment.get("WATCH_EVENT_DELIVERY_ENABLED") == "false",
@@ -270,6 +298,10 @@ require(
 require(
     not any("PASSWORD" in key or "TOKEN" in key for key in event_delivery_environment),
     "event delivery overlay secrets must not be injected as environment variables",
+)
+require(
+    api_token_rotation_watch["environment"] == event_delivery_environment,
+    "API token rotation overlay must not change WATCH environment variables",
 )
 require(
     postgres["environment"].get("POSTGRES_PASSWORD_FILE")
@@ -320,6 +352,19 @@ require(
     "event delivery overlay WATCH secret targets changed",
 )
 require(
+    secret_targets(api_token_rotation_watch)
+    == secret_targets(event_delivery_watch)
+    | {("watch-api-previous-token", "watch.api-previous-token")},
+    "API token rotation overlay must add only the previous token file secret",
+)
+watch_entrypoint = (Path(sys.argv[5]) / "ops/run-as-watch-user.sh").read_text(encoding="utf-8")
+for _, target in secret_targets(api_token_rotation_watch):
+    # 비밀 파일이 없으면 시작 스크립트가 조용히 건너뛰므로 대상 경로가 어긋나면 값이 빠진다.
+    require(
+        f"=/run/secrets/{target}\n" in watch_entrypoint,
+        f"WATCH entrypoint does not copy the {target} secret",
+    )
+require(
     secret_targets(cloudflared)
     == {("cloudflare-tunnel-token", "cloudflare-tunnel-token")},
     "cloudflared secret target changed",
@@ -332,6 +377,7 @@ for configuration, secret_name, file_name, label in (
     (tunnel, "watch-api-token", "watch-api-token", "watch-api-token"),
     (tunnel, "cloudflare-tunnel-token", "cloudflare-tunnel-token", "cloudflare-tunnel-token"),
     (event_delivery, "watch-event-delivery-token", "watch-event-delivery-token", "event delivery token"),
+    (api_token_rotation, "watch-api-previous-token", "watch-api-previous-token", "previous API token"),
 ):
     require(
         configuration["secrets"][secret_name].get("file") == str(secret_directory / file_name),
@@ -465,7 +511,7 @@ require(
 )
 require(
     postgres["healthcheck"].get("test")
-    == ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'],
+    == ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'],
     "PostgreSQL healthcheck changed",
 )
 require(
@@ -512,5 +558,5 @@ require(
     "cloudflared metrics must remain container-loopback only",
 )
 
-print("[staging-compose-policy-test] 기본·터널·이벤트 전달 오버레이 정책 검증 통과")
+print("[staging-compose-policy-test] 기본·터널·이벤트 전달·API 토큰 교체 오버레이 정책 검증 통과")
 PY

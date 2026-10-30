@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
-import java.net.URI;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
@@ -19,8 +18,6 @@ import org.junit.jupiter.api.Test;
 
 class ApacheResponseLifecycleTest {
 
-    private static final HttpHost TARGET = HttpHost.create(URI.create("https://example.com"));
-
     @Test
     void closesAFullyHandledResponseNormally() throws Exception {
         AtomicReference<CloseMode> closeMode = new AtomicReference<>();
@@ -28,7 +25,7 @@ class ApacheResponseLifecycleTest {
         HttpGet request = new HttpGet("https://example.com/");
 
         String result = ApacheResponseLifecycle.execute(
-                client, TARGET, request, CloseMode.GRACEFUL, ignored -> "handled");
+                client, request, CloseMode.GRACEFUL, ignored -> "handled");
 
         assertEquals("handled", result);
         assertEquals(CloseMode.GRACEFUL, closeMode.get());
@@ -42,7 +39,7 @@ class ApacheResponseLifecycleTest {
 
         assertThrows(
                 ContentTooLongException.class,
-                () -> ApacheResponseLifecycle.execute(client, TARGET, request, CloseMode.GRACEFUL, ignored -> {
+                () -> ApacheResponseLifecycle.execute(client, request, CloseMode.GRACEFUL, ignored -> {
                     throw new ContentTooLongException("response exceeded byte limit");
                 }));
 

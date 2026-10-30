@@ -6,6 +6,7 @@ import com.personal.baton.watch.application.monitoring.model.CheckFinalization;
 import com.personal.baton.watch.application.monitoring.model.CheckFinalizationStatus;
 import com.personal.baton.watch.application.monitoring.model.CheckObservation;
 import com.personal.baton.watch.application.monitoring.model.ClaimedCheck;
+import com.personal.baton.watch.application.monitoring.model.ClaimedHealthChangeEvent;
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
 import com.personal.baton.watch.application.monitoring.model.SynchronizeMonitorCommand;
 import com.personal.baton.watch.domain.monitoring.MonitorProjection;
@@ -15,8 +16,9 @@ import com.personal.baton.watch.domain.monitoring.TargetUrl;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionOperations;
 
@@ -32,20 +34,11 @@ abstract class MonitoringPersistenceIntegrationTestSupport
 
     @BeforeEach
     void initializeMonitoringPersistenceAdapters() {
-        TransactionOperations transactions = newTransactionOperations();
+        TransactionOperations transactions = transactionTemplate();
         JdbcClient jdbcClient = JdbcClient.create(jdbc);
         monitorPersistence = new JdbcMonitorPersistenceAdapter(jdbcClient, transactions);
         checkWorkPersistence = new JdbcCheckWorkPersistenceAdapter(jdbcClient, transactions);
         deliveryPersistence = new JdbcHealthChangeEventDeliveryAdapter(jdbcClient, transactions);
-    }
-
-    protected JdbcCheckWorkPersistenceAdapter newCheckWorkPersistenceAdapter() {
-        return new JdbcCheckWorkPersistenceAdapter(
-                JdbcClient.create(new JdbcTemplate(testDataSource)), newTransactionOperations());
-    }
-
-    protected TransactionOperations newTransactionOperations() {
-        return transactionTemplate();
     }
 
     protected SynchronizationResult synchronize(
@@ -69,6 +62,26 @@ abstract class MonitoringPersistenceIntegrationTestSupport
         return checkWorkPersistence.claimDueCheck(LEASE).orElseThrow();
     }
 
+    /** 참조에서 만든 대상으로 활성 모니터를 동기화하고 바로 점유한다. */
+    protected ClaimedCheck claimed(String reference) {
+        synchronize(reference, 1, "https://" + reference.replace(':', '-') + ".example/path", BASE_TIME);
+        return claimOne();
+    }
+
+    /** 첫 성공 점검을 완료해 UNKNOWN에서 HEALTHY로 바뀐 미전달 이벤트 하나를 만든다. */
+    protected UUID createHealthChangeEvent(String reference) {
+        ClaimedCheck check = claimed(reference);
+        finalizeAt(check, check.claimedAt());
+        return jdbc.queryForObject(
+                "SELECT event_id FROM watch_health_change_event WHERE attempt_id = ?",
+                UUID.class,
+                check.attemptId());
+    }
+
+    protected ClaimedHealthChangeEvent claimOneDelivery() {
+        return deliveryPersistence.claimPendingEvent(LEASE).orElseThrow();
+    }
+
     protected CheckFinalization finalization(
             ClaimedCheck claimed,
             CheckObservation observation,
@@ -83,7 +96,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected void finalizeAt(ClaimedCheck claimed, Instant completedAt) {
-        finalizeAt(claimed, completedAt, CheckObservation.forHttpStatus(200, Duration.ZERO, 0, 0));
+        finalizeAt(claimed, completedAt, CheckObservation.forHttpStatus(200, Duration.ZERO, 0));
     }
 
     protected void finalizeAt(ClaimedCheck claimed, Instant completedAt, CheckObservation observation) {
@@ -93,7 +106,7 @@ abstract class MonitoringPersistenceIntegrationTestSupport
     }
 
     protected MonitorProjection projection(String reference) {
-        return monitorPersistence.findProjection(new ResourceReference(reference)).orElseThrow();
+        return monitorPersistence.findProjections(List.of(new ResourceReference(reference))).getFirst();
     }
 
     protected static void assertSqlState(Throwable failure, String expectedState) {

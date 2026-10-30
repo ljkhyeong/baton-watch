@@ -1,6 +1,6 @@
 package com.personal.baton.watch.adapter.in.web.system;
 
-import com.personal.baton.watch.application.system.port.in.GetSystemStatusUseCase;
+import java.time.Clock;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -9,14 +9,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/system")
 public final class SystemStatusController {
 
-    private final GetSystemStatusUseCase getSystemStatus;
+    private final Clock clock;
 
-    public SystemStatusController(GetSystemStatusUseCase getSystemStatus) {
-        this.getSystemStatus = getSystemStatus;
+    public SystemStatusController(Clock clock) {
+        this.clock = clock;
     }
 
     @GetMapping("/status")
     public SystemStatusResponse getStatus() {
-        return SystemStatusResponse.from(getSystemStatus.getStatus());
+        return new SystemStatusResponse("baton-watch", "UP", clock.instant());
     }
 }

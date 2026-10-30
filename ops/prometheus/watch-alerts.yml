@@ -110,6 +110,26 @@ groups:
           severity: warning
         annotations:
           summary: WATCH 점검 일정 지연
+      # 응답 없는 실패만 쌓이고 HTTP 응답을 받은 점검이 하나도 없으면 WATCH의 외부 연결 장애로 본다.
+      # 응답을 받은 점검이 하나라도 있으면 개별 대상 장애이므로 제외하고, internal_failure는 어느 쪽에도 넣지 않는다.
+      - alert: WatchCheckEgressFailure
+        expr: |
+          (
+            sum by (job, instance) (
+              increase(baton_watch_check_attempts_total{job="baton-watch",outcome=~"destination_rejected|dns_failure|connect_timeout|read_timeout|tls_failure|network_failure"}[5m])
+            ) >= 3
+          )
+          unless on (job, instance)
+          (
+            sum by (job, instance) (
+              increase(baton_watch_check_attempts_total{job="baton-watch",outcome=~"success|http_client_error|http_server_error|redirect_rejected|too_many_redirects|response_too_large"}[5m])
+            ) > 0
+          )
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: WATCH 점검 대상 전체 응답 없음
       - alert: WatchDatabaseClockOffset
         expr: abs(baton_watch_database_clock_offset_seconds{job="baton-watch"}) > 1
         for: 5m

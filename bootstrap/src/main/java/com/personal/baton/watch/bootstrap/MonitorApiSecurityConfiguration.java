@@ -2,9 +2,10 @@ package com.personal.baton.watch.bootstrap;
 
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiAuthenticationEntryPoint;
 import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestRejectedHandler;
-import com.personal.baton.watch.adapter.in.web.security.MonitorApiRequestBodyLimitFilter;
 import com.personal.baton.watch.adapter.in.web.security.MonitorBearerTokenAuthenticationManager;
 import io.micrometer.observation.ObservationRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -13,7 +14,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.firewall.CompositeRequestRejectedHandler;
 import org.springframework.security.web.firewall.ObservationMarkingRequestRejectedHandler;
 import org.springframework.security.web.firewall.RequestRejectedHandler;
@@ -25,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 @Configuration(proxyBeanMethods = false)
 class MonitorApiSecurityConfiguration {
 
+    private static final Logger log = LoggerFactory.getLogger(MonitorApiSecurityConfiguration.class);
     private static final RequestMatcher PUBLIC_SYSTEM_STATUS = new OrRequestMatcher(
             PathPatternRequestMatcher.pathPattern(HttpMethod.GET, "/api/v1/system/status"),
             PathPatternRequestMatcher.pathPattern(HttpMethod.HEAD, "/api/v1/system/status"));
@@ -32,13 +33,15 @@ class MonitorApiSecurityConfiguration {
             PathPatternRequestMatcher.pathPattern("/api/v1/**");
 
     @Bean
-    MonitorBearerTokenAuthenticationManager monitorBearerTokenAuthenticationManager(WatchProperties properties) {
-        return new MonitorBearerTokenAuthenticationManager(properties.apiToken());
-    }
-
-    @Bean
-    MonitorApiAuthenticationEntryPoint monitorApiAuthenticationEntryPoint(ObjectMapper objectMapper) {
-        return new MonitorApiAuthenticationEntryPoint(objectMapper);
+    MonitorBearerTokenAuthenticationManager monitorBearerTokenAuthenticationManager(
+            WatchProperties properties, MonitoringMetrics metrics) {
+        if (properties.apiPreviousToken() != null) {
+            log.info("모니터 API 이전 토큰을 함께 허용합니다. BATON이 새 토큰으로 바뀌면 제거하세요");
+        }
+        return new MonitorBearerTokenAuthenticationManager(
+                properties.apiToken(),
+                properties.apiPreviousToken(),
+                metrics::recordPreviousApiTokenAuthentication);
     }
 
     @Bean
@@ -64,18 +67,13 @@ class MonitorApiSecurityConfiguration {
     SecurityFilterChain versionedApiSecurityFilterChain(
             HttpSecurity http,
             MonitorBearerTokenAuthenticationManager authenticationManager,
-            MonitorApiAuthenticationEntryPoint authenticationEntryPoint,
             ObjectMapper objectMapper) throws Exception {
         return stateless(http)
                 .securityMatcher(VERSIONED_API)
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().authenticated())
-                .exceptionHandling(errors -> errors.authenticationEntryPoint(authenticationEntryPoint))
                 .oauth2ResourceServer(resourceServer -> resourceServer
                         .authenticationManagerResolver(request -> authenticationManager)
-                        .authenticationEntryPoint(authenticationEntryPoint))
-                .addFilterAfter(
-                        new MonitorApiRequestBodyLimitFilter(objectMapper),
-                        AuthorizationFilter.class)
+                        .authenticationEntryPoint(new MonitorApiAuthenticationEntryPoint(objectMapper)))
                 .build();
     }
 

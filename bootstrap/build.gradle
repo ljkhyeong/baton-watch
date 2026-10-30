@@ -12,9 +12,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.security:spring-security-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit:1.4.2'
@@ -27,7 +26,7 @@ tasks.named('test', Test) {
     dependsOn 'architectureTest'
     exclude '**/ArchitectureTest.class'
     useJUnitPlatform {
-        excludeTags 'runtime-load', 'capacity'
+        excludeTags 'runtime-load'
     }
 }
 
@@ -50,19 +49,6 @@ tasks.register('runtimeLoadTest', Test) {
     }
     systemProperty 'watch.runtime-load.monitors',
             providers.gradleProperty('watchRuntimeLoadMonitors').getOrElse('25')
-    testLogging.showStandardStreams = true
-    outputs.upToDateWhen { false }
-}
-
-tasks.register('capacityTest', Test) {
-    description = '운영 기본 일정과 느린 점검 혼합 조건의 처리 간격 및 보존 정리 참고값을 측정한다.'
-    useJUnitPlatform { includeTags 'capacity' }
-    filter {
-        includeTestsMatching '*BatonWatchCapacityTest'
-        failOnNoMatchingTests = true
-    }
-    systemProperty 'watch.capacity.monitors', providers.gradleProperty('watchCapacityMonitors').getOrElse('12')
-    systemProperty 'watch.capacity.slow-millis', providers.gradleProperty('watchCapacitySlowMillis').getOrElse('5000')
     testLogging.showStandardStreams = true
     outputs.upToDateWhen { false }
 }

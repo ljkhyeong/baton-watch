@@ -26,6 +26,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
             "management.server.port=-1",
             "management.endpoint.health.group.readiness.include=readinessState",
             "spring.mvc.log-request-details=true",
+            "logging.level.root=TRACE",
             "logging.level.org.springframework.web=TRACE",
             "logging.level.org.springframework.web.servlet.DispatcherServlet=TRACE",
             "logging.level.org.springframework.web.method.HandlerMethod=TRACE",
@@ -43,6 +44,7 @@ class InboundLoggingIntegrationTest {
     private static final String REFERENCE = "log-sensitive-resource";
     private static final String QUERY = "log-sensitive-query";
     private static final String TARGET = "https://example.com/log-sensitive-target?token=private-value";
+    private static final String COOKIE = "log-sensitive-cookie";
 
     @LocalServerPort
     private int serverPort;
@@ -63,6 +65,23 @@ class InboundLoggingIntegrationTest {
         String logs = output.getAll();
         assertThat(List.of(REFERENCE, QUERY).stream().filter(logs::contains).toList())
                 .as("웹 서버가 거부한 요청 주소와 쿼리를 로그에 남기지 않는다")
+                .isEmpty();
+    }
+
+    @Test
+    void keepsResourcePathsAndMalformedCookiesOutOfDefaultLogs(CapturedOutput output) throws Exception {
+        try (Socket socket = new Socket("127.0.0.1", serverPort)) {
+            socket.setSoTimeout(5_000);
+            String request = "GET /META-INF/" + REFERENCE + " HTTP/1.1\r\nHost: localhost\r\n"
+                    + "Cookie: session=\"" + COOKIE + "\r\nConnection: close\r\n\r\n";
+            socket.getOutputStream().write(request.getBytes(StandardCharsets.US_ASCII));
+            socket.getOutputStream().flush();
+            socket.getInputStream().readAllBytes();
+        }
+
+        String logs = output.getAll();
+        assertThat(List.of(REFERENCE, COOKIE).stream().filter(logs::contains).toList())
+                .as("정적 자원 경로와 형식이 잘못된 쿠키 값을 로그에 남기지 않는다")
                 .isEmpty();
     }
 
@@ -88,6 +107,11 @@ class InboundLoggingIntegrationTest {
                     .header("Authorization", "Bearer " + API_TOKEN).GET().build(),
                     HttpResponse.BodyHandlers.ofString());
             assertThat(unavailable.statusCode()).isEqualTo(503);
+
+            var batch = client.send(HttpRequest.newBuilder(uri("/api/v1/resource-monitors?resourceReference=" + REFERENCE))
+                    .header("Authorization", "Bearer " + API_TOKEN).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(batch.statusCode()).isEqualTo(200);
         }
 
         String logs = output.getAll();

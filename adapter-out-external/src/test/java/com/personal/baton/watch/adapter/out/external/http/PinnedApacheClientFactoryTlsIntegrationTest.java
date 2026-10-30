@@ -27,7 +27,6 @@ import javax.net.ssl.SSLParameters;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.core5.http.HttpHeaders;
-import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.io.CloseMode;
 import org.apache.hc.core5.ssl.SSLContexts;
 import org.junit.jupiter.api.AfterEach;
@@ -41,6 +40,8 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
     private static final String KEY_ALIAS = "pinned-host-server";
     private static final char[] KEYSTORE_PASSWORD = "baton-watch-test".toCharArray();
     private static final InetAddress LOOPBACK = ipv4Loopback();
+    private static final ApacheHttpClientLimits CLIENT_LIMITS =
+            new TestClientLimits(Duration.ofSeconds(2), Duration.ofSeconds(2), 100, 8_192);
 
     private final AtomicInteger handlerCalls = new AtomicInteger();
     private final AtomicReference<String> observedHost = new AtomicReference<>();
@@ -110,10 +111,9 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
     private int execute(HttpGet request) throws IOException {
         String hostname = request.getAuthority().getHostName();
         try (CloseableHttpClient client = clientFactory.open(
-                hostname, List.of(LOOPBACK), clientLimits())) {
+                hostname, List.of(LOOPBACK), CLIENT_LIMITS, Duration.ofSeconds(2))) {
             return ApacheResponseLifecycle.execute(
-                    client, new HttpHost("https", hostname, server.getAddress().getPort()),
-                    request, CloseMode.GRACEFUL, response -> response.getCode());
+                    client, request, CloseMode.GRACEFUL, response -> response.getCode());
         }
     }
 
@@ -122,9 +122,9 @@ class PinnedApacheClientFactoryTlsIntegrationTest {
                 "https://" + hostname + ":" + server.getAddress().getPort() + "/probe"));
     }
 
-    private static ApacheHttpClientLimits clientLimits() {
-        return new ApacheHttpClientLimits(Duration.ofSeconds(2), Duration.ofSeconds(2), 100, 8_192);
-    }
+    private record TestClientLimits(
+            Duration connectTimeout, Duration responseTimeout, int maxHeaderCount, int maxHeaderLineLength)
+            implements ApacheHttpClientLimits {}
 
     private static KeyStore loadServerKeyStore() throws Exception {
         InputStream encoded = Objects.requireNonNull(

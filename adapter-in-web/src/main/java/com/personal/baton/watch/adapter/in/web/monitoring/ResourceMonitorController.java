@@ -1,15 +1,13 @@
 package com.personal.baton.watch.adapter.in.web.monitoring;
 
 import com.personal.baton.watch.application.monitoring.model.SynchronizationResult;
-import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.GetMonitorProjectionsUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.SynchronizeMonitorUseCase;
 import com.personal.baton.watch.application.monitoring.port.in.RequestMonitorCheckUseCase;
 import com.personal.baton.watch.domain.monitoring.ResourceReference;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
 import java.time.Clock;
+import java.util.Arrays;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,27 +17,26 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.WebRequest;
 
 @RestController
 @RequestMapping(path = "/api/v1/resource-monitors", produces = MediaType.APPLICATION_JSON_VALUE)
 public final class ResourceMonitorController {
 
+    private static final int MAX_BATCH_REFERENCES = 20;
+
     private final SynchronizeMonitorUseCase synchronizeMonitor;
-    private final GetMonitorProjectionUseCase getMonitorProjection;
     private final GetMonitorProjectionsUseCase getMonitorProjections;
     private final RequestMonitorCheckUseCase requestMonitorCheck;
     private final Clock clock;
 
     public ResourceMonitorController(
             SynchronizeMonitorUseCase synchronizeMonitor,
-            GetMonitorProjectionUseCase getMonitorProjection,
             GetMonitorProjectionsUseCase getMonitorProjections,
             RequestMonitorCheckUseCase requestMonitorCheck,
             Clock clock) {
         this.synchronizeMonitor = synchronizeMonitor;
-        this.getMonitorProjection = getMonitorProjection;
         this.getMonitorProjections = getMonitorProjections;
         this.requestMonitorCheck = requestMonitorCheck;
         this.clock = clock;
@@ -59,15 +56,15 @@ public final class ResourceMonitorController {
 
     @GetMapping("/{resourceReference}")
     public MonitorResponse get(@PathVariable ResourceReference resourceReference) {
-        return getMonitorProjection.get(resourceReference)
+        return getMonitorProjections.get(List.of(resourceReference)).stream()
+                .findFirst()
                 .map(projection -> MonitorResponse.from(projection, clock.instant()))
                 .orElseThrow(MonitorApiException::notFound);
     }
 
     @GetMapping
-    public MonitorBatchResponse getBatch(
-            @RequestParam("resourceReference") @Size(min = 1, max = 20)
-                    List<@NotNull ResourceReference> resourceReferences) {
+    public MonitorBatchResponse getBatch(WebRequest request) {
+        List<ResourceReference> resourceReferences = batchReferences(request);
         return MonitorBatchResponse.from(
                 resourceReferences, getMonitorProjections.get(resourceReferences), clock.instant());
     }
@@ -83,5 +80,21 @@ public final class ResourceMonitorController {
             case INACTIVE -> throw MonitorApiException.inactive();
             case RATE_LIMITED -> throw MonitorApiException.checkRequestRateLimited(result.retryAfterSeconds());
         };
+    }
+
+    /**
+     * 쿼리 값을 그대로 검증한다. Spring의 컬렉션 변환은 값이 하나면 쉼표로 나누고 공백을 지우며,
+     * Tomcat은 잘못된 쿼리 인코딩을 매개변수를 읽을 때 {@link IllegalStateException}으로 알린다.
+     */
+    private static List<ResourceReference> batchReferences(WebRequest request) {
+        try {
+            String[] values = request.getParameterValues("resourceReference");
+            if (values == null || values.length > MAX_BATCH_REFERENCES) {
+                throw MonitorApiException.invalidRequest();
+            }
+            return Arrays.stream(values).map(ResourceReference::new).toList();
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            throw MonitorApiException.invalidRequest();
+        }
     }
 }

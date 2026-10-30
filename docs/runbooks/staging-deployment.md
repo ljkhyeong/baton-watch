@@ -2,7 +2,7 @@
 
 상태: 운영자용 배포 절차서. 실제 배포·가동 여부는 별도 확인 필요
 
-최종 수정일: 2026-08-31
+최종 수정일: 2026-10-30
 
 ## 목적과 적용 범위
 
@@ -24,14 +24,16 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   [compose.staging-tunnel.yml](../../compose.staging-tunnel.yml)
 - 호환 BATON 콜백의 사전 검사가 끝난 경우에만 전달을 활성화하는 선택적
   [compose.staging-event-delivery.yml](../../compose.staging-event-delivery.yml)
+- 모니터 API 토큰을 교체하는 동안에만 이전 토큰 파일을 추가하는 선택적
+  [compose.staging-api-token-rotation.yml](../../compose.staging-api-token-rotation.yml)
 - 비밀값이 없는 환경 템플릿인
   [ops/staging.env.example](../../ops/staging.env.example)
 - 로컬에서 빌드하고 이미지 ID·OCI 리비전·아카이브 SHA-256을 보관한
   `baton-watch-database-operations:<full-git-sha>` 데이터베이스 작업 이미지,
   `baton-watch-migrations:<full-git-sha>` Flyway 이미지,
   `baton-watch:<full-git-sha>` 런타임 이미지,
-  `baton-watch-postgres:<full-git-sha>` PostgreSQL 이미지,
-  `baton-watch-cloudflared:<full-git-sha>` 터널 이미지
+  `baton-watch-postgres:<full-git-sha>` PostgreSQL 이미지
+- Compose에 다이제스트를 고정한 공식 NGINX·`cloudflare/cloudflared` 이미지
 - 운영자가 생성한 외부 PostgreSQL 볼륨 한 개
 - Compose 비밀값으로 마운트하는 권한 모드 `0600` 데이터베이스·WATCH 필수 비밀
   파일 세 개, 추가 Compose 설정에서 사용하는 권한 모드 `0600` 비밀 파일과, 권한 모드 `0700`
@@ -63,16 +65,16 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
   비루트 주체가 담당합니다.
 - WATCH 이미지는 기본적으로 UID/GID `10001`로 실행합니다. 스테이징에서는 시작
   래퍼만 root와 `CHOWN`, `DAC_READ_SEARCH`, `SETGID`, `SETUID` capability로
-  데이터베이스 비밀번호와 API 토큰, 선택적 이벤트 전달 토큰을 전용
+  데이터베이스 비밀번호와 API 토큰, 선택적 이전 API 토큰·이벤트 전달 토큰을 전용
   `/run/watch-secrets` tmpfs에 복사한 뒤
   Java를 UID/GID `10001`의 PID 1로 실행합니다. 복사 뒤 디렉터리는 `0500`, 파일은
   `0400`이며 Java와 상태 점검 프로세스에는 capability가 남지 않습니다.
 - WATCH에서 Flyway는 비활성화됩니다. 런타임 역할은 모니터 조회·삽입·갱신,
   시도 조회·삽입·보존 삭제, 결과 조회·삽입, 이벤트 조회·삽입·보존 삭제와
-  지정된 전달 메타데이터 열 갱신만 허용받습니다. 불변 시도·결과 열과 이벤트 페이로드
-  열은 갱신할 수 없습니다. `flyway_schema_history`를 읽거나 변경할 수 없고,
-  `watch_health_change_event_backlog` 요약을 조회할 수는 있지만 직접 변경하거나
-  보호된 트리거 함수를 직접 실행할 수 없습니다. `PUBLIC`과 런타임 역할의
+  지정된 전달 메타데이터 열 갱신만 허용받습니다. 보존 정리의 행 잠금에 필요해 시도의
+  `lease_expires_at` 열만 갱신을 엽니다. 그 밖의 불변 시도·결과 열과 이벤트 페이로드
+  열은 갱신할 수 없습니다. `flyway_schema_history`를 읽거나 변경할 수 없고
+  `public` 함수를 실행할 수 없습니다. `PUBLIC`과 런타임 역할의
   데이터베이스 `TEMPORARY` 권한도 회수합니다.
 - WATCH는 호스트 포트를 공개하지 않고 `watch-db`와 `watch-edge`에 참여하며,
   해당 네트워크의 컨테이너에만 8080 포트를 노출합니다.
@@ -112,7 +114,7 @@ Docker가 실행 중이어야 합니다. 운영 또는 고가용성 토폴로지
    | 순서 | 호스트 이름 | 경로 | 서비스 |
    | --- | --- | --- | --- |
    | 1 | `watch-staging.b4ton.com` | `^/api/v1/system/status$` | `http://watch-gateway:8080` |
-   | 2 | `watch-staging.b4ton.com` | `^/api/v1/resource-monitors/.*$` | `http://watch-gateway:8080` |
+   | 2 | `watch-staging.b4ton.com` | `^/api/v1/resource-monitors(/.*)?$` | `http://watch-gateway:8080` |
    | 3 | 기타 모든 요청 | 기타 모든 요청 | `http_status:404` |
 
    기타 모든 요청을 처리하는 규칙은 마지막에 두세요. `/actuator`, 관리 포트
@@ -142,10 +144,19 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
 지원 용량을 보장하거나 요청 빈도를 제한하는 값은 아닙니다.
 
 현재 기본 점검 설정은 단일 스케줄러 스레드, 배치 크기 1, 요청당 전체 제한 시간
-5초입니다. 이벤트 전달은 단일 스레드에서 배치 2개를 직렬 처리합니다. 두 작업자는
+5초입니다. 이벤트 전달은 단일 스레드에서 배치당 이벤트 2건을 직렬 처리합니다. 두 작업자는
 각 외부 호출 직전에 한 건씩 점유하며, 기본 데이터베이스·HTTP 제한으로 계산한
 최대 실행 시간은 점검 21초·전달 42초로 허용 실행 시간 60초 이내입니다. 이 계산은 지원
 용량이나 SLO가 아니라 부하 시험을 시작하기 위한 보수적 상한입니다.
+
+점검 간격 60초는 완료 후 다음 예정 시각까지의 간격이며, 실제 완료 간격에는 DB 대기와
+이미 도래한 다른 모니터 처리 시간이 더해집니다. 배치 1건·폴링 1초에서 모든 요청이
+5초 걸리면 인스턴스당 처리 상한은 약 10건/분입니다. HTTP 스레드 수만 늘려도 직렬 점검은
+병렬화되지 않으므로, 처리량이 부족하면 리스·허용 실행 시간 검증을 통과하는 배치 조정이나
+인스턴스 확장을 측정합니다. 모니터 1000개를 매분 30일간 점검하면 시도와 결과가 각각
+약 4320만 건 쌓입니다. 기본 정리는 인스턴스당 호출마다 최대 100건, 호출 간격은 1분 이상이므로
+생성량이 정리량을 지속적으로 넘지 않는지와 행·인덱스 크기, 백업 공간을 함께 산정합니다.
+이 수치는 계산 예시이며, 지원 규모를 정한 뒤 기본 설정으로 측정하는 부하 시험을 새로 마련합니다.
 
 공개 배포 전에 다음 검증 결과를 별도로 남기세요.
 
@@ -153,7 +164,9 @@ WATCH 오리진은 요청·응답 헤더를 각각 8 KiB, 연결을 128개, 수�
   부하 시나리오와 승인된 지원 규모
 - `baton_watch_check_inflight`, `baton_watch_check_schedule_delay_seconds`,
   `baton_watch_check_claimed_total`,
+  `baton_watch_check_attempts_total`, `baton_watch_check_egress_suspected_total`,
   `baton_watch_check_finalizations_total`, `baton_watch_check_lease_recoveries_total`,
+  `baton_watch_api_previous_token_authentications_total`,
   `baton_watch_event_delivery_inflight`, 제한된 결과별
   `baton_watch_event_delivery_duration_seconds`,
   `baton_watch_event_delivery_claimed_total`,
@@ -223,7 +236,7 @@ export WATCH_IMAGE_ARCHIVE_DIR="${STAGING_CONFIG_DIR}/images/${DEPLOY_SHA}"
 ~~~bash
 install -d -m 0700 "$STAGING_CONFIG_DIR"
 install -d -m 0700 "$STAGING_CONFIG_DIR/secrets"
-install -m 0600 ops/staging.env.example "$STAGING_ENV_FILE"
+[[ -e "$STAGING_ENV_FILE" ]] || install -m 0600 ops/staging.env.example "$STAGING_ENV_FILE"
 if [[ ! -e "$STAGING_STATE_FILE" ]]; then
   STATE_TMP="$(mktemp "${STAGING_CONFIG_DIR}/staging-state.env.XXXXXX")"
   printf '%s\n' \
@@ -244,6 +257,8 @@ test -e "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token" || \
 ~~~
 
 이 보호 절차는 없는 자리 표시자만 만들며 기존 비밀값을 절대 잘라내지 않습니다.
+기존 환경 파일도 덮어쓰지 않습니다. 콜백 주소, 점검 중지, 토큰 교체 설정이 이 파일에 있으므로 덮어쓰면
+전달이 꺼지거나 중지한 점검이 재개됩니다. 템플릿이 바뀌면 `diff`로 확인해 필요한 항목만 옮기세요.
 PostgreSQL 소유자 비밀번호는 데이터베이스 소유자 역할과, 런타임
 비밀번호는 런타임 역할과 파일을 하나의 통제된 변경으로 함께 갱신하는
 별도 절차를 통해서만 교체하세요. 파일만 바꾸면 초기화된 볼륨의 인증이
@@ -324,19 +339,37 @@ unset DATABASE_SECRET_FILE DATABASE_SECRET_VALUE DATABASE_SECRET_EXTRA
 허용하며 빈 둘째 줄이나 마지막 줄바꿈이 없는 추가 내용도 거부합니다. 일회성 역할
 초기화와 마이그레이션 스크립트도 같은 비밀값 문법과 파일 형식을 다시 검증합니다.
 
-WATCH API 토큰이나 터널 토큰은 다음 순서로 교체하세요.
+터널 토큰은 다음 순서로 교체하세요.
 
-1. 같은 `secrets` 디렉터리에 새 일반 파일을 만듭니다. 권한은 WATCH API 토큰에 `0600`,
-   터널 토큰에 `0444`를 적용합니다.
+1. 같은 `secrets` 디렉터리에 권한 `0444`인 새 일반 파일을 만듭니다.
 2. 새 파일을 원래 경로로 원자적으로 교체합니다. 심볼릭 링크를 사용하거나 기존 파일의
    내용을 직접 덮어쓰면 안 됩니다.
-3. 해당 컨테이너를 다시 만듭니다. WATCH는
-   `staging_compose up -d --no-deps --force-recreate watch`, 터널은
-   `staging_compose up -d --no-deps --force-recreate cloudflared`를 실행합니다.
+3. `staging_compose up -d --no-deps --force-recreate cloudflared`로 컨테이너를 다시 만듭니다.
 4. 상태 점검을 다시 실행해 통과하는지 확인합니다.
 
-bind mount가 교체 전 파일의 inode를 계속 참조할 수 있으므로 `restart`만으로는
-새 토큰이 적용되지 않을 수 있습니다.
+WATCH API 토큰은 BATON 요청이 끊기지 않도록 이전 토큰을 잠시 함께 허용하며 교체합니다.
+
+1. 현재 `watch-api-token`을 같은 디렉터리의 `watch-api-previous-token`으로 복사하고 권한을 `0600`으로 둡니다.
+2. 권한 `0600`인 새 토큰 파일을 만든 뒤 `watch-api-token` 경로로 원자적으로 교체합니다.
+3. 환경 파일의 `WATCH_API_PREVIOUS_TOKEN_FILE`에 이전 토큰 파일 경로를 넣고
+   `staging_compose up -d --no-deps --force-recreate --wait watch`로 WATCH를 다시 만듭니다.
+   헬퍼가 `compose.staging-api-token-rotation.yml`을 더하고, 시작 로그에 이전 토큰을 함께 허용한다는 안내가 남습니다.
+4. BATON의 WATCH API 토큰을 새 값으로 바꿔 배포합니다. 문제가 생기면 BATON만 이전 값으로 되돌려도
+   WATCH는 두 토큰을 계속 허용합니다.
+5. BATON 화면의 상태 새로고침처럼 WATCH를 호출하는 동작이 성공한 뒤 아래 카운터가 늘지 않는지 확인합니다.
+6. `WATCH_API_PREVIOUS_TOKEN_FILE`을 비우고 WATCH를 다시 만든 뒤 `watch-api-previous-token` 파일을 삭제하고
+   상태 점검을 다시 실행합니다.
+
+~~~bash
+staging_compose exec --user 10001:10001 -T watch \
+  wget -q -O - http://127.0.0.1:8081/actuator/prometheus \
+  | grep '^baton_watch_api_previous_token_authentications_total '
+~~~
+
+이 카운터는 이전 토큰으로 인증한 요청 수이며 WATCH를 다시 만들면 0부터 다시 셉니다. 4단계 전에는 BATON의
+기존 호출로 늘어나는 것이 정상이고, 4단계 뒤 BATON 호출이 성공한 1분 이상 동안 값이 그대로여야 6단계로
+넘어갑니다. bind mount가 교체 전 파일의 inode를 계속 참조할 수 있으므로 어느 토큰이든 `restart`만으로는
+새 값이 적용되지 않을 수 있습니다.
 
 ~~~bash
 test "$(wc -l < "$STAGING_STATE_FILE" | tr -d ' ')" = 1
@@ -375,8 +408,8 @@ docker volume inspect "$WATCH_POSTGRES_VOLUME_NAME"
 
 ## 정확한 로컬 리비전 빌드
 
-NGINX는 Compose에 고정한 공식 이미지 다이제스트로 가져옵니다. PostgreSQL·데이터베이스
-작업·마이그레이션·cloudflared·WATCH는 Dockerfile의 고정된 소스로 빌드합니다. 이 다섯
+NGINX와 cloudflared는 Compose에 고정한 공식 이미지 다이제스트로 가져옵니다. PostgreSQL·데이터베이스
+작업·마이그레이션·WATCH는 Dockerfile의 고정된 소스로 빌드합니다. 이 네
 이미지는 `pull_policy: never`와 전체 Git SHA 태그로 검증한 로컬 이미지를 선택합니다.
 
 모든 작업에 터널용 Compose 설정을 포함합니다. 별도 전달 런북에 따라 BATON 콜백을
@@ -392,6 +425,10 @@ staging_compose() {
     "$STAGING_ENV_FILE"; then
     compose_files+=(-f compose.staging-event-delivery.yml)
   fi
+  if grep -Eq '^WATCH_API_PREVIOUS_TOKEN_FILE=[^[:space:]]+$' \
+    "$STAGING_ENV_FILE"; then
+    compose_files+=(-f compose.staging-api-token-rotation.yml)
+  fi
   docker compose \
     --env-file "$STAGING_ENV_FILE" \
     "${compose_files[@]}" \
@@ -405,7 +442,7 @@ VERIFY_RUN_COUNT="$(gh run list --repo ljkhyeong/baton-watch \
   --json headSha --jq 'length')"
 test "$VERIFY_RUN_COUNT" -ge 1
 ./gradlew clean test :bootstrap:verifyBootJarLicense --no-daemon --no-build-cache
-staging_compose pull watch-gateway
+staging_compose pull watch-gateway cloudflared
 docker build --pull --target postgres \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "baton-watch-postgres:${WATCH_IMAGE_REVISION}" \
@@ -417,10 +454,6 @@ docker build --pull --target database-operations \
 docker build --pull --target migrations \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
   --tag "$WATCH_MIGRATION_IMAGE" \
-  .
-docker build --pull --target cloudflared \
-  --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
-  --tag "baton-watch-cloudflared:${WATCH_IMAGE_REVISION}" \
   .
 docker build --pull --target runtime \
   --build-arg "OCI_REVISION=${DEPLOY_SHA}" \
@@ -468,9 +501,9 @@ GitHub Actions, 명시적 허용 라이선스와 `HIGH` 이상 취약점을 적�
 `staging-url-policy-test.sh`,
 `staging-event-delivery-preflight-test.sh`, `staging-public-smoke-test.sh`,
 `staging-log-redaction-audit-test.sh`와 실제 PostgreSQL 역할·마이그레이션,
-비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 다섯 이미지의 OCI
+비루트 최종 WATCH 이미지 기동과 상태 응답 스모크를 검증합니다. 자체 이미지 네 개의 OCI
 레이블과 Apache-2.0 전문도 저장소 파일과 대조합니다. 공용 공급망 검사 스크립트는
-독립 부트 JAR, 자체 이미지 5개와 Compose에 고정된 공식 NGINX
+독립 부트 JAR, 자체 이미지 4개와 Compose에 고정된 공식 NGINX·cloudflared
 이미지의 CycloneDX SBOM 일곱 개를 만들고
 부트 JAR의 라이선스를 명시적 허용
 목록으로 검사하며, 수정 가능한 `HIGH`·`CRITICAL` 취약점이 있으면 실패합니다.
@@ -492,19 +525,19 @@ PostgreSQL 검증과 CodeQL은 공급망 검사보다 먼저 실행해 취약점
 결과를 가리지 않게 합니다. 보고서 디렉터리가 이미 있으면 덮어쓰지 않으며, 입력
 아카이브를 확인하지 못하면 최종 보고서 경로를 만들지 않습니다. `SHA256SUMS`가 생성된
 경우에만 모든 검사를 마친 결과로 인정합니다. 보고서 누락·빈 파일도 실패 결과로 보존하며 완료 체크섬과 배포용 JAR은 생성하지 않습니다.
-로컬 실제 PostgreSQL 스모크는 Flyway V1~V6, 런타임 역할 속성·검색 경로·소속·
+로컬 실제 PostgreSQL 스모크는 Flyway V1, 런타임 역할 속성·검색 경로·소속·
 객체 소유 금지, 새 테이블·시퀀스·함수의 기본 권한 차단, 허용된 런타임 DML,
 불변 시도·결과·이벤트 페이로드 열 갱신 거부와 비루트 WATCH 기동을 함께 확인합니다.
-Gradle·GitHub Actions·Docker 기본 이미지는 주간 Dependabot 점검 대상입니다.
-다단계 Dockerfile·Compose 이미지·Alpine 고정 패키지·Trivy 이미지의 추가 범위는
-`renovate.json`에 주간 갱신을 준비했지만, 외부 Renovate 서비스는 자동으로
-활성화되지 않고 자동 병합도 하지 않습니다. 어떤 업데이트 PR도 자동 배포하지
+Gradle·GitHub Actions·Dockerfile·Compose 이미지는 주간 Dependabot 점검 대상입니다.
+Alpine 고정 패키지와 Trivy·Prometheus·Alertmanager 검사용 이미지는 자동 갱신 대상이 아니므로 직접 확인합니다.
+어떤 업데이트 PR도 자동 배포하지
 말고 같은 검증을 통과시켜야 합니다. Alpine 저장소는 패키지의 최신 버전만 제공하므로
 고정 버전이 내려가면 이미지 빌드의 `apk add`가 종료 코드 8로 실패합니다. 같은 기반 이미지에서
-`apk update && apk search -x <패키지>`로 현재 버전을 확인해 고정값을 올리고 같은 검증을 다시 통과시킵니다. 변경 사항이 남아 있는 작업 트리,
+`apk update && apk search -x <패키지>`로 현재 버전을 확인해 고정값을 올리고 같은 검증을 다시 통과시킵니다.
+기반 이미지가 이미 수정 버전을 담고 있으면 패키지를 고정하지 말고 기반 이미지 다이제스트를 올립니다. 변경 사항이 남아 있는 작업 트리,
 `latest`, 축약 SHA 또는 다른 리비전에서 빌드한 이미지를 배포하지 마세요.
 `archive`는 같은 리비전의 기존 보관 디렉터리를 덮어쓰지 않습니다. 보관된
-`manifest.tsv`와 세 아카이브는 태그만으로는 증명할 수 없는 실제 이미지 ID와
+`manifest.tsv`와 네 아카이브는 태그만으로는 증명할 수 없는 실제 이미지 ID와
 체크섬을 롤백 기간 동안 유지합니다.
 
 어떤 항목도 시작하기 전에 병합된 모델을 검증합니다.
@@ -562,7 +595,7 @@ shasum -a 256 "$BACKUP_FILE"
 PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미지가 없으면
 최초 실행 시 내려받습니다. 운영 볼륨·호스트 포트·외부 네트워크는 연결하지
 않습니다. 원본 DB가 아니라 이 임시 컨테이너에 `pg_restore`를 실행하고,
-마이그레이션 성공 이력과 실제 미전달 이벤트·백로그 요약의 일치를 확인합니다.
+마이그레이션 성공 이력을 확인합니다. 모니터가 없는 백업은 잘못된 원본으로 보고 실패합니다.
 모니터·시도·결과·대기/완료 이벤트·전달 시도 합계만 출력하고 임시 환경을 삭제합니다.
 
 복원 환경은 메모리 1.5GiB, 데이터·WAL을 포함한 임시 저장 공간 1GiB로 제한합니다.
@@ -609,10 +642,6 @@ PostgreSQL 18.6을 시작합니다. Docker Compose가 필요하며 고정 이미
 완료되어야 하고, 그 뒤에 PostgreSQL·WATCH·Cloudflare Tunnel 상태 점검이
 모두 통과해야 합니다.
 
-V6은 HTTP 결과와 전달 완료 행의 필수 값을 검사합니다. 기존 데이터가 조건에 맞지 않으면
-적용이 실패하므로 원본 점검·전달 기록과 대조해 원인을 확인하세요. 이 마이그레이션은
-기존 데이터를 수정하거나 삭제하지 않습니다.
-
 ~~~bash
 ./ops/staging-image-evidence.sh verify
 staging_compose stop cloudflared watch-gateway watch
@@ -632,11 +661,16 @@ WATCH 내부에서 애플리케이션과 데이터베이스 상태를 검증합�
 ~~~bash
 staging_compose exec --user 10001:10001 -T watch \
   wget -q -O - http://127.0.0.1:8081/actuator/health/readiness
-staging_compose exec --user 10001:10001 -T watch sh -c \
-  'test "$WATCH_EVENT_DELIVERY_ENABLED" = false && test "$SPRING_FLYWAY_ENABLED" = false'
+EXPECTED_EVENT_DELIVERY=false
+if grep -Eq '^WATCH_EVENT_DELIVERY_ENDPOINT=https://[^[:space:]]+$' "$STAGING_ENV_FILE"; then
+  EXPECTED_EVENT_DELIVERY=true
+fi
+staging_compose exec --user 10001:10001 -T --env "EXPECTED_EVENT_DELIVERY=$EXPECTED_EVENT_DELIVERY" watch sh -c \
+  'test "$WATCH_EVENT_DELIVERY_ENABLED" = "$EXPECTED_EVENT_DELIVERY" && test "$SPRING_FLYWAY_ENABLED" = false'
+unset EXPECTED_EVENT_DELIVERY
 MIGRATION_EVIDENCE="$(staging_compose exec -T postgres sh -c \
   'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --command="SELECT string_agg(version, chr(44) ORDER BY installed_rank) FROM flyway_schema_history WHERE success"')"
-test "$MIGRATION_EVIDENCE" = 1,2,3,4
+test "$MIGRATION_EVIDENCE" = 1
 RUNTIME_PRIVILEGE_EVIDENCE="$(
   printf '%s\n' \
     "SELECT concat_ws('|'," \
@@ -650,25 +684,22 @@ RUNTIME_PRIVILEGE_EVIDENCE="$(
     "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event', 'DELETE')," \
     "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'changed_at', 'UPDATE')," \
     "  has_column_privilege(:'runtime_role', 'public.watch_health_change_event', 'delivery_status', 'UPDATE')," \
-    "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT')," \
-    "  has_table_privilege(:'runtime_role', 'public.watch_health_change_event_backlog', 'UPDATE')," \
-    "  has_function_privilege(:'runtime_role', 'public.maintain_watch_health_change_event_backlog()', 'EXECUTE'));" |
+    "  has_table_privilege(:'runtime_role', 'public.flyway_schema_history', 'SELECT'));" |
   staging_compose exec -T --env WATCH_DB_RUNTIME_USER="$WATCH_DB_RUNTIME_USER" \
     postgres sh -c \
     'exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only --no-align --set=runtime_role="$WATCH_DB_RUNTIME_USER"'
 )"
-test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f|f|f'
+test "$RUNTIME_PRIVILEGE_EVIDENCE" = 'f|t|f|t|f|t|f|t|f|t|f'
 ~~~
 
 데이터베이스 표시 항목을 포함한 상태 응답은 `UP`이어야 하며, 전달·Flyway
-비활성화 검증과 V1~V4 마이그레이션 적용 결과 검사는 종료 코드 0으로
+비활성화 검증과 V1 마이그레이션 적용 결과 검사는 종료 코드 0으로
 끝나야 합니다. WATCH 상태는 런타임 역할의 데이터베이스 연결 성공을
 확인하지만 세부 테이블 권한 전체를 증명하지는 않습니다. 따라서 런타임 역할의
 `TEMPORARY`, 모니터 조회와 삭제 거부, 시도 보존 삭제와 불변 열 갱신 거부,
 결과 삽입과 갱신 거부, 이벤트 보존 삭제와 페이로드 열 갱신 거부, 전달 상태 열
-갱신, `flyway_schema_history` 조회 거부, 백로그 요약 직접 변경 거부와 보호된
-함수 직접 실행 거부가 순서대로
-`f|t|f|t|f|t|f|t|f|t|f|f|f`인지 직접 검증합니다.
+갱신, `flyway_schema_history` 조회 거부가 순서대로
+`f|t|f|t|f|t|f|t|f|t|f`인지 직접 검증합니다.
 
 ## 데이터베이스 비밀번호 교체
 
@@ -705,7 +736,8 @@ staging_compose exec --user 10001:10001 -T watch \
 
 소유자 비밀번호는 WATCH를 정지하지 않고 같은 방식으로 교체할 수 있습니다.
 `database-role-init`과 `migrate`를 다시 실행해 새 소유자 자격 증명과 기존
-런타임 비밀 파일이 함께 동작하는지 확인합니다.
+런타임 비밀 파일이 함께 동작하는지 확인합니다. `database-role-init`은 테이블 권한을 회수하지 않고
+`migrate`의 콜백이 권한을 한 트랜잭션에서 다시 맞추므로, 실행 중인 WATCH의 권한이 비는 구간은 없습니다.
 
 ~~~bash
 install -m 0600 /dev/null "$NEW_DATABASE_SECRET"
@@ -794,7 +826,7 @@ test -s "$AUDIT_DIR/forbidden-values"
   "$STAGING_CONFIG_DIR/secrets/cloudflare-tunnel-token"
 ~~~
 
-이벤트 전달 토큰처럼 이번 배포에서 사용한 비밀 파일이 더 있으면 마지막 인수에
+이벤트 전달 토큰이나 교체 중인 이전 API 토큰처럼 이번 배포에서 사용한 비밀 파일이 더 있으면 마지막 인수에
 추가합니다. 감사 도구는 정확한 비밀값, `Authorization` 헤더, Bearer 자격 증명과
 지정한 금지 값을 검사합니다. 일치한 줄이나 값은 출력하지 않고 범주별 통과/실패만
 반환합니다.
@@ -814,8 +846,8 @@ unset AUDIT_DIR
 ## 롤백
 
 롤백에는 이전에 검증한 전체 커밋 SHA와 그 SHA로 이미 빌드하여 보관한
-PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH 이미지 다섯 개를 사용합니다. 다른 작업 트리에서 이전
-태그를 다시 빌드하지 마세요. 이미지가 세 개였던 이전 리비전은 해당 리비전의
+PostgreSQL·데이터베이스 작업·마이그레이션·WATCH 이미지 네 개를 사용합니다. 다른 작업 트리에서 이전
+태그를 다시 빌드하지 마세요. 자체 이미지가 세 개·다섯 개였던 이전 리비전은 해당 리비전의
 Compose 파일과 이미지 보관 도구로 복원해야 합니다.
 
 NGINX 이미지 다이제스트와 `ops/nginx/watch-gateway.conf`도 배포 커밋 기준으로
@@ -865,7 +897,7 @@ staging_compose ps -a
 새 릴리스가 스키마를 전진시켰거나 호환성을 입증하지 못했다면 이전
 애플리케이션만 활성 볼륨에 연결하지 마세요. 위의 복원 테스트를 통과한
 마지막 백업을 선택하여 명시적으로 이름을 지정한 새 볼륨에 복원합니다.
-이 경로에서도 이전 PostgreSQL·데이터베이스 작업·마이그레이션·cloudflared·WATCH 이미지의
+이 경로에서도 이전 PostgreSQL·데이터베이스 작업·마이그레이션·WATCH 이미지의
 SHA 태그를 모두 검증해야 합니다.
 
 ~~~bash
