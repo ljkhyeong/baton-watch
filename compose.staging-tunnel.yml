@@ -50,7 +50,7 @@ services:
           pids: 32
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.6@sha256:004d843fa5fdc3103983fd580ee19fab4a8fa98add31f87249c1659e848c98e0
+    image: cloudflare/cloudflared:2026.11.1@sha256:e613aadbc2d9511785d2e67a86b0c8ac18dd63a3f9af0d06faf04cbfdcb35f2d
     <<: *hardened-edge-service
     user: "65532:65532"
     # 이미지 기본 진입점에는 없는 자동 갱신 차단을 명령행으로 고정한다.
