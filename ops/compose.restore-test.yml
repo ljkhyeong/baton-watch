@@ -1,7 +1,7 @@
 # 운영 볼륨·호스트 포트·외부 네트워크를 사용하지 않는 폐기 가능한 복원 시험 환경이다.
 services:
   postgres:
-    image: postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+    image: postgres:18.6-alpine@sha256:9ba53c7d41ea093baf5c1ba635ba5434c4f979880527d49bb7d9237d3193085b
     network_mode: none
     environment:
       POSTGRES_DB: baton_watch
