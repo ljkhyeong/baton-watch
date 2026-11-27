@@ -7,7 +7,7 @@ WORKDIR /workspace
 COPY . .
 RUN chmod +x gradlew && ./gradlew --no-daemon :bootstrap:bootJar
 
-FROM postgres:18.6-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5 AS postgres
+FROM postgres:19.0-alpine@sha256:cac45fb483caee3668946088a1c0532db89d5285c28dbfeac889b4068296e06f AS postgres
 ARG OCI_SOURCE
 ARG OCI_VERSION
 ARG OCI_REVISION
