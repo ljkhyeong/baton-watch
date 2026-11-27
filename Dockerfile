@@ -32,7 +32,7 @@ COPY --chmod=0555 ops/staging-database-operation.sh /opt/watch/staging-database-
 COPY --chmod=0555 ops/run-as-database-user.sh /opt/watch/run-as-database-user.sh
 ENTRYPOINT ["/opt/watch/run-as-database-user.sh", "70", "70", "/opt/watch/staging-database-operation.sh", "configure-runtime-role"]
 
-FROM flyway/flyway:13.8.1-alpine@sha256:ca3c8eddac25811f84c9767c56a0610ce23cd4e61f59bb05778a78db42347b39 AS flyway-source
+FROM flyway/flyway:13.13.0-alpine@sha256:ebea270d71794bf0fd2bd4d0282dd12be324d0efc0a55a81c0f654180591c124 AS flyway-source
 RUN find /flyway/drivers -mindepth 1 -maxdepth 1 ! -name 'postgresql-*.jar' -exec rm -rf {} + \
     && find /flyway/lib/flyway -maxdepth 1 -type f -name 'flyway-database-*.jar' ! -name 'flyway-database-postgresql-*.jar' -delete \
     && rm -f \
